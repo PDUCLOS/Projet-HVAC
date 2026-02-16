@@ -12,8 +12,8 @@ Orchestre les différentes étapes du projet HVAC Market Analysis :
     6. features    — Feature engineering (lags, rolling, interactions)
     7. process     — Exécute clean + merge + features en séquence
     8. eda         — Analyse exploratoire + corrélations (Phase 3)
-    9. train       — Entraînement des modèles (TODO Phase 4)
-   10. evaluate    — Évaluation et comparaison (TODO Phase 4)
+    9. train       — Entraînement des modèles (Phase 4)
+   10. evaluate    — Évaluation et comparaison (Phase 4)
 
 Usage CLI :
     # Exécuter une étape spécifique
@@ -253,6 +253,110 @@ def run_eda() -> None:
     logger.info("  Rapports : data/analysis/")
 
 
+def run_train(target: str = "nb_installations_pac") -> None:
+    """Entraîne tous les modèles ML sur le dataset features (Phase 4).
+
+    Modèles entraînés :
+    - Ridge Regression (baseline robuste)
+    - LightGBM (gradient boosting régularisé)
+    - Prophet (séries temporelles avec régresseurs)
+    - LSTM (exploratoire, si PyTorch disponible)
+
+    Les modèles et métriques sont sauvegardés dans data/models/.
+
+    Prérequis : avoir exécuté 'features' (dataset dans data/features/).
+
+    Args:
+        target: Variable cible à prédire.
+    """
+    from src.models.train import ModelTrainer
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Phase 4 — Entraînement ML")
+    logger.info("  Cible : %s", target)
+    logger.info("=" * 60)
+
+    trainer = ModelTrainer(config, target=target)
+    results = trainer.train_all()
+
+    logger.info("Phase 4 (train) terminée : %d modèles entraînés.", len(results))
+    logger.info("  Modèles : data/models/")
+    logger.info("  Résultats : data/models/training_results.csv")
+
+
+def run_evaluate(target: str = "nb_installations_pac") -> None:
+    """Évalue et compare les modèles entraînés (Phase 4.3-4.4).
+
+    Génère :
+    - Tableau comparatif des métriques
+    - Graphiques predictions vs réel
+    - Graphique comparaison des modèles
+    - Analyse des résidus
+    - Feature importance
+    - Analyse SHAP (si shap installé)
+    - Rapport textuel complet
+
+    Prérequis : avoir exécuté 'train'.
+
+    Args:
+        target: Variable cible utilisée à l'entraînement.
+    """
+    from src.models.train import ModelTrainer
+    from src.models.evaluate import ModelEvaluator
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Phase 4 — Évaluation et comparaison")
+    logger.info("=" * 60)
+
+    # Re-entraîner pour obtenir les résultats en mémoire
+    trainer = ModelTrainer(config, target=target)
+    results = trainer.train_all()
+
+    evaluator = ModelEvaluator(config)
+
+    # Préparer les données pour les plots
+    df = trainer.load_dataset()
+    _, df_val, df_test = trainer.temporal_split(df)
+    _, y_val = trainer.prepare_features(df_val)
+    _, y_test = trainer.prepare_features(df_test)
+
+    # Générer les visualisations
+    evaluator.plot_predictions_vs_actual(
+        results, y_val.values, y_test.values, target,
+    )
+    evaluator.plot_model_comparison(results)
+    evaluator.plot_residuals(results, y_val.values, y_test.values)
+    evaluator.plot_feature_importance(results)
+
+    # SHAP sur LightGBM
+    if "lightgbm" in results:
+        import pandas as pd
+        from sklearn.impute import SimpleImputer
+
+        X_val_raw, _ = trainer.prepare_features(df_val)
+        imputer = SimpleImputer(strategy="median")
+        X_train_raw, _ = trainer.prepare_features(
+            df[df["date_id"] <= trainer.train_end]
+        )
+        imputer.fit(X_train_raw)
+        X_val_imp = pd.DataFrame(
+            imputer.transform(X_val_raw),
+            columns=X_val_raw.columns, index=X_val_raw.index,
+        )
+        evaluator.shap_analysis(
+            results["lightgbm"]["model"], X_val_imp, "lightgbm",
+        )
+
+    # Rapport
+    evaluator.generate_full_report(results, target)
+
+    logger.info("Phase 4 (evaluate) terminée.")
+    logger.info("  Figures : data/models/figures/")
+    logger.info("  Rapport : data/models/evaluation_report.txt")
+
+
 def run_list() -> None:
     """Liste les collecteurs disponibles."""
     # Importer pour déclencher l'enregistrement
@@ -282,6 +386,9 @@ Exemples :
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
   python -m src.pipeline eda                      # EDA + correlations
+  python -m src.pipeline train                     # Entrainer les modeles ML
+  python -m src.pipeline train --target nb_dpe_total  # Autre cible
+  python -m src.pipeline evaluate                  # Evaluer et comparer
   python -m src.pipeline list                     # Lister les collecteurs
         """,
     )
@@ -291,7 +398,7 @@ Exemples :
         choices=[
             "collect", "init_db", "import_data",
             "clean", "merge", "features", "process",
-            "eda", "list", "all",
+            "eda", "train", "evaluate", "list", "all",
         ],
         help="Étape du pipeline à exécuter",
     )
@@ -301,6 +408,13 @@ Exemples :
         default=None,
         help="Sources à collecter (séparées par des virgules). "
              "Ex: weather,insee,eurostat",
+    )
+    parser.add_argument(
+        "--target",
+        type=str,
+        default="nb_installations_pac",
+        help="Variable cible pour l'entrainement ML. "
+             "Ex: nb_installations_pac, nb_dpe_total",
     )
     parser.add_argument(
         "--log-level",
@@ -346,6 +460,12 @@ Exemples :
 
     elif args.stage == "eda":
         run_eda()
+
+    elif args.stage == "train":
+        run_train(target=args.target)
+
+    elif args.stage == "evaluate":
+        run_evaluate(target=args.target)
 
     elif args.stage == "list":
         run_list()
