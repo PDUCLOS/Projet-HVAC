@@ -22,6 +22,8 @@ ENV/
 data/raw/
 data/processed/
 data/features/
+data/models/
+data/analysis/
 *.csv
 *.parquet
 *.zip
