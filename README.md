@@ -74,7 +74,7 @@ hvac-market-analysis/
 
 ```bash
 # 1. Cloner le repo
-git clone https://github.com/<votre-username>/hvac-market-analysis.git
+git clone https://github.com/PDUCLOS/Projet-HVAC.git
 cd hvac-market-analysis
 
 # 2. Creer et activer l'environnement virtuel
@@ -129,7 +129,7 @@ Le projet est concu pour etre portable. Seul le **code** est versionne dans Git.
 
 ```bash
 # 1. Cloner
-git clone https://github.com/<votre-username>/hvac-market-analysis.git
+git clone https://github.com/PDUCLOS/Projet-HVAC.git
 cd hvac-market-analysis
 
 # 2. Environnement

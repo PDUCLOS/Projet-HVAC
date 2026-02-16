@@ -129,8 +129,8 @@ DB_PASSWORD=VotreMotDePasse
 ### 4.1 Déplacer le projet sur une autre machine
 ```bash
 # 1. Copier le dossier complet (ou git clone)
-git clone https://github.com/patrice/hvac-market-analysis.git
-cd hvac-market-analysis
+git clone https://github.com/PDUCLOS/Projet-HVAC.git
+cd Projet-HVAC
 
 # 2. Créer un environnement virtuel
 python -m venv venv
