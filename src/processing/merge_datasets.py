@@ -414,6 +414,11 @@ class DatasetMerger:
                 "opinion_achats_importants": "opinion_achats",
                 "situation_financiere_future": "situation_fin_future",
                 "ipi_industrie_manuf": "ipi_manufacturing",
+                # Prix énergie (IPC base 2015) — drivers adoption PAC
+                "ipc_electricite": "ipc_electricite",
+                "ipc_gaz": "ipc_gaz",
+                "ipc_combustibles_liquides": "ipc_fioul",
+                "ipc_energie_ensemble": "ipc_energie",
             }
             for old, new in col_map.items():
                 if old in df_insee.columns and old != new:

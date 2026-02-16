@@ -207,7 +207,8 @@ python -m src.pipeline process
 |--------|-----|--------|------|
 | **DPE ADEME** | data.ademe.fr (JSON pagine) | 1.4M lignes | Aucune (Open Data) |
 | **Open-Meteo** | archive-api.open-meteo.com | 20 456 lignes | Aucune |
-| **INSEE BDM** | bdm.insee.fr (SDMX XML) | 85 lignes/mois | Aucune |
+| **INSEE BDM** | bdm.insee.fr (SDMX XML) | 10 series mensuelles | Aucune |
+| **INSEE IPC Energie** | bdm.insee.fr (SDMX XML) | 4 series (elec, gaz, fioul, ensemble) | Aucune |
 | **Eurostat** | via package `eurostat` | 168 lignes | Aucune |
 | **SITADEL** | DiDo API (SDES) | En cours | Aucune |
 

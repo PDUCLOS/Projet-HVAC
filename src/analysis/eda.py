@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 import matplotlib
 matplotlib.use("Agg")  # Backend non-interactif pour la génération de fichiers
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 import numpy as np
@@ -288,8 +289,8 @@ class EDAAnalyzer:
         ax.set_xlabel("Date")
         ax.set_ylabel("Nombre d'installations PAC")
         ax.legend(loc="upper left", fontsize=9, ncol=2)
-        ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=3))
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y-%m"))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
         plt.xticks(rotation=45)
 
         return self._save_fig("04_timeseries_pac")
@@ -317,8 +318,8 @@ class EDAAnalyzer:
         ax.set_xlabel("Date")
         ax.set_ylabel("Nombre de DPE")
         ax.legend(loc="upper left", fontsize=9, ncol=2)
-        ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=3))
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y-%m"))
+        ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
         plt.xticks(rotation=45)
 
         return self._save_fig("05_timeseries_dpe_total")

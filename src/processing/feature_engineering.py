@@ -359,6 +359,19 @@ class FeatureEngineer:
             df["jours_extremes"] = df["nb_jours_canicule"] + df["nb_jours_gel"]
             n_features += 1
 
+        # Ratio prix gaz / électricité (driver principal adoption PAC)
+        if "ipc_gaz" in df.columns and "ipc_electricite" in df.columns:
+            elec = df["ipc_electricite"].clip(lower=1)
+            df["ratio_prix_gaz_elec"] = (df["ipc_gaz"] / elec).round(4)
+            n_features += 1
+
+        # Interaction prix gaz × HDD (gaz cher + hiver froid → switch PAC)
+        if "ipc_gaz" in df.columns and "hdd_sum" in df.columns:
+            gaz_norm = df["ipc_gaz"] / 100
+            hdd_max = max(df["hdd_sum"].max(), 1)
+            df["interact_gaz_hdd"] = (gaz_norm * (df["hdd_sum"] / hdd_max)).round(4)
+            n_features += 1
+
         self.logger.info("  Interactions : %d features", n_features)
         return df
 

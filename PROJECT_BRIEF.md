@@ -255,6 +255,10 @@ python -m src.pipeline process                         # clean + merge + feature
   | Climat des affaires (tous secteurs) | 001565530 | OK (CORRIGE) |
   | Climat des affaires (bâtiment) | 001586808 | OK |
   | IPI Industrie manufacturière | 010768261 | OK |
+  | IPC Électricité (COICOP 04.5.1) | 001763554 | OK (NOUVEAU) |
+  | IPC Gaz naturel (COICOP 04.5.2.1) | 001763557 | OK (NOUVEAU) |
+  | IPC Fioul (COICOP 04.5.3) | 001763559 | OK (NOUVEAU) |
+  | IPC Énergie ensemble (COICOP 04.5) | 001763553 | OK (NOUVEAU) |
 
 - **Collecteur** : `src/collectors/insee.py` (InseeCollector)
 
@@ -377,6 +381,11 @@ python -m src.pipeline process                         # clean + merge + feature
 **Économiques (6)** — nationales
 - confiance_menages, climat_affaires_indus, climat_affaires_bat
 - ipi_manufacturing, ipi_hvac_c28, ipi_hvac_c2825
+
+**Prix de l'énergie (4)** — nationales (IPC base 2015=100)
+- ipc_electricite, ipc_gaz, ipc_fioul, ipc_energie
+- ratio_prix_gaz_elec (feature dérivée : driver principal adoption PAC)
+- interact_gaz_hdd (interaction gaz cher × hiver froid)
 
 ### Features cibles (Y)
 - nb_installations_pac : DPE avec PAC par mois/département

@@ -91,6 +91,29 @@ INSEE_SERIES: Dict[str, Dict[str, Any]] = {
         "desc": "IPI Industrie manufacturière (CVS-CJO, base 2021)",
         "freq": "mensuel",
     },
+    # --- Prix de l'énergie (IPC base 2015) ---
+    # Driver majeur de l'adoption PAC : quand le gaz monte vs l'électricité,
+    # les ménages investissent dans les pompes à chaleur.
+    "ipc_electricite": {
+        "idbank": "001763554",
+        "desc": "IPC Électricité (COICOP 04.5.1, base 2015=100)",
+        "freq": "mensuel",
+    },
+    "ipc_gaz": {
+        "idbank": "001763557",
+        "desc": "IPC Gaz naturel et gaz de ville (COICOP 04.5.2.1, base 2015=100)",
+        "freq": "mensuel",
+    },
+    "ipc_combustibles_liquides": {
+        "idbank": "001763559",
+        "desc": "IPC Combustibles liquides / fioul (COICOP 04.5.3, base 2015=100)",
+        "freq": "mensuel",
+    },
+    "ipc_energie_ensemble": {
+        "idbank": "001763553",
+        "desc": "IPC Électricité, gaz et combustibles ensemble (COICOP 04.5, base 2015=100)",
+        "freq": "mensuel",
+    },
 }
 
 
