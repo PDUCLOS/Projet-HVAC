@@ -41,10 +41,12 @@ hvac-market-analysis/
 │   │   └── energy/              # SDES énergie
 │   ├── processed/               # Données nettoyées + dédupliquées
 │   ├── features/                # Features engineerées pour ML
+│   ├── models/                  # Modèles entraînés (.pkl, .pt)
+│   ├── analysis/                # Exports graphiques EDA / modélisation
 │   └── hvac_market.db           # Base SQLite locale
 ├── src/
 │   ├── __init__.py
-│   ├── pipeline.py              # Orchestrateur CLI
+│   ├── pipeline.py              # Orchestrateur CLI (collect→train→evaluate)
 │   ├── collectors/              # Architecture extensible par plugins
 │   │   ├── __init__.py
 │   │   ├── base.py              # BaseCollector + CollectorRegistry
@@ -67,17 +69,29 @@ hvac-market-analysis/
 │   │   ├── __init__.py
 │   │   ├── eda.py               # Analyse exploratoire
 │   │   └── correlation.py       # Études de corrélation
-│   └── models/
-│       ├── __init__.py
-│       ├── baseline.py          # Modèles ML classiques
-│       ├── deep_learning.py     # LSTM (exploration pédagogique)
-│       ├── train.py             # Pipeline d'entraînement
-│       └── evaluate.py          # Métriques & comparaison
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── baseline.py          # Ridge, LightGBM, Prophet
+│   │   ├── deep_learning.py     # LSTM exploratoire (PyTorch)
+│   │   ├── train.py             # Pipeline d'entraînement complet
+│   │   └── evaluate.py          # Métriques, SHAP, comparaison
+│   └── reporting/
+│       └── __init__.py          # Module reporting (PowerPoint à venir)
+├── app/                         # Dashboard Streamlit interactif
+│   ├── app.py                   # Page d'accueil (KPIs, overview)
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   └── helpers.py           # Chargement données, CSS, constantes
+│   └── pages/
+│       ├── 1_Donnees.py         # Exploration dataset, sources, qualité
+│       ├── 2_EDA.py             # Séries temporelles, saisonnalité, corrélations
+│       ├── 3_Modelisation.py    # Comparaison modèles, feature importance, résidus
+│       └── 4_Predictions.py     # Prédictions interactives, simulateur
 ├── notebooks/
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_modeling.ipynb
-│   └── 04_results_analysis.ipynb
+│   ├── 01_data_exploration.ipynb    # EDA interactif
+│   ├── 02_modeling_ml.ipynb         # Ridge + LightGBM
+│   ├── 03_deep_learning_lstm.ipynb  # LSTM exploratoire
+│   └── 04_results_analysis.ipynb    # Comparaison et analyse finale
 ├── dashboards/                  # Exports Power BI
 │   └── screenshots/
 ├── tests/
@@ -398,11 +412,11 @@ Test   : 2025-01 → 2025-12 (12 mois)
 
 ## 9. Livrables finaux
 
-1. **Repo GitHub** propre avec README complet
-2. **Notebooks Jupyter** commentés (EDA + Modélisation)
-3. **Dashboard Power BI** avec KPIs et prédictions
-4. **Article Medium** racontant le projet (storytelling data)
-5. **Rapport PDF** de synthèse avec résultats ML
+1. **Repo GitHub** propre avec README complet ✓
+2. **Notebooks Jupyter** commentés (EDA + Modélisation + DL + Analyse) ✓
+3. **Dashboard Streamlit** interactif avec KPIs, EDA, modélisation et prédictions ✓
+4. **Rapport PowerPoint** de synthèse avec résultats ML (en cours)
+5. **Article Medium** racontant le projet (storytelling data) (à faire)
 
 ## 10. Ordre d'exécution
 
@@ -440,20 +454,28 @@ Phase 2 — Traitement (TERMINÉE ✓)
           Complétude: 95.3% (NaN = lags début série)
           → data/features/hvac_features_dataset.csv
 
-Phase 3 — Analyse
-  ├── 3.1 EDA notebook
-  └── 3.2 Corrélations
+Phase 3 — Analyse (TERMINÉE ✓)
+  ├── 3.1 EDA notebook (01_data_exploration.ipynb)                 ✓
+  ├── 3.2 Corrélations, saisonnalité, comparaisons départementales ✓
+  └── 3.3 Modules analysis/ (eda.py, correlation.py)               ✓
 
-Phase 4 — Modélisation
-  ├── 4.1 Modèles baseline (Ridge, LightGBM, Prophet)
-  ├── 4.2 LSTM exploratoire
-  ├── 4.3 Évaluation comparative
-  └── 4.4 SHAP analysis
+Phase 4 — Modélisation (TERMINÉE ✓)
+  ├── 4.1 Ridge Regression (Val RMSE=1.10, Test R²=0.998)          ✓
+  ├── 4.2 LightGBM régularisé (Val RMSE=5.01)                     ✓
+  ├── 4.3 Prophet par département (Val RMSE=13.75)                 ✓
+  ├── 4.4 LSTM exploratoire/pédagogique (Val RMSE=22.81)           ✓
+  ├── 4.5 Cross-validation temporelle (5 folds)                    ✓
+  ├── 4.6 Évaluation comparative + SHAP analysis                   ✓
+  ├── 4.7 Notebooks (02, 03, 04) exécutés et documentés            ✓
+  └── 4.8 Artefacts sauvegardés (data/models/*.pkl)                ✓
 
-Phase 5 — Restitution
-  ├── 5.1 Dashboard Power BI
-  ├── 5.2 README GitHub
-  └── 5.3 Article Medium
+Phase 5 — Restitution (EN COURS)
+  ├── 5.1 Dashboard Streamlit interactif (5 pages)                 ✓
+  │       Accueil, Données, EDA, Modélisation, Prédictions
+  │       Lancement : streamlit run app/app.py
+  ├── 5.2 Module PowerPoint (src/reporting/)                       EN COURS
+  ├── 5.3 README GitHub                                            ✓
+  └── 5.4 Article Medium                                           À FAIRE
 ```
 
 ## 11. Extensibilité

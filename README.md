@@ -33,7 +33,7 @@ Ce projet construit un pipeline data de bout en bout pour analyser et predire le
 hvac-market-analysis/
 ├── config/settings.py          # Configuration centralisee (dataclasses)
 ├── src/
-│   ├── pipeline.py             # Orchestrateur CLI
+│   ├── pipeline.py             # Orchestrateur CLI (collect → train → evaluate)
 │   ├── collectors/             # Collecte de donnees (architecture plugin)
 │   │   ├── base.py             # BaseCollector + Registry auto-enregistrement
 │   │   ├── weather.py          # Open-Meteo
@@ -45,10 +45,19 @@ hvac-market-analysis/
 │   │   ├── clean_data.py       # Nettoyage source par source
 │   │   ├── merge_datasets.py   # Fusion multi-sources
 │   │   └── feature_engineering.py  # Features ML avancees
+│   ├── models/                 # Modelisation ML / Deep Learning
+│   │   ├── baseline.py         # Ridge, LightGBM, Prophet
+│   │   ├── deep_learning.py    # LSTM exploratoire (PyTorch)
+│   │   ├── train.py            # Pipeline d'entrainement
+│   │   └── evaluate.py         # Metriques, SHAP, comparaison
 │   └── database/               # Persistance
 │       ├── schema.sql          # Schema en etoile (SQLite)
 │       ├── schema_mssql.sql    # Schema SQL Server
 │       └── db_manager.py       # Import CSV + aggregation DPE
+├── app/                        # Dashboard Streamlit interactif
+│   ├── app.py                  # Page d'accueil (KPIs, overview)
+│   └── pages/                  # 4 pages : Donnees, EDA, Modelisation, Predictions
+├── notebooks/                  # 4 notebooks Jupyter executes
 ├── setup_project.py            # Script d'initialisation (nouvelle machine)
 ├── requirements.txt            # Dependances Python
 └── .env.example                # Template de configuration
@@ -104,6 +113,8 @@ python -m src.pipeline init_db          # Creer les tables SQLite
 python -m src.pipeline collect          # Collecter toutes les sources (~1h pour DPE)
 python -m src.pipeline import_data      # Importer CSV dans la BDD
 python -m src.pipeline process          # Nettoyage + fusion + features
+python -m src.pipeline train            # Entrainer les 4 modeles (Ridge, LightGBM, Prophet, LSTM)
+python -m src.pipeline evaluate         # Evaluer et comparer les modeles
 ```
 
 > **Note** : la collecte DPE ADEME prend ~30-60 minutes (1.4M lignes via API paginee).
@@ -224,6 +235,40 @@ raw_dpe (1.38M lignes) ---- Donnees unitaires DPE, agregees dans les faits
 
 ---
 
+## Resultats de modelisation
+
+Cible : **nb_installations_pac** (installations PAC par mois et departement)
+
+| Modele | Val RMSE | Test RMSE | Test R² | Methode |
+|--------|----------|-----------|---------|---------|
+| **Ridge** | **1.10** | **0.96** | **0.998** | Regression L2, alpha par CV temporelle |
+| LightGBM | 5.01 | 8.12 | 0.872 | Gradient Boosting regularise |
+| Prophet | 13.75 | 12.05 | 0.719 | Series temporelles par departement |
+| LSTM | 22.81 | 26.26 | -0.334 | Exploratoire / pedagogique |
+
+> Ridge domine grace au faible volume (432 lignes) et a la linearite des relations meteo/economie.
+
+---
+
+## Dashboard Streamlit
+
+Le projet inclut un dashboard interactif en 5 pages :
+
+```bash
+# Lancer le dashboard
+streamlit run app/app.py
+```
+
+| Page | Contenu |
+|------|---------|
+| **Accueil** | KPIs globaux, series temporelles, comparaison des modeles |
+| **Donnees** | Sources, apercu filtrable, qualite des donnees, statistiques |
+| **EDA** | Saisonnalite, correlations, heatmaps, radar departemental |
+| **Modelisation** | Comparaison RMSE/R², feature importance, analyse des residus |
+| **Predictions** | Predictions vs reel par dept, simulateur de scenario interactif |
+
+---
+
 ## Stack technique
 
 | Categorie | Technologies |
@@ -233,8 +278,8 @@ raw_dpe (1.38M lignes) ---- Donnees unitaires DPE, agregees dans les faits
 | ML | scikit-learn, LightGBM, Prophet, SHAP |
 | Deep Learning | PyTorch (LSTM exploratoire) |
 | Visualisation | matplotlib, seaborn, plotly |
+| Dashboard | Streamlit (interactif, 5 pages) |
 | BDD | SQLite (defaut), SQL Server, PostgreSQL |
-| Dashboard | Power BI |
 
 ---
 
@@ -243,9 +288,9 @@ raw_dpe (1.38M lignes) ---- Donnees unitaires DPE, agregees dans les faits
 ```
 Phase 1 — Collecte            [TERMINEE]
 Phase 2 — Traitement          [TERMINEE]
-Phase 3 — Analyse (EDA)       [EN COURS]
-Phase 4 — Modelisation ML     [A FAIRE]
-Phase 5 — Dashboard & Article [A FAIRE]
+Phase 3 — Analyse (EDA)       [TERMINEE]
+Phase 4 — Modelisation ML     [TERMINEE]
+Phase 5 — Restitution         [EN COURS]  Dashboard Streamlit OK, PowerPoint et Article a venir
 ```
 
 ---
