@@ -11,8 +11,9 @@ Orchestre les différentes étapes du projet HVAC Market Analysis :
     5. merge       — Fusion multi-sources → dataset ML-ready
     6. features    — Feature engineering (lags, rolling, interactions)
     7. process     — Exécute clean + merge + features en séquence
-    8. train       — Entraînement des modèles (TODO Phase 4)
-    9. evaluate    — Évaluation et comparaison (TODO Phase 4)
+    8. eda         — Analyse exploratoire + corrélations (Phase 3)
+    9. train       — Entraînement des modèles (TODO Phase 4)
+   10. evaluate    — Évaluation et comparaison (TODO Phase 4)
 
 Usage CLI :
     # Exécuter une étape spécifique
@@ -24,6 +25,7 @@ Usage CLI :
     python -m src.pipeline merge
     python -m src.pipeline features
     python -m src.pipeline process          # clean + merge + features
+    python -m src.pipeline eda              # EDA + corrélations
 
     # Exécuter toutes les étapes
     python -m src.pipeline all
@@ -220,6 +222,37 @@ def run_process() -> None:
     logger.info("Pipeline de traitement terminé.")
 
 
+def run_eda() -> None:
+    """Exécute l'analyse exploratoire complète (EDA + corrélations).
+
+    Génère les graphiques dans data/analysis/figures/ et les rapports
+    textuels dans data/analysis/.
+
+    Prérequis : avoir exécuté 'features' (dataset dans data/features/).
+    """
+    from src.analysis.eda import EDAAnalyzer
+    from src.analysis.correlation import CorrelationAnalyzer
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Phase 3 — Analyse Exploratoire")
+    logger.info("  EDA + Corrélations")
+    logger.info("=" * 60)
+
+    # 1. EDA
+    eda = EDAAnalyzer(config)
+    eda_results = eda.run_full_eda()
+
+    # 2. Corrélations
+    corr = CorrelationAnalyzer(config)
+    corr_results = corr.run_full_correlation()
+
+    total_figs = len(eda_results.get("figures", [])) + len(corr_results.get("figures", []))
+    logger.info("Phase 3 terminée : %d graphiques générés.", total_figs)
+    logger.info("  Figures : data/analysis/figures/")
+    logger.info("  Rapports : data/analysis/")
+
+
 def run_list() -> None:
     """Liste les collecteurs disponibles."""
     # Importer pour déclencher l'enregistrement
@@ -248,6 +281,7 @@ Exemples :
   python -m src.pipeline merge                    # Fusionner en dataset ML
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
+  python -m src.pipeline eda                      # EDA + correlations
   python -m src.pipeline list                     # Lister les collecteurs
         """,
     )
@@ -257,7 +291,7 @@ Exemples :
         choices=[
             "collect", "init_db", "import_data",
             "clean", "merge", "features", "process",
-            "list", "all",
+            "eda", "list", "all",
         ],
         help="Étape du pipeline à exécuter",
     )
@@ -309,6 +343,9 @@ Exemples :
 
     elif args.stage == "process":
         run_process()
+
+    elif args.stage == "eda":
+        run_eda()
 
     elif args.stage == "list":
         run_list()
