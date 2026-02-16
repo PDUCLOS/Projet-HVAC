@@ -127,27 +127,48 @@ DB_PASSWORD=VotreMotDePasse
 ## 4. Portabilité du projet
 
 ### 4.1 Déplacer le projet sur une autre machine
+
+**Option A — Télécharger les données depuis pCloud (rapide, ~5 min)**
+
+Les données pré-collectées (~1.5 Go) sont disponibles en téléchargement public :
+> **Lien pCloud** : https://e.pcloud.link/publink/show?code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy
+
 ```bash
-# 1. Copier le dossier complet (ou git clone)
+# 1. Cloner le repo
 git clone https://github.com/PDUCLOS/Projet-HVAC.git
 cd Projet-HVAC
 
-# 2. Créer un environnement virtuel
+# 2. Environnement virtuel
 python -m venv venv
 venv\Scripts\activate          # Windows
 # source venv/bin/activate     # Linux/Mac
 
-# 3. Installer les dépendances
+# 3. Dépendances + config
 pip install -r requirements.txt
-
-# 4. Configurer l'environnement
 copy .env.example .env         # Windows
-# cp .env.example .env         # Linux/Mac
-# Éditer .env si nécessaire (BDD, chemins, etc.)
 
-# 5. Initialiser la BDD et collecter les données
-python -m src.pipeline init_db
-python -m src.pipeline collect
+# 4. Copier les données téléchargées depuis pCloud dans data/
+#    (hvac_market.db + raw/ + processed/ + features/)
+```
+
+**Option B — Régénérer depuis les APIs (complet, ~1h)**
+
+```bash
+# 1. Cloner le repo
+git clone https://github.com/PDUCLOS/Projet-HVAC.git
+cd Projet-HVAC
+
+# 2. Environnement virtuel
+python -m venv venv
+venv\Scripts\activate          # Windows
+# source venv/bin/activate     # Linux/Mac
+
+# 3. Dépendances + config
+pip install -r requirements.txt
+copy .env.example .env         # Windows
+
+# 4. Collecter et traiter (~1h pour DPE ADEME)
+python -m src.pipeline all
 ```
 
 ### 4.2 Ce qui est versionné (Git) vs ce qui ne l'est pas
@@ -159,7 +180,19 @@ python -m src.pipeline collect
 | Configurations par défaut | Base SQLite (data/*.db) |
 | | Modèles entraînés (*.pkl, *.pt) |
 
-### 4.3 Régénérer toutes les données
+### 4.3 Emplacements et sauvegardes
+
+| Emplacement | Contenu | Taille |
+|-------------|---------|--------|
+| `E:\Projet Linkedin` | Projet complet (travail quotidien) | ~1.5 Go |
+| `L:\Projet-HVAC-Backup` | Backup complet (code + données) | ~1.5 Go |
+| `P:\Projet LinkedIn` | Données sur pCloud (cloud sync) | ~1.5 Go |
+| GitHub (PDUCLOS/Projet-HVAC) | Code source uniquement | ~200 Ko |
+
+**Lien pCloud public** (données pré-collectées) :
+https://e.pcloud.link/publink/show?code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy
+
+### 4.4 Régénérer toutes les données
 ```bash
 # Tout reconstruire depuis zéro (données + BDD + traitement)
 python -m src.pipeline all

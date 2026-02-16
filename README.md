@@ -127,6 +127,33 @@ Le projet est concu pour etre portable. Seul le **code** est versionne dans Git.
 
 ### Procedure sur une nouvelle machine
 
+**Option A — Telecharger les donnees depuis pCloud (rapide, ~5 min)**
+
+Les donnees pre-collectees (~1.5 Go) sont disponibles en telechargement :
+
+> **[Telecharger les donnees depuis pCloud](https://e.pcloud.link/publink/show?code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy)**
+
+```bash
+# 1. Cloner
+git clone https://github.com/PDUCLOS/Projet-HVAC.git
+cd hvac-market-analysis
+
+# 2. Environnement
+python -m venv venv && venv\Scripts\activate
+pip install -r requirements.txt
+
+# 3. Configuration
+copy .env.example .env
+
+# 4. Copier les donnees telecharges depuis pCloud dans data/
+#    (base SQLite + raw/ + processed/ + features/)
+
+# 5. Verifier que tout fonctionne
+python -m src.pipeline list
+```
+
+**Option B — Regenerer les donnees depuis les APIs (complet, ~1h)**
+
 ```bash
 # 1. Cloner
 git clone https://github.com/PDUCLOS/Projet-HVAC.git
@@ -143,7 +170,7 @@ copy .env.example .env
 python -m src.pipeline all
 ```
 
-Apres cette commande, vous aurez exactement le meme etat qu'une machine existante :
+Apres l'une ou l'autre option, vous aurez exactement le meme etat qu'une machine existante :
 - Base SQLite initialisee avec le schema en etoile
 - ~1.4M DPE collectes et importes
 - Meteo, INSEE, Eurostat collectes
