@@ -330,17 +330,21 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
     evaluator.plot_residuals(results, y_val.values, y_test.values)
     evaluator.plot_feature_importance(results)
 
+    # Preparer imputer sur les donnees train (reutilise pour SHAP + diagnostic)
+    import pandas as pd
+    from pathlib import Path
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import StandardScaler
+
+    X_train_raw, y_train_raw = trainer.prepare_features(
+        df[df["date_id"] <= trainer.train_end]
+    )
+    imputer = SimpleImputer(strategy="median")
+    imputer.fit(X_train_raw)
+
     # SHAP sur LightGBM
     if "lightgbm" in results:
-        import pandas as pd
-        from sklearn.impute import SimpleImputer
-
         X_val_raw, _ = trainer.prepare_features(df_val)
-        imputer = SimpleImputer(strategy="median")
-        X_train_raw, _ = trainer.prepare_features(
-            df[df["date_id"] <= trainer.train_end]
-        )
-        imputer.fit(X_train_raw)
         X_val_imp = pd.DataFrame(
             imputer.transform(X_val_raw),
             columns=X_val_raw.columns, index=X_val_raw.index,
@@ -349,12 +353,167 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
             results["lightgbm"]["model"], X_val_imp, "lightgbm",
         )
 
+    # Diagnostic surapprentissage
+    X_train_imp_eval = pd.DataFrame(
+        imputer.transform(X_train_raw),
+        columns=X_train_raw.columns, index=X_train_raw.index,
+    )
+    scaler_eval = StandardScaler()
+    X_train_scaled_eval = pd.DataFrame(
+        scaler_eval.fit_transform(X_train_imp_eval),
+        columns=X_train_imp_eval.columns, index=X_train_imp_eval.index,
+    )
+    df_diag = evaluator.diagnose_overfitting(
+        results, X_train_scaled_eval, y_train_raw,
+    )
+    if not df_diag.empty:
+        diag_path = Path("data/models") / "overfitting_diagnostic.csv"
+        df_diag.to_csv(diag_path, index=False)
+        logger.info("  Diagnostic surapprentissage → %s", diag_path)
+
     # Rapport
     evaluator.generate_full_report(results, target)
 
     logger.info("Phase 4 (evaluate) terminée.")
     logger.info("  Figures : data/models/figures/")
     logger.info("  Rapport : data/models/evaluation_report.txt")
+
+
+def run_predict(
+    target: str = "nb_installations_pac",
+    dept: Optional[str] = None,
+) -> None:
+    """Genere les predictions par departement et le classement des potentiels.
+
+    Utilise le meilleur modele (Ridge) pour predire la cible sur chaque
+    departement de la periode de test, puis classe les departements par
+    potentiel (total predit, tendance).
+
+    Si --dept est specifie, affiche le detail pour ce departement.
+
+    Args:
+        target: Variable cible.
+        dept: Code departement pour filtrer (ex: '69', '38').
+    """
+    import pickle
+
+    import numpy as np
+    import pandas as pd
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import StandardScaler
+
+    from src.models.train import ModelTrainer
+    from src.models.evaluate import ModelEvaluator
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Predictions par departement")
+    logger.info("  Cible : %s", target)
+    if dept:
+        logger.info("  Departement filtre : %s", dept)
+    logger.info("=" * 60)
+
+    trainer = ModelTrainer(config, target=target)
+    evaluator = ModelEvaluator(config)
+
+    # Charger le dataset
+    df = trainer.load_dataset()
+
+    # Split temporel
+    df_train, df_val, df_test = trainer.temporal_split(df)
+
+    # Preparer les features
+    X_train, y_train = trainer.prepare_features(df_train)
+    X_test, y_test = trainer.prepare_features(df_test)
+
+    # Imputer et scaler
+    imputer = SimpleImputer(strategy="median")
+    X_train_imp = pd.DataFrame(
+        imputer.fit_transform(X_train),
+        columns=X_train.columns, index=X_train.index,
+    )
+
+    scaler = StandardScaler()
+    X_train_scaled = pd.DataFrame(
+        scaler.fit_transform(X_train_imp),
+        columns=X_train_imp.columns, index=X_train_imp.index,
+    )
+
+    # Entrainer Ridge (le meilleur modele)
+    from src.models.baseline import BaselineModels
+
+    X_val, y_val = trainer.prepare_features(df_val)
+    X_val_imp = pd.DataFrame(
+        imputer.transform(X_val),
+        columns=X_val.columns, index=X_val.index,
+    )
+    X_val_scaled = pd.DataFrame(
+        scaler.transform(X_val_imp),
+        columns=X_val_imp.columns, index=X_val_imp.index,
+    )
+    X_test_imp = pd.DataFrame(
+        imputer.transform(X_test),
+        columns=X_test.columns, index=X_test.index,
+    )
+    X_test_scaled = pd.DataFrame(
+        scaler.transform(X_test_imp),
+        columns=X_test_imp.columns, index=X_test_imp.index,
+    )
+
+    baseline = BaselineModels(config, target)
+    ridge_result = baseline.train_ridge(
+        X_train_scaled, y_train,
+        X_val_scaled, y_val,
+        X_test_scaled, y_test,
+    )
+    ridge_model = ridge_result["model"]
+
+    # Preparer le df_test avec features scalees pour la prediction
+    df_test_pred = df_test.copy()
+    for col in X_test_scaled.columns:
+        df_test_pred.loc[X_test_scaled.index, col] = X_test_scaled[col].values
+
+    # Predictions par departement
+    feature_cols = list(X_test_scaled.columns)
+    df_ranking = evaluator.predict_by_department(
+        ridge_model, df_test_pred, feature_cols, target, "ridge",
+    )
+
+    # Filtrer par departement si demande
+    if dept:
+        df_dept = df_ranking[df_ranking["dept"] == dept]
+        if df_dept.empty:
+            logger.warning("Departement '%s' non trouve dans les donnees.", dept)
+            logger.info("Departements disponibles : %s",
+                        sorted(df_ranking["dept"].unique()))
+        else:
+            logger.info("\n  Detail departement %s :", dept)
+            for _, row in df_dept.iterrows():
+                logger.info("    Total predit  : %.0f", row["total_predit"])
+                logger.info("    Moy. mensuelle: %.1f", row["moyenne_mensuelle"])
+                logger.info("    Tendance      : %+.1f%%", row["tendance_pct"])
+                if "rmse" in row:
+                    logger.info("    RMSE          : %.2f", row["rmse"])
+                if "r2" in row:
+                    logger.info("    R2            : %.3f", row["r2"])
+
+    # Sauvegarder et tracer
+    evaluator.save_department_ranking(df_ranking, "ridge")
+    evaluator.plot_department_ranking(df_ranking, "ridge", target)
+
+    # Afficher le classement complet
+    logger.info("\nClassement des departements (potentiel PAC) :")
+    logger.info("-" * 60)
+    for _, row in df_ranking.iterrows():
+        trend_symbol = "+" if row["tendance_pct"] > 0 else ""
+        logger.info(
+            "  #%d  Dept %-4s | Total: %6.0f | Moy: %5.1f/mois | Tendance: %s%.1f%%",
+            row["rang"], row["dept"], row["total_predit"],
+            row["moyenne_mensuelle"], trend_symbol, row["tendance_pct"],
+        )
+    logger.info("-" * 60)
+    logger.info("  Fichier CSV  : data/models/dept_ranking_ridge.csv")
+    logger.info("  Figure       : data/models/figures/dept_ranking_ridge.png")
 
 
 def run_list() -> None:
@@ -386,9 +545,11 @@ Exemples :
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
   python -m src.pipeline eda                      # EDA + correlations
-  python -m src.pipeline train                     # Entrainer les modeles ML
+  python -m src.pipeline train                    # Entrainer les modeles ML
   python -m src.pipeline train --target nb_dpe_total  # Autre cible
-  python -m src.pipeline evaluate                  # Evaluer et comparer
+  python -m src.pipeline evaluate                 # Evaluer et comparer
+  python -m src.pipeline predict                  # Predictions par departement
+  python -m src.pipeline predict --dept 69        # Detail pour le Rhone
   python -m src.pipeline list                     # Lister les collecteurs
         """,
     )
@@ -398,7 +559,7 @@ Exemples :
         choices=[
             "collect", "init_db", "import_data",
             "clean", "merge", "features", "process",
-            "eda", "train", "evaluate", "list", "all",
+            "eda", "train", "evaluate", "predict", "list", "all",
         ],
         help="Étape du pipeline à exécuter",
     )
@@ -415,6 +576,13 @@ Exemples :
         default="nb_installations_pac",
         help="Variable cible pour l'entrainement ML. "
              "Ex: nb_installations_pac, nb_dpe_total",
+    )
+    parser.add_argument(
+        "--dept",
+        type=str,
+        default=None,
+        help="Code departement pour filtrer les predictions. "
+             "Ex: 69 (Rhone), 38 (Isere). Utilise avec 'predict'.",
     )
     parser.add_argument(
         "--log-level",
@@ -466,6 +634,9 @@ Exemples :
 
     elif args.stage == "evaluate":
         run_evaluate(target=args.target)
+
+    elif args.stage == "predict":
+        run_predict(target=args.target, dept=args.dept)
 
     elif args.stage == "list":
         run_list()

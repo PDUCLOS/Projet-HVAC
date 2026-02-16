@@ -393,6 +393,272 @@ class ModelEvaluator:
             self.logger.warning("  SHAP echoue pour %s : %s", model_name, e)
             return None
 
+    def predict_by_department(
+        self,
+        model: Any,
+        df: pd.DataFrame,
+        feature_cols: List[str],
+        target: str = "nb_installations_pac",
+        model_name: str = "ridge",
+    ) -> pd.DataFrame:
+        """Genere les predictions par departement et classe les potentiels.
+
+        Utilise le modele entraine pour predire la cible sur chaque
+        departement, puis calcule des metriques de potentiel :
+        - total predit sur la periode test
+        - tendance (variation % entre debut et fin)
+        - moyenne mensuelle
+
+        Args:
+            model: Modele entraine (scikit-learn ou LightGBM).
+            df: DataFrame complet avec toutes les colonnes (incl. dept, date_id).
+            feature_cols: Noms des features utilisees par le modele.
+            target: Nom de la variable cible.
+            model_name: Nom du modele (pour les logs).
+
+        Returns:
+            DataFrame avec colonnes : dept, total_predit, moyenne_mensuelle,
+            tendance_pct, rang.
+        """
+        self.logger.info("Predictions par departement (%s)...", model_name)
+
+        departments = sorted(df["dept"].unique())
+        dept_results = []
+
+        for dept in departments:
+            df_dept = df[df["dept"] == dept].sort_values("date_id")
+            if df_dept.empty:
+                continue
+
+            # Extraire les features disponibles
+            available_cols = [c for c in feature_cols if c in df_dept.columns]
+            X_dept = df_dept[available_cols].select_dtypes(include=[np.number])
+
+            # Imputer les NaN
+            X_dept = X_dept.fillna(X_dept.median())
+
+            if X_dept.empty or len(X_dept) == 0:
+                continue
+
+            # Predire
+            y_pred = np.clip(model.predict(X_dept), 0, None)
+            y_actual = df_dept[target].values if target in df_dept.columns else None
+
+            total_predit = float(np.sum(y_pred))
+            moyenne_mensuelle = float(np.mean(y_pred))
+
+            # Tendance : comparer les 3 derniers mois aux 3 premiers
+            if len(y_pred) >= 6:
+                debut = np.mean(y_pred[:3])
+                fin = np.mean(y_pred[-3:])
+                tendance_pct = ((fin - debut) / max(debut, 0.01)) * 100
+            else:
+                tendance_pct = 0.0
+
+            row = {
+                "dept": dept,
+                "total_predit": round(total_predit, 1),
+                "moyenne_mensuelle": round(moyenne_mensuelle, 1),
+                "tendance_pct": round(tendance_pct, 1),
+            }
+
+            # Ajouter les metriques reelles si disponibles
+            if y_actual is not None and not np.all(np.isnan(y_actual)):
+                mask = ~np.isnan(y_actual)
+                if mask.any():
+                    metrics = self.compute_metrics(y_actual[mask], y_pred[mask])
+                    row["rmse"] = round(metrics["rmse"], 2)
+                    row["r2"] = round(metrics["r2"], 3)
+                    row["total_reel"] = round(float(np.nansum(y_actual)), 1)
+
+            dept_results.append(row)
+
+        df_ranking = pd.DataFrame(dept_results)
+        if not df_ranking.empty:
+            df_ranking = df_ranking.sort_values(
+                "total_predit", ascending=False,
+            ).reset_index(drop=True)
+            df_ranking["rang"] = range(1, len(df_ranking) + 1)
+
+        self.logger.info(
+            "Classement departements (%s) : %d departements",
+            model_name, len(df_ranking),
+        )
+        return df_ranking
+
+    def plot_department_ranking(
+        self,
+        df_ranking: pd.DataFrame,
+        model_name: str = "ridge",
+        target: str = "nb_installations_pac",
+    ) -> Path:
+        """Trace le classement des departements par potentiel predit.
+
+        Genere un graphique en barres horizontales avec :
+        - Total predit par departement
+        - Code couleur selon la tendance (vert = croissance, rouge = declin)
+
+        Args:
+            df_ranking: DataFrame depuis predict_by_department().
+            model_name: Nom du modele.
+            target: Nom de la variable cible.
+
+        Returns:
+            Chemin de la figure sauvegardee.
+        """
+        if df_ranking.empty:
+            self.logger.warning("Pas de donnees pour le classement")
+            return self.figures_dir / "dept_ranking.png"
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, max(6, len(df_ranking) * 0.4)))
+
+        # --- Panel 1 : Total predit (barres horizontales) ---
+        ax1 = axes[0]
+        df_sorted = df_ranking.sort_values("total_predit", ascending=True)
+
+        colors = []
+        for t in df_sorted["tendance_pct"]:
+            if t > 5:
+                colors.append("#2ecc71")    # vert = croissance
+            elif t < -5:
+                colors.append("#e74c3c")    # rouge = declin
+            else:
+                colors.append("#3498db")    # bleu = stable
+
+        bars = ax1.barh(
+            range(len(df_sorted)),
+            df_sorted["total_predit"],
+            color=colors, edgecolor="white", linewidth=0.5,
+        )
+        ax1.set_yticks(range(len(df_sorted)))
+        ax1.set_yticklabels(
+            [f"Dept {d}" for d in df_sorted["dept"]],
+            fontsize=9,
+        )
+        ax1.set_xlabel(f"Total predit ({target})")
+        ax1.set_title(f"Classement des departements — {model_name}")
+        ax1.grid(True, alpha=0.3, axis="x")
+
+        # Annotations
+        for bar, (_, row) in zip(bars, df_sorted.iterrows()):
+            trend = row["tendance_pct"]
+            arrow = "+" if trend > 0 else ""
+            ax1.text(
+                bar.get_width() + 1, bar.get_y() + bar.get_height() / 2,
+                f'{row["total_predit"]:.0f} ({arrow}{trend:.0f}%)',
+                va="center", fontsize=8,
+            )
+
+        # --- Panel 2 : Moyenne mensuelle + tendance ---
+        ax2 = axes[1]
+        df_sorted2 = df_ranking.sort_values("moyenne_mensuelle", ascending=True)
+
+        ax2.barh(
+            range(len(df_sorted2)),
+            df_sorted2["moyenne_mensuelle"],
+            color="#3498db", edgecolor="white", linewidth=0.5,
+        )
+        ax2.set_yticks(range(len(df_sorted2)))
+        ax2.set_yticklabels(
+            [f"Dept {d}" for d in df_sorted2["dept"]],
+            fontsize=9,
+        )
+        ax2.set_xlabel("Moyenne mensuelle")
+        ax2.set_title("Installations moyennes par mois")
+        ax2.grid(True, alpha=0.3, axis="x")
+
+        plt.tight_layout()
+        path = self.figures_dir / f"dept_ranking_{model_name}.png"
+        fig.savefig(path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        self.logger.info("  Classement departements → %s", path)
+        return path
+
+    def save_department_ranking(
+        self, df_ranking: pd.DataFrame, model_name: str = "ridge"
+    ) -> Path:
+        """Sauvegarde le classement departements en CSV.
+
+        Args:
+            df_ranking: DataFrame de classement.
+            model_name: Nom du modele.
+
+        Returns:
+            Chemin du fichier CSV.
+        """
+        path = Path("data/models") / f"dept_ranking_{model_name}.csv"
+        df_ranking.to_csv(path, index=False)
+        self.logger.info("  Classement CSV → %s", path)
+        return path
+
+    def diagnose_overfitting(
+        self,
+        results: Dict[str, Any],
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+    ) -> pd.DataFrame:
+        """Diagnostic de surapprentissage pour chaque modele.
+
+        Compare le RMSE sur train / val / test. Un ratio val/train > 2.0
+        indique un surapprentissage probable.
+
+        Args:
+            results: Resultats des modeles.
+            X_train: Features d'entrainement.
+            y_train: Cible d'entrainement.
+
+        Returns:
+            DataFrame avec colonnes : model, rmse_train, rmse_val, rmse_test,
+            ratio_val_train, diagnostic.
+        """
+        rows = []
+        for model_name, res in results.items():
+            model = res.get("model")
+            if model is None:
+                continue
+
+            # RMSE train
+            try:
+                if model_name == "prophet":
+                    continue  # Prophet ne fait pas de predict() standard
+                if isinstance(model, dict):
+                    continue  # Prophet stocke un dict de modeles
+
+                y_pred_train = np.clip(model.predict(X_train), 0, None)
+                metrics_train = self.compute_metrics(y_train.values, y_pred_train)
+                rmse_train = metrics_train["rmse"]
+            except Exception:
+                rmse_train = float("nan")
+
+            rmse_val = res.get("metrics_val", {}).get("rmse", float("nan"))
+            rmse_test = res.get("metrics_test", {}).get("rmse", float("nan"))
+
+            ratio = rmse_val / rmse_train if rmse_train > 0 else float("nan")
+
+            if np.isnan(ratio):
+                diagnostic = "N/A"
+            elif ratio < 1.5:
+                diagnostic = "OK"
+            elif ratio < 2.5:
+                diagnostic = "Leger surapprentissage"
+            else:
+                diagnostic = "Surapprentissage"
+
+            rows.append({
+                "model": model_name,
+                "rmse_train": round(rmse_train, 2),
+                "rmse_val": round(rmse_val, 2),
+                "rmse_test": round(rmse_test, 2),
+                "ratio_val_train": round(ratio, 2),
+                "diagnostic": diagnostic,
+            })
+
+        df_diag = pd.DataFrame(rows)
+        if not df_diag.empty:
+            self.logger.info("\nDiagnostic surapprentissage :")
+            self.logger.info("\n%s", df_diag.to_string(index=False))
+        return df_diag
+
     def generate_full_report(
         self, results: Dict[str, Any], target: str = "nb_installations_pac"
     ) -> Path:

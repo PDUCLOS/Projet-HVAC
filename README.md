@@ -115,6 +115,8 @@ python -m src.pipeline import_data      # Importer CSV dans la BDD
 python -m src.pipeline process          # Nettoyage + fusion + features
 python -m src.pipeline train            # Entrainer les 4 modeles (Ridge, LightGBM, Prophet, LSTM)
 python -m src.pipeline evaluate         # Evaluer et comparer les modeles
+python -m src.pipeline predict          # Predictions par departement + classement
+python -m src.pipeline predict --dept 69  # Detail pour le Rhone (69)
 ```
 
 > **Note** : la collecte DPE ADEME prend ~30-60 minutes (1.4M lignes via API paginee).

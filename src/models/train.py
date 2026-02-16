@@ -71,9 +71,11 @@ class ModelTrainer:
         self,
         config: ProjectConfig,
         target: str = "nb_installations_pac",
+        use_selected_features: bool = True,
     ) -> None:
         self.config = config
         self.target = target
+        self.use_selected_features = use_selected_features
         self.logger = logging.getLogger("models.train")
         self.models_dir = Path("data/models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
@@ -85,6 +87,37 @@ class ModelTrainer:
         self.val_end = int(
             config.time.val_end[:4] + config.time.val_end[5:7]
         )
+
+        # Charger les features selectionnees si disponibles
+        self._selected_features: Optional[List[str]] = None
+        if use_selected_features:
+            self._selected_features = self._load_selected_features()
+
+    def _load_selected_features(self) -> Optional[List[str]]:
+        """Charge la liste des features selectionnees depuis le CSV.
+
+        Le fichier selected_features.csv est genere par l'analyse de
+        correlation (heatmap). Il contient les features retenues apres
+        suppression des variables multicolineaires et faiblement correlees.
+
+        Returns:
+            Liste des noms de features, ou None si le fichier n'existe pas.
+        """
+        path = self.config.features_data_dir / "selected_features.csv"
+        if not path.exists():
+            self.logger.info(
+                "Pas de fichier selected_features.csv — "
+                "toutes les features seront utilisees."
+            )
+            return None
+
+        df_sel = pd.read_csv(path)
+        features = df_sel["feature"].tolist()
+        self.logger.info(
+            "Features selectionnees chargees : %d features depuis %s",
+            len(features), path,
+        )
+        return features
 
     def load_dataset(self) -> pd.DataFrame:
         """Charge le dataset features depuis le CSV.
@@ -136,6 +169,9 @@ class ModelTrainer:
     ) -> Tuple[pd.DataFrame, pd.Series]:
         """Separe features (X) et cible (y), supprime les colonnes non pertinentes.
 
+        Si un fichier selected_features.csv existe et que use_selected_features
+        est True, seules les features selectionnees sont conservees.
+
         Args:
             df: DataFrame avec toutes les colonnes.
 
@@ -152,6 +188,17 @@ class ModelTrainer:
 
         # Ne garder que les colonnes numeriques
         X = df[feature_cols].select_dtypes(include=[np.number]).copy()
+
+        # Appliquer la selection de features si disponible
+        if self._selected_features is not None:
+            available = [f for f in self._selected_features if f in X.columns]
+            missing = [f for f in self._selected_features if f not in X.columns]
+            if missing:
+                self.logger.warning(
+                    "Features selectionnees absentes du dataset : %s", missing,
+                )
+            X = X[available]
+
         y = df[self.target].copy()
 
         return X, y
