@@ -60,11 +60,17 @@ class GeoConfig:
     """
     region_code: str = "84"
     departments: List[str] = field(default_factory=lambda: [
-        "01", "07", "26", "38", "42", "69", "73", "74"
+        # AURA (Auvergne-Rhône-Alpes) — 8 départements
+        "01", "07", "26", "38", "42", "69", "73", "74",
+        # BFC (Bourgogne-Franche-Comté) — 8 départements
+        "21", "25", "39", "58", "70", "71", "89", "90",
+        # PACA (Provence-Alpes-Côte d'Azur) — 6 départements
+        "04", "05", "06", "13", "83", "84",
     ])
     # Une seule ville de référence par département pour éviter les doublons
     # Clé = nom de ville, Valeur = {lat, lon, dept}
     cities: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        # --- AURA ---
         "Lyon":            {"lat": 45.76, "lon": 4.84, "dept": "69"},
         "Grenoble":        {"lat": 45.19, "lon": 5.72, "dept": "38"},
         "Saint-Etienne":   {"lat": 45.44, "lon": 4.39, "dept": "42"},
@@ -73,6 +79,22 @@ class GeoConfig:
         "Chambery":        {"lat": 45.57, "lon": 5.92, "dept": "73"},
         "Bourg-en-Bresse": {"lat": 46.21, "lon": 5.23, "dept": "01"},
         "Privas":          {"lat": 44.74, "lon": 4.60, "dept": "07"},
+        # --- BFC ---
+        "Dijon":           {"lat": 47.32, "lon": 5.04, "dept": "21"},
+        "Besancon":        {"lat": 47.24, "lon": 6.02, "dept": "25"},
+        "Lons-le-Saunier": {"lat": 46.67, "lon": 5.55, "dept": "39"},
+        "Nevers":          {"lat": 46.99, "lon": 3.16, "dept": "58"},
+        "Vesoul":          {"lat": 47.62, "lon": 6.16, "dept": "70"},
+        "Macon":           {"lat": 46.31, "lon": 4.83, "dept": "71"},
+        "Auxerre":         {"lat": 47.80, "lon": 3.57, "dept": "89"},
+        "Belfort":         {"lat": 47.64, "lon": 6.86, "dept": "90"},
+        # --- PACA ---
+        "Digne-les-Bains": {"lat": 44.09, "lon": 6.24, "dept": "04"},
+        "Gap":             {"lat": 44.56, "lon": 6.08, "dept": "05"},
+        "Nice":            {"lat": 43.70, "lon": 7.27, "dept": "06"},
+        "Marseille":       {"lat": 43.30, "lon": 5.37, "dept": "13"},
+        "Toulon":          {"lat": 43.12, "lon": 5.93, "dept": "83"},
+        "Avignon":         {"lat": 43.95, "lon": 4.81, "dept": "84"},
     })
 
 
@@ -288,7 +310,8 @@ class ProjectConfig:
             geo=GeoConfig(
                 region_code=os.getenv("TARGET_REGION", "84"),
                 departments=os.getenv(
-                    "TARGET_DEPARTMENTS", "01,07,26,38,42,69,73,74"
+                    "TARGET_DEPARTMENTS",
+                    "01,07,26,38,42,69,73,74,21,25,39,58,70,71,89,90,04,05,06,13,83,84"
                 ).split(","),
             ),
             time=TimeConfig(
