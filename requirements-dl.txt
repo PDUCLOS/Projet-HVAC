@@ -1,0 +1,14 @@
+# =============================================================================
+# HVAC Market Analysis — Dépendances Deep Learning (optionnel)
+# =============================================================================
+# Installation : pip install -r requirements-dl.txt
+# Prérequis   : pip install -r requirements.txt
+# =============================================================================
+
+# === Deep Learning ===
+torch>=2.1.0,<2.5.0             # PyTorch — borné pour stabilité avec numpy<2.0
+# tensorflow>=2.15.0            # Alternative à PyTorch (décommenter si préféré)
+
+# === Tracking d'expériences (recommandé) ===
+# mlflow>=2.9.0                  # Tracking des expériences ML
+# optuna>=3.4.0                  # Optimisation des hyperparamètres

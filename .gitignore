@@ -1,0 +1,73 @@
+# ==============================================================
+# HVAC Market Analysis — .gitignore
+# ==============================================================
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ---- Virtual env ----
+venv/
+.venv/
+env/
+ENV/
+
+# ---- Data (trop volumineux pour Git — régénérable via pipeline) ----
+data/raw/
+data/processed/
+data/features/
+*.csv
+*.parquet
+*.zip
+!requirements.txt
+!requirements-dl.txt
+
+# ---- Base de données ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- Jupyter ----
+.ipynb_checkpoints/
+
+# ---- Environment / Secrets ----
+.env
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---- Power BI (binaires) ----
+*.pbix
+
+# ---- Modèles entraînés ----
+models/*.pkl
+models/*.pt
+models/*.h5
+models/*.onnx
+models/*.joblib
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Claude Code (assistant AI) ----
+.claude/
+CLAUDE_CODE_PROMPT.md
+
+# ---- Fichiers temporaires Windows ----
+nul
