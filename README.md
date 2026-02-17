@@ -33,7 +33,7 @@ Ce projet construit un pipeline data de bout en bout pour analyser et predire le
 hvac-market-analysis/
 ├── config/settings.py          # Configuration centralisee (dataclasses)
 ├── src/
-│   ├── pipeline.py             # Orchestrateur CLI
+│   ├── pipeline.py             # Orchestrateur CLI (10 etapes + all)
 │   ├── collectors/             # Collecte de donnees (architecture plugin)
 │   │   ├── base.py             # BaseCollector + Registry auto-enregistrement
 │   │   ├── weather.py          # Open-Meteo
@@ -45,10 +45,23 @@ hvac-market-analysis/
 │   │   ├── clean_data.py       # Nettoyage source par source
 │   │   ├── merge_datasets.py   # Fusion multi-sources
 │   │   └── feature_engineering.py  # Features ML avancees
+│   ├── models/                 # Modelisation ML (Phase 4)
+│   │   ├── baseline.py         # Ridge, LightGBM, Prophet
+│   │   ├── deep_learning.py    # LSTM (PyTorch, exploratoire)
+│   │   ├── train.py            # Orchestrateur d'entrainement
+│   │   └── evaluate.py         # Metriques, SHAP, visualisations
+│   ├── analysis/               # Analyse exploratoire (Phase 3)
+│   │   ├── eda.py              # EDA automatisee
+│   │   └── correlation.py      # Matrice de correlations
 │   └── database/               # Persistance
 │       ├── schema.sql          # Schema en etoile (SQLite)
 │       ├── schema_mssql.sql    # Schema SQL Server
 │       └── db_manager.py       # Import CSV + aggregation DPE
+├── tests/                      # Tests unitaires (57 tests)
+│   ├── test_config.py          # Tests configuration
+│   ├── test_collectors/        # Tests collecteurs
+│   └── test_processing/        # Tests nettoyage + features
+├── notebooks/                  # Jupyter notebooks (EDA, ML)
 ├── setup_project.py            # Script d'initialisation (nouvelle machine)
 ├── requirements.txt            # Dependances Python
 └── .env.example                # Template de configuration
@@ -243,9 +256,21 @@ raw_dpe (1.38M lignes) ---- Donnees unitaires DPE, agregees dans les faits
 ```
 Phase 1 — Collecte            [TERMINEE]
 Phase 2 — Traitement          [TERMINEE]
-Phase 3 — Analyse (EDA)       [EN COURS]
-Phase 4 — Modelisation ML     [A FAIRE]
+Phase 3 — Analyse (EDA)       [TERMINEE]
+Phase 4 — Modelisation ML     [TERMINEE]
+  - Ridge Regression           R2 test = 0.998 (avec lags cible)
+  - Ridge exogenes             Evalue sans auto-correlation
+  - LightGBM                   R2 test = 0.865
+  - Prophet                    R2 test = 0.719
+  - LSTM (exploratoire)
 Phase 5 — Dashboard & Article [A FAIRE]
+```
+
+### Tests unitaires
+
+```bash
+# 57 tests couvrant config, collecteurs, nettoyage et feature engineering
+python -m pytest tests/ -v
 ```
 
 ---
