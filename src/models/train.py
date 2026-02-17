@@ -67,13 +67,21 @@ class ModelTrainer:
         "nb_dpe_total", "nb_dpe_classe_ab",
     }
 
+    # Features auto-regressives de la cible (lags, rolling, diff de la cible)
+    # Exclues en mode "no_target_leakage" pour evaluer les features exogenes
+    TARGET_LAG_PATTERNS = [
+        "_lag_", "_rmean_", "_rstd_", "_diff_", "_pct_",
+    ]
+
     def __init__(
         self,
         config: ProjectConfig,
         target: str = "nb_installations_pac",
+        exclude_target_lags: bool = False,
     ) -> None:
         self.config = config
         self.target = target
+        self.exclude_target_lags = exclude_target_lags
         self.logger = logging.getLogger("models.train")
         self.models_dir = Path("data/models")
         self.models_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +144,11 @@ class ModelTrainer:
     ) -> Tuple[pd.DataFrame, pd.Series]:
         """Separe features (X) et cible (y), supprime les colonnes non pertinentes.
 
+        Si exclude_target_lags=True, exclut aussi les features derivees de la
+        variable cible (lags, rolling, diff, pct_change). Cela permet d'evaluer
+        la contribution des features exogenes (meteo, economie) sans
+        l'auto-correlation de la cible qui domine sinon les predictions.
+
         Args:
             df: DataFrame avec toutes les colonnes.
 
@@ -149,6 +162,17 @@ class ModelTrainer:
             c for c in df.columns
             if c not in drop_cols and c != self.target
         ]
+
+        # Exclure les features auto-regressives de la cible si demande
+        if self.exclude_target_lags:
+            target_prefix = self.target
+            feature_cols = [
+                c for c in feature_cols
+                if not (
+                    c.startswith(target_prefix)
+                    and any(p in c for p in self.TARGET_LAG_PATTERNS)
+                )
+            ]
 
         # Ne garder que les colonnes numeriques
         X = df[feature_cols].select_dtypes(include=[np.number]).copy()
@@ -274,6 +298,65 @@ class ModelTrainer:
         )
         results["ridge"] = ridge_result
         self._save_artifact(ridge_result["model"], "ridge_model.pkl")
+
+        # Ridge "exogenes" — sans lags/rolling/diff de la cible
+        # Permet d'evaluer la vraie contribution des features exogenes
+        # (meteo, economie) sans l'auto-correlation qui domine le R²
+        self.logger.info("-" * 40)
+        self.logger.info("Entrainement Ridge (exogenes, sans lags cible)...")
+        exo_trainer = ModelTrainer(
+            self.config, target=self.target, exclude_target_lags=True,
+        )
+        X_train_exo, _ = exo_trainer.prepare_features(df_train)
+        X_val_exo, _ = exo_trainer.prepare_features(df_val)
+        X_test_exo, _ = exo_trainer.prepare_features(df_test)
+
+        # Memes masques NaN cible
+        X_train_exo = X_train_exo[mask_train]
+        X_val_exo = X_val_exo[mask_val]
+        X_test_exo = X_test_exo[mask_test]
+
+        # Imputer + scaler pour les features exogenes
+        imputer_exo = SimpleImputer(strategy="median")
+        X_train_exo_imp = pd.DataFrame(
+            imputer_exo.fit_transform(X_train_exo),
+            columns=X_train_exo.columns, index=X_train_exo.index,
+        )
+        X_val_exo_imp = pd.DataFrame(
+            imputer_exo.transform(X_val_exo),
+            columns=X_val_exo.columns, index=X_val_exo.index,
+        )
+        X_test_exo_imp = pd.DataFrame(
+            imputer_exo.transform(X_test_exo),
+            columns=X_test_exo.columns, index=X_test_exo.index,
+        )
+
+        scaler_exo = StandardScaler()
+        X_train_exo_sc = pd.DataFrame(
+            scaler_exo.fit_transform(X_train_exo_imp),
+            columns=X_train_exo_imp.columns, index=X_train_exo_imp.index,
+        )
+        X_val_exo_sc = pd.DataFrame(
+            scaler_exo.transform(X_val_exo_imp),
+            columns=X_val_exo_imp.columns, index=X_val_exo_imp.index,
+        )
+        X_test_exo_sc = pd.DataFrame(
+            scaler_exo.transform(X_test_exo_imp),
+            columns=X_test_exo_imp.columns, index=X_test_exo_imp.index,
+        )
+
+        ridge_exo_result = baseline.train_ridge(
+            X_train_exo_sc, y_train,
+            X_val_exo_sc, y_val,
+            X_test_exo_sc, y_test,
+        )
+        results["ridge_exogenes"] = ridge_exo_result
+        n_exo = len(X_train_exo.columns)
+        n_all = len(X_train.columns)
+        self.logger.info(
+            "  Ridge exogenes : %d features (vs %d avec lags cible)",
+            n_exo, n_all,
+        )
 
         # LightGBM (utilise donnees imputees, pas scalees)
         self.logger.info("-" * 40)

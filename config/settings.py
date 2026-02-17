@@ -94,7 +94,7 @@ class TimeConfig:
         frequency: Fréquence temporelle du dataset ML ('MS' = Month Start).
     """
     start_date: str = "2019-01-01"
-    end_date: str = "2025-12-31"
+    end_date: str = "2026-02-28"
     dpe_start_date: str = "2021-07-01"    # DPE v2 disponible depuis cette date
     train_end: str = "2024-06-30"          # 36 mois de train
     val_end: str = "2024-12-31"            # 6 mois de validation
@@ -293,7 +293,7 @@ class ProjectConfig:
             ),
             time=TimeConfig(
                 start_date=os.getenv("DATA_START_DATE", "2019-01-01"),
-                end_date=os.getenv("DATA_END_DATE", "2025-12-31"),
+                end_date=os.getenv("DATA_END_DATE", "2026-02-28"),
             ),
             network=NetworkConfig(
                 request_timeout=int(os.getenv("REQUEST_TIMEOUT", "30")),

@@ -120,7 +120,7 @@ class CollectorConfig:
     raw_data_dir: Path = Path("data/raw")
     processed_data_dir: Path = Path("data/processed")
     start_date: str = "2019-01-01"
-    end_date: str = "2025-12-31"
+    end_date: str = "2026-02-28"
     departments: List[str] = field(default_factory=lambda: [
         "01", "07", "26", "38", "42", "69", "73", "74"
     ])
@@ -149,7 +149,7 @@ class CollectorConfig:
             raw_data_dir=Path(os.getenv("RAW_DATA_DIR", "data/raw")),
             processed_data_dir=Path(os.getenv("PROCESSED_DATA_DIR", "data/processed")),
             start_date=os.getenv("DATA_START_DATE", "2019-01-01"),
-            end_date=os.getenv("DATA_END_DATE", "2025-12-31"),
+            end_date=os.getenv("DATA_END_DATE", "2026-02-28"),
             departments=os.getenv(
                 "TARGET_DEPARTMENTS", "01,07,26,38,42,69,73,74"
             ).split(","),

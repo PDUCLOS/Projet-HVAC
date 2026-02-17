@@ -471,11 +471,14 @@ Exemples :
         run_list()
 
     elif args.stage == "all":
-        # Exécuter toutes les étapes disponibles
+        # Exécuter toutes les étapes du pipeline de bout en bout
         run_init_db()
         run_collect()
         run_import_data()
         run_process()   # clean + merge + features
+        run_eda()       # EDA + corrélations
+        run_train(target=args.target)
+        run_evaluate(target=args.target)
 
     logger.info("Pipeline terminé.")
 
