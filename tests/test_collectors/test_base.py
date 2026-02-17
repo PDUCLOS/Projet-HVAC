@@ -35,8 +35,8 @@ class TestCollectorConfig:
         config = CollectorConfig()
         assert config.start_date == "2019-01-01"
         assert config.end_date == "2026-02-28"
-        assert config.region_code == "84"
-        assert len(config.departments) == 8
+        assert config.region_code == "FR"
+        assert len(config.departments) == 96
         assert config.request_timeout == 30
         assert config.max_retries == 3
 

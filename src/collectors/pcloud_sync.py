@@ -60,12 +60,16 @@ class PCloudSync:
 
     # Mapping des fichiers pCloud vers les dossiers locaux
     FILE_MAPPING = {
-        "weather_aura.csv": "weather",
+        "weather_france.csv": "weather",
         "indicateurs_economiques.csv": "insee",
         "ipi_hvac_france.csv": "eurostat",
+        "permis_construire_france.csv": "sitadel",
+        "dpe_france_all.csv": "dpe",
+        "hvac_market.db": "_database",
+        # Retrocompatibilite : anciens noms AURA
+        "weather_aura.csv": "weather",
         "permis_construire_aura.csv": "sitadel",
         "dpe_aura_all.csv": "dpe",
-        "hvac_market.db": "_database",
     }
 
     def __init__(
@@ -223,6 +227,130 @@ class PCloudSync:
         except requests.RequestException as e:
             self.logger.error("Erreur telechargement %s : %s", filename, e)
             return False
+
+    # ==================================================================
+    # Upload vers pCloud (necessite access_token)
+    # ==================================================================
+
+    def upload_file(self, local_path: Path, remote_folder_id: int = 0) -> bool:
+        """Upload un fichier local vers pCloud.
+
+        Necessite un access_token valide (pas le lien public).
+
+        Args:
+            local_path: Chemin du fichier local a uploader.
+            remote_folder_id: ID du dossier pCloud de destination (0 = racine).
+
+        Returns:
+            True si l'upload a reussi.
+        """
+        if not self.access_token:
+            self.logger.error(
+                "PCLOUD_ACCESS_TOKEN requis pour l'upload. "
+                "Definir la variable dans .env"
+            )
+            return False
+
+        if not local_path.exists():
+            self.logger.error("Fichier local introuvable : %s", local_path)
+            return False
+
+        self.logger.info("  Upload : %s...", local_path.name)
+
+        try:
+            with open(local_path, "rb") as f:
+                resp = self.session.post(
+                    f"{self.API_BASE}/uploadfile",
+                    params={
+                        "auth": self.access_token,
+                        "folderid": remote_folder_id,
+                        "filename": local_path.name,
+                        "nopartial": 1,
+                    },
+                    files={"file": (local_path.name, f)},
+                    timeout=600,
+                )
+
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("result") != 0:
+                self.logger.error(
+                    "Erreur upload pCloud : %s", data.get("error", "inconnue")
+                )
+                return False
+
+            # Extraire les metadonnees du fichier uploade
+            uploaded = data.get("metadata", [{}])
+            if uploaded:
+                size_mb = uploaded[0].get("size", 0) / (1024 * 1024)
+                self.logger.info(
+                    "  OK %s uploade (%.1f Mo)", local_path.name, size_mb,
+                )
+
+            return True
+
+        except requests.RequestException as e:
+            self.logger.error("Erreur upload %s : %s", local_path.name, e)
+            return False
+
+    def upload_collected_data(self, remote_folder_id: int = 0) -> Dict[str, Any]:
+        """Upload tous les fichiers de donnees collectees vers pCloud.
+
+        Parcourt les dossiers data/raw/ et uploade chaque fichier CSV
+        correspondant au FILE_MAPPING.
+
+        Args:
+            remote_folder_id: ID du dossier pCloud de destination.
+
+        Returns:
+            Dictionnaire resume de l'upload.
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("  UPLOAD vers pCloud")
+        self.logger.info("=" * 60)
+
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "files_uploaded": 0,
+            "files_failed": 0,
+            "files_skipped": 0,
+        }
+
+        # Fichiers principaux a uploader (noms France)
+        upload_targets = {
+            "weather_france.csv": self.config.raw_data_dir / "weather" / "weather_france.csv",
+            "indicateurs_economiques.csv": self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv",
+            "ipi_hvac_france.csv": self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv",
+            "permis_construire_france.csv": self.config.raw_data_dir / "sitadel" / "permis_construire_france.csv",
+            "dpe_france_all.csv": self.config.raw_data_dir / "dpe" / "dpe_france_all.csv",
+        }
+
+        # Ajouter la base de donnees si elle existe
+        db_path = Path(self.config.database.db_path)
+        if db_path.exists():
+            upload_targets["hvac_market.db"] = db_path
+
+        for filename, filepath in upload_targets.items():
+            if not filepath.exists():
+                self.logger.warning("  Fichier absent, skip : %s", filename)
+                result["files_skipped"] += 1
+                continue
+
+            success = self.upload_file(filepath, remote_folder_id)
+            if success:
+                result["files_uploaded"] += 1
+            else:
+                result["files_failed"] += 1
+
+        self.logger.info("=" * 60)
+        self.logger.info("  RESUME UPLOAD")
+        self.logger.info("  Fichiers uploades : %d", result["files_uploaded"])
+        self.logger.info("  Echecs            : %d", result["files_failed"])
+        self.logger.info("  Absents (skip)    : %d", result["files_skipped"])
+        self.logger.info("=" * 60)
+
+        return result
 
     # ==================================================================
     # Detection des mises a jour

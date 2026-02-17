@@ -63,7 +63,7 @@ class WeatherCollector(BaseCollector):
 
     source_name: ClassVar[str] = "weather"
     output_subdir: ClassVar[str] = "weather"
-    output_filename: ClassVar[str] = "weather_aura.csv"
+    output_filename: ClassVar[str] = "weather_france.csv"
 
     def collect(self) -> pd.DataFrame:
         """Collecte les données météo pour toutes les villes AURA.

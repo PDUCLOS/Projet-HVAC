@@ -83,7 +83,7 @@ class SitadelCollector(BaseCollector):
 
     source_name: ClassVar[str] = "sitadel"
     output_subdir: ClassVar[str] = "sitadel"
-    output_filename: ClassVar[str] = "permis_construire_aura.csv"
+    output_filename: ClassVar[str] = "permis_construire_france.csv"
 
     def collect(self) -> pd.DataFrame:
         """Télécharge et filtre les permis de construire AURA.
@@ -152,15 +152,15 @@ class SitadelCollector(BaseCollector):
             "CSV chargé : %d lignes × %d colonnes", len(df), len(df.columns),
         )
 
-        # Filtrer sur les départements AURA
+        # Filtrer sur les departements cibles
         # La colonne DEP peut avoir des formats variés (01, 1, 001...)
         if "DEP" in df.columns:
             # Normaliser le code département sur 2 caractères
             df["DEP"] = df["DEP"].astype(str).str.strip().str.zfill(2)
-            df_aura = df[df["DEP"].isin(self.config.departments)].copy()
+            df_filtered = df[df["DEP"].isin(self.config.departments)].copy()
         elif "REG" in df.columns:
             # Fallback : filtrer par région
-            df_aura = df[df["REG"].astype(str).str.strip() == self.config.region_code].copy()
+            df_filtered = df[df["REG"].astype(str).str.strip() == self.config.region_code].copy()
         else:
             raise ValueError(
                 "Ni 'DEP' ni 'REG' trouvés dans les colonnes. "
@@ -168,17 +168,17 @@ class SitadelCollector(BaseCollector):
             )
 
         self.logger.info(
-            "Après filtrage AURA : %d lignes (sur %d total)",
-            len(df_aura), len(df),
+            "Apres filtrage (%d depts) : %d lignes (sur %d total)",
+            len(self.config.departments), len(df_filtered), len(df),
         )
 
         # Convertir les colonnes numériques
-        if "NB_LGT_TOT_CREES" in df_aura.columns:
-            df_aura["NB_LGT_TOT_CREES"] = pd.to_numeric(
-                df_aura["NB_LGT_TOT_CREES"], errors="coerce"
+        if "NB_LGT_TOT_CREES" in df_filtered.columns:
+            df_filtered["NB_LGT_TOT_CREES"] = pd.to_numeric(
+                df_filtered["NB_LGT_TOT_CREES"], errors="coerce"
             )
 
-        return df_aura
+        return df_filtered
 
     def validate(self, df: pd.DataFrame) -> pd.DataFrame:
         """Valide la structure et la qualité des données SITADEL.

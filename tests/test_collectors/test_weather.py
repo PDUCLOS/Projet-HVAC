@@ -16,7 +16,7 @@ class TestWeatherCollector:
 
     def test_source_name(self):
         assert WeatherCollector.source_name == "weather"
-        assert WeatherCollector.output_filename == "weather_aura.csv"
+        assert WeatherCollector.output_filename == "weather_france.csv"
 
     def test_validate_valid_data(self, collector_config, sample_weather_df):
         collector = WeatherCollector(collector_config)

@@ -129,11 +129,11 @@ def check_collected_data() -> dict:
     """Verifie quelles donnees ont deja ete collectees."""
     raw_dir = PROJECT_ROOT / "data" / "raw"
     files = {
-        "weather": raw_dir / "weather" / "weather_aura.csv",
+        "weather": raw_dir / "weather" / "weather_france.csv",
         "insee": raw_dir / "insee" / "indicateurs_economiques.csv",
         "eurostat": raw_dir / "eurostat" / "ipi_hvac_france.csv",
-        "sitadel": raw_dir / "sitadel" / "permis_construire_aura.csv",
-        "dpe": raw_dir / "dpe" / "dpe_aura_all.csv",
+        "sitadel": raw_dir / "sitadel" / "permis_construire_france.csv",
+        "dpe": raw_dir / "dpe" / "dpe_france_all.csv",
     }
     status = {}
     for name, path in files.items():

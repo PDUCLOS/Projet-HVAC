@@ -22,7 +22,7 @@ class TestDataCleanerWeather:
         config = test_config
         raw_dir = tmp_path / "raw" / "weather"
         raw_dir.mkdir(parents=True)
-        sample_weather_df.to_csv(raw_dir / "weather_aura.csv", index=False)
+        sample_weather_df.to_csv(raw_dir / "weather_france.csv", index=False)
 
         # Patcher les chemins
         config = _patch_config_dirs(config, tmp_path)
@@ -44,7 +44,7 @@ class TestDataCleanerWeather:
 
         raw_dir = tmp_path / "raw" / "weather"
         raw_dir.mkdir(parents=True)
-        df_with_dups.to_csv(raw_dir / "weather_aura.csv", index=False)
+        df_with_dups.to_csv(raw_dir / "weather_france.csv", index=False)
 
         config = _patch_config_dirs(test_config, tmp_path)
         cleaner = DataCleaner(config)
@@ -61,7 +61,7 @@ class TestDataCleanerWeather:
 
         raw_dir = tmp_path / "raw" / "weather"
         raw_dir.mkdir(parents=True)
-        sample_weather_df.to_csv(raw_dir / "weather_aura.csv", index=False)
+        sample_weather_df.to_csv(raw_dir / "weather_france.csv", index=False)
 
         config = _patch_config_dirs(test_config, tmp_path)
         cleaner = DataCleaner(config)

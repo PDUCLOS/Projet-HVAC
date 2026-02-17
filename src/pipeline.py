@@ -428,6 +428,103 @@ def run_sync_pcloud(force: bool = False) -> None:
     )
 
 
+def run_upload_pcloud(folder_id: int = 0) -> None:
+    """Upload les donnees collectees vers pCloud.
+
+    Parcourt les fichiers dans data/raw/ et les uploade vers le
+    dossier pCloud specifie. Necessite PCLOUD_ACCESS_TOKEN dans .env.
+
+    Args:
+        folder_id: ID du dossier pCloud de destination (0 = racine).
+    """
+    from src.collectors.pcloud_sync import PCloudSync
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Upload vers pCloud")
+    logger.info("=" * 60)
+
+    sync = PCloudSync(config)
+    result = sync.upload_collected_data(remote_folder_id=folder_id)
+
+    logger.info(
+        "Upload termine : %d fichiers uploades, %d echecs.",
+        result["files_uploaded"], result["files_failed"],
+    )
+
+
+def run_update_all(target: str = "nb_installations_pac") -> None:
+    """Mise a jour complete : collect → process → train → upload pCloud.
+
+    Enchaine toutes les etapes du pipeline de bout en bout :
+    1. Collecte des donnees depuis les APIs (96 departements)
+    2. Initialisation de la base de donnees
+    3. Import des CSV collectes
+    4. Nettoyage + Fusion + Features + Outliers
+    5. Analyse exploratoire
+    6. Entrainement et evaluation ML
+    7. Upload des resultats vers pCloud
+
+    C'est la commande a utiliser pour une mise a jour complete
+    de la base de donnees et des modeles.
+
+    Args:
+        target: Variable cible ML.
+    """
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  MISE A JOUR COMPLETE")
+    logger.info("  collect → process → train → upload")
+    logger.info("=" * 60)
+
+    # 1. Collecte depuis les APIs
+    logger.info("-" * 40)
+    logger.info("  ETAPE 1/7 — Collecte des donnees")
+    logger.info("-" * 40)
+    run_collect()
+
+    # 2. Initialisation BDD
+    logger.info("-" * 40)
+    logger.info("  ETAPE 2/7 — Initialisation BDD")
+    logger.info("-" * 40)
+    run_init_db()
+
+    # 3. Import
+    logger.info("-" * 40)
+    logger.info("  ETAPE 3/7 — Import des CSV")
+    logger.info("-" * 40)
+    run_import_data()
+
+    # 4. Processing (clean + merge + features + outliers)
+    logger.info("-" * 40)
+    logger.info("  ETAPE 4/7 — Processing complet")
+    logger.info("-" * 40)
+    run_process()
+
+    # 5. EDA
+    logger.info("-" * 40)
+    logger.info("  ETAPE 5/7 — Analyse exploratoire")
+    logger.info("-" * 40)
+    run_eda()
+
+    # 6. Train + Evaluate
+    logger.info("-" * 40)
+    logger.info("  ETAPE 6/7 — Entrainement et evaluation ML")
+    logger.info("-" * 40)
+    run_train(target=target)
+    run_evaluate(target=target)
+
+    # 7. Upload vers pCloud
+    logger.info("-" * 40)
+    logger.info("  ETAPE 7/7 — Upload vers pCloud")
+    logger.info("-" * 40)
+    run_upload_pcloud()
+
+    logger.info("=" * 60)
+    logger.info("  MISE A JOUR COMPLETE TERMINEE")
+    logger.info("=" * 60)
+
+
 def run_list() -> None:
     """Liste les collecteurs disponibles."""
     # Importer pour déclencher l'enregistrement
@@ -457,9 +554,11 @@ Exemples :
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
   python -m src.pipeline eda                      # EDA + correlations
-  python -m src.pipeline train                     # Entrainer les modeles ML
+  python -m src.pipeline train                    # Entrainer les modeles ML
   python -m src.pipeline train --target nb_dpe_total  # Autre cible
-  python -m src.pipeline evaluate                  # Evaluer et comparer
+  python -m src.pipeline evaluate                 # Evaluer et comparer
+  python -m src.pipeline upload_pcloud            # Upload donnees vers pCloud
+  python -m src.pipeline update_all               # Collect + process + train + upload
   python -m src.pipeline list                     # Lister les collecteurs
         """,
     )
@@ -470,7 +569,8 @@ Exemples :
             "collect", "init_db", "import_data",
             "clean", "merge", "features", "outliers", "process",
             "eda", "train", "evaluate",
-            "sync_pcloud", "list", "all",
+            "sync_pcloud", "upload_pcloud", "update_all",
+            "list", "all",
         ],
         help="Étape du pipeline à exécuter",
     )
@@ -545,16 +645,22 @@ Exemples :
     elif args.stage == "sync_pcloud":
         run_sync_pcloud()
 
+    elif args.stage == "upload_pcloud":
+        run_upload_pcloud()
+
+    elif args.stage == "update_all":
+        run_update_all(target=args.target)
+
     elif args.stage == "list":
         run_list()
 
     elif args.stage == "all":
-        # Exécuter toutes les étapes du pipeline de bout en bout
+        # Executer toutes les etapes du pipeline de bout en bout
         run_init_db()
         run_collect()
         run_import_data()
-        run_process()   # clean + merge + features
-        run_eda()       # EDA + corrélations
+        run_process()   # clean + merge + features + outliers
+        run_eda()       # EDA + correlations
         run_train(target=args.target)
         run_evaluate(target=args.target)
 

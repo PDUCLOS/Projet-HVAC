@@ -249,7 +249,7 @@ class DatabaseManager:
         results = {}
 
         # 1. Importer la météo → fact_hvac_installations (colonnes météo)
-        weather_file = raw_data_dir / "weather" / "weather_aura.csv"
+        weather_file = raw_data_dir / "weather" / "weather_france.csv"
         if weather_file.exists():
             results["weather"] = self._import_weather(weather_file)
         else:
@@ -270,14 +270,14 @@ class DatabaseManager:
             self.logger.warning("Fichier Eurostat introuvable : %s", eurostat_file)
 
         # 4. Importer SITADEL → fact_hvac_installations (colonnes permis)
-        sitadel_file = raw_data_dir / "sitadel" / "permis_construire_aura.csv"
+        sitadel_file = raw_data_dir / "sitadel" / "permis_construire_france.csv"
         if sitadel_file.exists():
             results["sitadel"] = self._import_sitadel(sitadel_file)
         else:
             self.logger.warning("Fichier SITADEL introuvable : %s", sitadel_file)
 
         # 5. Importer DPE → raw_dpe (données unitaires volumineuses)
-        dpe_file = raw_data_dir / "dpe" / "dpe_aura_all.csv"
+        dpe_file = raw_data_dir / "dpe" / "dpe_france_all.csv"
         if dpe_file.exists():
             results["dpe"] = self._import_dpe(dpe_file)
         else:

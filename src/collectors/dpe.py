@@ -132,7 +132,7 @@ class DpeCollector(BaseCollector):
 
     source_name: ClassVar[str] = "dpe"
     output_subdir: ClassVar[str] = "dpe"
-    output_filename: ClassVar[str] = "dpe_aura_all.csv"
+    output_filename: ClassVar[str] = "dpe_france_all.csv"
 
     def collect(self) -> pd.DataFrame:
         """Collecte les DPE pour tous les départements AURA.

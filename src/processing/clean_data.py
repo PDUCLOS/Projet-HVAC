@@ -123,7 +123,7 @@ class DataCleaner:
             DataFrame nettoyé, ou None si le fichier source manque.
         """
         self.logger.info("Nettoyage MÉTÉO...")
-        filepath = self.config.raw_data_dir / "weather" / "weather_aura.csv"
+        filepath = self.config.raw_data_dir / "weather" / "weather_france.csv"
 
         if not filepath.exists():
             self.logger.warning("  Fichier manquant : %s", filepath)
@@ -198,7 +198,7 @@ class DataCleaner:
         df[float_cols] = df[float_cols].round(2)
 
         rows_out = len(df)
-        self._save_cleaned(df, "weather", "weather_aura.csv")
+        self._save_cleaned(df, "weather", "weather_france.csv")
 
         self.stats["weather"] = {
             "rows_in": rows_in,
@@ -438,7 +438,7 @@ class DataCleaner:
             DataFrame nettoyé, ou None si le fichier source manque.
         """
         self.logger.info("Nettoyage DPE (volumétrie ~1.4M lignes)...")
-        filepath = self.config.raw_data_dir / "dpe" / "dpe_aura_all.csv"
+        filepath = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
 
         if not filepath.exists():
             self.logger.warning("  Fichier manquant : %s", filepath)
@@ -569,7 +569,7 @@ class DataCleaner:
         df[float_cols] = df[float_cols].round(2)
 
         rows_out = len(df)
-        self._save_cleaned(df, "dpe", "dpe_aura_clean.csv")
+        self._save_cleaned(df, "dpe", "dpe_france_clean.csv")
 
         self.stats["dpe"] = {
             "rows_in": rows_in,

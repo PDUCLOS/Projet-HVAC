@@ -207,8 +207,8 @@ class DatasetMerger:
             DataFrame agrégé, ou None si le fichier est manquant.
         """
         # Chercher d'abord le fichier nettoyé, sinon le brut
-        clean_path = self.config.processed_data_dir / "dpe" / "dpe_aura_clean.csv"
-        raw_path = self.config.raw_data_dir / "dpe" / "dpe_aura_all.csv"
+        clean_path = self.config.processed_data_dir / "dpe" / "dpe_france_clean.csv"
+        raw_path = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():
@@ -308,8 +308,8 @@ class DatasetMerger:
         Returns:
             DataFrame agrégé, ou None si le fichier est manquant.
         """
-        clean_path = self.config.processed_data_dir / "weather" / "weather_aura.csv"
-        raw_path = self.config.raw_data_dir / "weather" / "weather_aura.csv"
+        clean_path = self.config.processed_data_dir / "weather" / "weather_france.csv"
+        raw_path = self.config.raw_data_dir / "weather" / "weather_france.csv"
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():

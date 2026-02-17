@@ -110,7 +110,7 @@ class CollectorConfig:
         start_date: Date de début de collecte (ISO YYYY-MM-DD).
         end_date: Date de fin de collecte.
         departments: Liste des codes départements cibles.
-        region_code: Code INSEE de la région (84 = AURA).
+        region_code: Code INSEE de la region ("FR" = France, "84" = AURA).
         request_timeout: Timeout HTTP en secondes.
         max_retries: Nombre max de retries sur erreur transitoire.
         retry_backoff_factor: Facteur exponentiel entre retries.
@@ -122,9 +122,18 @@ class CollectorConfig:
     start_date: str = "2019-01-01"
     end_date: str = "2026-02-28"
     departments: List[str] = field(default_factory=lambda: [
-        "01", "07", "26", "38", "42", "69", "73", "74"
+        "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+        "11", "12", "13", "14", "15", "16", "17", "18", "19",
+        "21", "22", "23", "24", "25", "26", "27", "28", "29",
+        "30", "31", "32", "33", "34", "35", "36", "37", "38", "39",
+        "40", "41", "42", "43", "44", "45", "46", "47", "48", "49",
+        "50", "51", "52", "53", "54", "55", "56", "57", "58", "59",
+        "60", "61", "62", "63", "64", "65", "66", "67", "68", "69",
+        "70", "71", "72", "73", "74", "75", "76", "77", "78", "79",
+        "80", "81", "82", "83", "84", "85", "86", "87", "88", "89",
+        "90", "91", "92", "93", "94", "95", "2A", "2B",
     ])
-    region_code: str = "84"
+    region_code: str = "FR"
     request_timeout: int = 30
     max_retries: int = 3
     retry_backoff_factor: float = 1.0
@@ -151,9 +160,20 @@ class CollectorConfig:
             start_date=os.getenv("DATA_START_DATE", "2019-01-01"),
             end_date=os.getenv("DATA_END_DATE", "2026-02-28"),
             departments=os.getenv(
-                "TARGET_DEPARTMENTS", "01,07,26,38,42,69,73,74"
-            ).split(","),
-            region_code=os.getenv("TARGET_REGION", "84"),
+                "TARGET_DEPARTMENTS", ""
+            ).split(",") if os.getenv("TARGET_DEPARTMENTS") else [
+                "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+                "11", "12", "13", "14", "15", "16", "17", "18", "19",
+                "21", "22", "23", "24", "25", "26", "27", "28", "29",
+                "30", "31", "32", "33", "34", "35", "36", "37", "38", "39",
+                "40", "41", "42", "43", "44", "45", "46", "47", "48", "49",
+                "50", "51", "52", "53", "54", "55", "56", "57", "58", "59",
+                "60", "61", "62", "63", "64", "65", "66", "67", "68", "69",
+                "70", "71", "72", "73", "74", "75", "76", "77", "78", "79",
+                "80", "81", "82", "83", "84", "85", "86", "87", "88", "89",
+                "90", "91", "92", "93", "94", "95", "2A", "2B",
+            ],
+            region_code=os.getenv("TARGET_REGION", "FR"),
             request_timeout=int(os.getenv("REQUEST_TIMEOUT", "30")),
             max_retries=int(os.getenv("MAX_RETRIES", "3")),
             retry_backoff_factor=float(os.getenv("RETRY_BACKOFF", "1.0")),
