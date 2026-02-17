@@ -17,10 +17,10 @@ Architecture :
 
 Usage:
     >>> from config.settings import config
-    >>> print(config.geo.departments)
-    ['01', '07', '26', '38', '42', '69', '73', '74']
-    >>> print(config.time.start_date)
-    '2019-01-01'
+    >>> print(len(config.geo.departments))  # 96 depts (France)
+    96
+    >>> print(config.geo.region_code)
+    'FR'
 
 Extensibilité:
     Pour ajouter un nouveau paramètre :
@@ -46,34 +46,200 @@ load_dotenv()
 # Sous-configurations thématiques
 # =============================================================================
 
+# =============================================================================
+# Reference geographique : 96 departements de France metropolitaine
+# =============================================================================
+# Chaque entree = prefecture du departement avec coordonnees GPS
+# Organise par region (13 regions metropolitaines)
+# Usage : GeoConfig filtre automatiquement selon TARGET_DEPARTMENTS
+
+FRANCE_DEPARTMENTS: Dict[str, Dict[str, Any]] = {
+    # --- Auvergne-Rhone-Alpes (84) ---
+    "Bourg-en-Bresse":     {"lat": 46.21, "lon": 5.23, "dept": "01", "region": "84"},
+    "Moulins":             {"lat": 46.57, "lon": 3.33, "dept": "03", "region": "84"},
+    "Privas":              {"lat": 44.74, "lon": 4.60, "dept": "07", "region": "84"},
+    "Aurillac":            {"lat": 44.93, "lon": 2.44, "dept": "15", "region": "84"},
+    "Valence":             {"lat": 44.93, "lon": 4.89, "dept": "26", "region": "84"},
+    "Grenoble":            {"lat": 45.19, "lon": 5.72, "dept": "38", "region": "84"},
+    "Saint-Etienne":       {"lat": 45.44, "lon": 4.39, "dept": "42", "region": "84"},
+    "Le Puy-en-Velay":     {"lat": 45.04, "lon": 3.88, "dept": "43", "region": "84"},
+    "Clermont-Ferrand":    {"lat": 45.78, "lon": 3.08, "dept": "63", "region": "84"},
+    "Lyon":                {"lat": 45.76, "lon": 4.84, "dept": "69", "region": "84"},
+    "Chambery":            {"lat": 45.57, "lon": 5.92, "dept": "73", "region": "84"},
+    "Annecy":              {"lat": 45.90, "lon": 6.13, "dept": "74", "region": "84"},
+    # --- Bourgogne-Franche-Comte (27) ---
+    "Dijon":               {"lat": 47.32, "lon": 5.04, "dept": "21", "region": "27"},
+    "Besancon":            {"lat": 47.24, "lon": 6.02, "dept": "25", "region": "27"},
+    "Lons-le-Saunier":    {"lat": 46.67, "lon": 5.55, "dept": "39", "region": "27"},
+    "Nevers":              {"lat": 46.99, "lon": 3.16, "dept": "58", "region": "27"},
+    "Vesoul":              {"lat": 47.62, "lon": 6.15, "dept": "70", "region": "27"},
+    "Macon":               {"lat": 46.31, "lon": 4.83, "dept": "71", "region": "27"},
+    "Auxerre":             {"lat": 47.80, "lon": 3.57, "dept": "89", "region": "27"},
+    "Belfort":             {"lat": 47.64, "lon": 6.86, "dept": "90", "region": "27"},
+    # --- Bretagne (53) ---
+    "Saint-Brieuc":        {"lat": 48.51, "lon": -2.76, "dept": "22", "region": "53"},
+    "Quimper":             {"lat": 48.00, "lon": -4.10, "dept": "29", "region": "53"},
+    "Rennes":              {"lat": 48.11, "lon": -1.68, "dept": "35", "region": "53"},
+    "Vannes":              {"lat": 47.66, "lon": -2.76, "dept": "56", "region": "53"},
+    # --- Centre-Val de Loire (24) ---
+    "Bourges":             {"lat": 47.08, "lon": 2.40, "dept": "18", "region": "24"},
+    "Chartres":            {"lat": 48.46, "lon": 1.50, "dept": "28", "region": "24"},
+    "Chateauroux":         {"lat": 46.81, "lon": 1.69, "dept": "36", "region": "24"},
+    "Tours":               {"lat": 47.39, "lon": 0.69, "dept": "37", "region": "24"},
+    "Blois":               {"lat": 47.59, "lon": 1.33, "dept": "41", "region": "24"},
+    "Orleans":             {"lat": 47.90, "lon": 1.90, "dept": "45", "region": "24"},
+    # --- Corse (94) ---
+    "Ajaccio":             {"lat": 41.93, "lon": 8.74, "dept": "2A", "region": "94"},
+    "Bastia":              {"lat": 42.70, "lon": 9.45, "dept": "2B", "region": "94"},
+    # --- Grand Est (44) ---
+    "Charleville-Mezieres": {"lat": 49.77, "lon": 4.72, "dept": "08", "region": "44"},
+    "Troyes":              {"lat": 48.30, "lon": 4.07, "dept": "10", "region": "44"},
+    "Chalons-en-Champagne": {"lat": 48.96, "lon": 4.36, "dept": "51", "region": "44"},
+    "Chaumont":            {"lat": 48.11, "lon": 5.14, "dept": "52", "region": "44"},
+    "Nancy":               {"lat": 48.69, "lon": 6.18, "dept": "54", "region": "44"},
+    "Bar-le-Duc":          {"lat": 48.77, "lon": 5.16, "dept": "55", "region": "44"},
+    "Metz":                {"lat": 49.12, "lon": 6.18, "dept": "57", "region": "44"},
+    "Strasbourg":          {"lat": 48.57, "lon": 7.75, "dept": "67", "region": "44"},
+    "Colmar":              {"lat": 48.08, "lon": 7.36, "dept": "68", "region": "44"},
+    "Epinal":              {"lat": 48.17, "lon": 6.45, "dept": "88", "region": "44"},
+    # --- Hauts-de-France (32) ---
+    "Laon":                {"lat": 49.56, "lon": 3.62, "dept": "02", "region": "32"},
+    "Lille":               {"lat": 50.63, "lon": 3.06, "dept": "59", "region": "32"},
+    "Beauvais":            {"lat": 49.43, "lon": 2.08, "dept": "60", "region": "32"},
+    "Arras":               {"lat": 50.29, "lon": 2.78, "dept": "62", "region": "32"},
+    "Amiens":              {"lat": 49.89, "lon": 2.30, "dept": "80", "region": "32"},
+    # --- Ile-de-France (11) ---
+    "Paris":               {"lat": 48.86, "lon": 2.35, "dept": "75", "region": "11"},
+    "Melun":               {"lat": 48.54, "lon": 2.66, "dept": "77", "region": "11"},
+    "Versailles":          {"lat": 48.80, "lon": 2.13, "dept": "78", "region": "11"},
+    "Evry":                {"lat": 48.63, "lon": 2.44, "dept": "91", "region": "11"},
+    "Nanterre":            {"lat": 48.89, "lon": 2.21, "dept": "92", "region": "11"},
+    "Bobigny":             {"lat": 48.91, "lon": 2.44, "dept": "93", "region": "11"},
+    "Creteil":             {"lat": 48.79, "lon": 2.46, "dept": "94", "region": "11"},
+    "Pontoise":            {"lat": 49.05, "lon": 2.10, "dept": "95", "region": "11"},
+    # --- Normandie (28) ---
+    "Caen":                {"lat": 49.18, "lon": -0.37, "dept": "14", "region": "28"},
+    "Evreux":              {"lat": 49.02, "lon": 1.15, "dept": "27", "region": "28"},
+    "Saint-Lo":            {"lat": 49.12, "lon": -1.09, "dept": "50", "region": "28"},
+    "Alencon":             {"lat": 48.43, "lon": 0.09, "dept": "61", "region": "28"},
+    "Rouen":               {"lat": 49.44, "lon": 1.10, "dept": "76", "region": "28"},
+    # --- Nouvelle-Aquitaine (75) ---
+    "Angouleme":           {"lat": 45.65, "lon": 0.16, "dept": "16", "region": "75"},
+    "La Rochelle":         {"lat": 46.16, "lon": -1.15, "dept": "17", "region": "75"},
+    "Tulle":               {"lat": 45.27, "lon": 1.77, "dept": "19", "region": "75"},
+    "Gueret":              {"lat": 46.17, "lon": 1.87, "dept": "23", "region": "75"},
+    "Perigueux":           {"lat": 45.19, "lon": 0.72, "dept": "24", "region": "75"},
+    "Bordeaux":            {"lat": 44.84, "lon": -0.58, "dept": "33", "region": "75"},
+    "Mont-de-Marsan":      {"lat": 43.89, "lon": -0.50, "dept": "40", "region": "75"},
+    "Agen":                {"lat": 44.20, "lon": 0.62, "dept": "47", "region": "75"},
+    "Pau":                 {"lat": 43.30, "lon": -0.37, "dept": "64", "region": "75"},
+    "Niort":               {"lat": 46.33, "lon": -0.46, "dept": "79", "region": "75"},
+    "Poitiers":            {"lat": 46.58, "lon": 0.34, "dept": "86", "region": "75"},
+    "Limoges":             {"lat": 45.83, "lon": 1.26, "dept": "87", "region": "75"},
+    # --- Occitanie (76) ---
+    "Foix":                {"lat": 42.97, "lon": 1.61, "dept": "09", "region": "76"},
+    "Carcassonne":         {"lat": 43.21, "lon": 2.35, "dept": "11", "region": "76"},
+    "Rodez":               {"lat": 44.35, "lon": 2.57, "dept": "12", "region": "76"},
+    "Nimes":               {"lat": 43.84, "lon": 4.36, "dept": "30", "region": "76"},
+    "Toulouse":            {"lat": 43.60, "lon": 1.44, "dept": "31", "region": "76"},
+    "Auch":                {"lat": 43.65, "lon": 0.59, "dept": "32", "region": "76"},
+    "Montpellier":         {"lat": 43.61, "lon": 3.88, "dept": "34", "region": "76"},
+    "Cahors":              {"lat": 44.45, "lon": 1.44, "dept": "46", "region": "76"},
+    "Mende":               {"lat": 44.52, "lon": 3.50, "dept": "48", "region": "76"},
+    "Tarbes":              {"lat": 43.23, "lon": 0.08, "dept": "65", "region": "76"},
+    "Perpignan":           {"lat": 42.70, "lon": 2.90, "dept": "66", "region": "76"},
+    "Albi":                {"lat": 43.93, "lon": 2.15, "dept": "81", "region": "76"},
+    "Montauban":           {"lat": 44.02, "lon": 1.35, "dept": "82", "region": "76"},
+    # --- Pays de la Loire (52) ---
+    "Nantes":              {"lat": 47.22, "lon": -1.55, "dept": "44", "region": "52"},
+    "Angers":              {"lat": 47.47, "lon": -0.56, "dept": "49", "region": "52"},
+    "Laval":               {"lat": 48.07, "lon": -0.77, "dept": "53", "region": "52"},
+    "Le Mans":             {"lat": 48.00, "lon": 0.20, "dept": "72", "region": "52"},
+    "La Roche-sur-Yon":    {"lat": 46.67, "lon": -1.43, "dept": "85", "region": "52"},
+    # --- Provence-Alpes-Cote d'Azur (93) ---
+    "Digne-les-Bains":    {"lat": 44.09, "lon": 6.24, "dept": "04", "region": "93"},
+    "Gap":                 {"lat": 44.56, "lon": 6.08, "dept": "05", "region": "93"},
+    "Nice":                {"lat": 43.70, "lon": 7.27, "dept": "06", "region": "93"},
+    "Marseille":           {"lat": 43.30, "lon": 5.37, "dept": "13", "region": "93"},
+    "Toulon":              {"lat": 43.12, "lon": 5.93, "dept": "83", "region": "93"},
+    "Avignon":             {"lat": 43.95, "lon": 4.81, "dept": "84", "region": "93"},
+}
+
+# Mapping code region → nom
+REGION_NAMES: Dict[str, str] = {
+    "84": "Auvergne-Rhone-Alpes",
+    "27": "Bourgogne-Franche-Comte",
+    "53": "Bretagne",
+    "24": "Centre-Val de Loire",
+    "94": "Corse",
+    "44": "Grand Est",
+    "32": "Hauts-de-France",
+    "11": "Ile-de-France",
+    "28": "Normandie",
+    "75": "Nouvelle-Aquitaine",
+    "76": "Occitanie",
+    "52": "Pays de la Loire",
+    "93": "Provence-Alpes-Cote d'Azur",
+    "FR": "France metropolitaine",
+}
+
+
+def _get_departments_for_scope(scope: str) -> List[str]:
+    """Retourne la liste des departements selon le perimetre choisi.
+
+    Args:
+        scope: Code region INSEE ("84" pour AURA) ou "FR" pour toute la France.
+
+    Returns:
+        Liste des codes departements.
+    """
+    if scope.upper() == "FR":
+        return sorted({info["dept"] for info in FRANCE_DEPARTMENTS.values()})
+    return sorted(
+        info["dept"]
+        for info in FRANCE_DEPARTMENTS.values()
+        if info["region"] == scope
+    )
+
+
+def _get_cities_for_departments(departments: List[str]) -> Dict[str, Dict[str, Any]]:
+    """Retourne les villes de reference pour les departements donnes.
+
+    Args:
+        departments: Liste des codes departements.
+
+    Returns:
+        Dictionnaire {ville: {lat, lon, dept, region}}.
+    """
+    dept_set = set(departments)
+    return {
+        city: info
+        for city, info in FRANCE_DEPARTMENTS.items()
+        if info["dept"] in dept_set
+    }
+
+
 @dataclass(frozen=True)
 class GeoConfig:
-    """Configuration géographique du périmètre d'étude.
+    """Configuration geographique du perimetre d'etude.
+
+    Supporte 3 modes :
+    - Region specifique : TARGET_REGION=84 (AURA, 12 depts)
+    - France complete   : TARGET_REGION=FR (96 departements)
+    - Liste manuelle    : TARGET_DEPARTMENTS=69,38,42 (override)
 
     Attributes:
-        region_code: Code INSEE de la région cible (84 = AURA).
-        departments: Liste des codes départements à analyser.
-        cities: Dictionnaire des villes de référence avec coordonnées.
-                Chaque ville sert de point de collecte météo pour son département.
-                NOTE AUDIT: Clermont-Ferrand (63) et Villeurbanne (69 doublon)
-                ont été retirés suite à l'audit de cohérence.
+        region_code: Code INSEE de la region ("FR" pour toute la France).
+        departments: Liste des codes departements a analyser.
+        cities: Dictionnaire des villes de reference avec coordonnees.
     """
-    region_code: str = "84"
-    departments: List[str] = field(default_factory=lambda: [
-        "01", "07", "26", "38", "42", "69", "73", "74"
-    ])
-    # Une seule ville de référence par département pour éviter les doublons
-    # Clé = nom de ville, Valeur = {lat, lon, dept}
-    cities: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        "Lyon":            {"lat": 45.76, "lon": 4.84, "dept": "69"},
-        "Grenoble":        {"lat": 45.19, "lon": 5.72, "dept": "38"},
-        "Saint-Etienne":   {"lat": 45.44, "lon": 4.39, "dept": "42"},
-        "Annecy":          {"lat": 45.90, "lon": 6.13, "dept": "74"},
-        "Valence":         {"lat": 44.93, "lon": 4.89, "dept": "26"},
-        "Chambery":        {"lat": 45.57, "lon": 5.92, "dept": "73"},
-        "Bourg-en-Bresse": {"lat": 46.21, "lon": 5.23, "dept": "01"},
-        "Privas":          {"lat": 44.74, "lon": 4.60, "dept": "07"},
-    })
+    region_code: str = "FR"
+    departments: List[str] = field(
+        default_factory=lambda: _get_departments_for_scope("FR")
+    )
+    cities: Dict[str, Dict[str, Any]] = field(
+        default_factory=lambda: dict(FRANCE_DEPARTMENTS)
+    )
 
 
 @dataclass(frozen=True)
@@ -284,12 +450,21 @@ class ProjectConfig:
         Returns:
             Instance de ProjectConfig complètement initialisée.
         """
+        region_code = os.getenv("TARGET_REGION", "FR")
+        # Si TARGET_DEPARTMENTS est defini, l'utiliser en priorite
+        # Sinon, deduire les departements depuis TARGET_REGION
+        departments_env = os.getenv("TARGET_DEPARTMENTS", "")
+        if departments_env:
+            departments = departments_env.split(",")
+        else:
+            departments = _get_departments_for_scope(region_code)
+        cities = _get_cities_for_departments(departments)
+
         return cls(
             geo=GeoConfig(
-                region_code=os.getenv("TARGET_REGION", "84"),
-                departments=os.getenv(
-                    "TARGET_DEPARTMENTS", "01,07,26,38,42,69,73,74"
-                ).split(","),
+                region_code=region_code,
+                departments=departments,
+                cities=cities,
             ),
             time=TimeConfig(
                 start_date=os.getenv("DATA_START_DATE", "2019-01-01"),

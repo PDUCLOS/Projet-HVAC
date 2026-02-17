@@ -9,22 +9,28 @@ import pytest
 
 from config.settings import (
     DatabaseConfig,
+    FRANCE_DEPARTMENTS,
     GeoConfig,
     ModelConfig,
     NetworkConfig,
     ProjectConfig,
     TimeConfig,
+    _get_departments_for_scope,
+    _get_cities_for_departments,
 )
 
 
 class TestGeoConfig:
     """Tests pour GeoConfig."""
 
-    def test_default_departments(self):
+    def test_default_france_departments(self):
+        """Le defaut est toute la France metropolitaine (96 departements)."""
         geo = GeoConfig()
-        assert len(geo.departments) == 8
-        assert "69" in geo.departments  # Rhône
-        assert "38" in geo.departments  # Isère
+        assert len(geo.departments) == 96
+        assert "69" in geo.departments  # Rhone
+        assert "75" in geo.departments  # Paris
+        assert "13" in geo.departments  # Bouches-du-Rhone
+        assert "2A" in geo.departments  # Corse-du-Sud
 
     def test_default_cities(self):
         geo = GeoConfig()
@@ -32,13 +38,42 @@ class TestGeoConfig:
         assert geo.cities["Lyon"]["dept"] == "69"
         assert "lat" in geo.cities["Lyon"]
         assert "lon" in geo.cities["Lyon"]
+        assert "Paris" in geo.cities
+        assert "Marseille" in geo.cities
 
     def test_one_city_per_department(self):
-        """Vérifie qu'il y a exactement une ville par département."""
+        """Verifie qu'il y a exactement une ville par departement."""
         geo = GeoConfig()
         depts_from_cities = [info["dept"] for info in geo.cities.values()]
         assert len(depts_from_cities) == len(set(depts_from_cities))
         assert set(depts_from_cities) == set(geo.departments)
+
+    def test_aura_scope(self):
+        """Perimetre AURA = 12 departements."""
+        depts = _get_departments_for_scope("84")
+        assert len(depts) == 12
+        assert "69" in depts  # Lyon
+        assert "63" in depts  # Clermont-Ferrand
+
+    def test_idf_scope(self):
+        """Perimetre Ile-de-France = 8 departements."""
+        depts = _get_departments_for_scope("11")
+        assert len(depts) == 8
+        assert "75" in depts  # Paris
+
+    def test_france_departments_reference(self):
+        """La reference FRANCE_DEPARTMENTS couvre bien 96 departements."""
+        depts = {info["dept"] for info in FRANCE_DEPARTMENTS.values()}
+        assert len(depts) == 96
+
+    def test_get_cities_for_departments(self):
+        """Filtre les villes pour un sous-ensemble de departements."""
+        cities = _get_cities_for_departments(["69", "38"])
+        assert len(cities) == 2
+        city_names = list(cities.keys())
+        depts = [info["dept"] for info in cities.values()]
+        assert "69" in depts
+        assert "38" in depts
 
 
 class TestTimeConfig:
