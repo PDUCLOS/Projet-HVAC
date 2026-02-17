@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 
 from config.settings import ProjectConfig
 
@@ -262,7 +262,9 @@ class ModelTrainer:
         )
 
         # 6. Scaler (pour Ridge et LSTM)
-        scaler = StandardScaler()
+        # RobustScaler utilise la mediane et l'IQR au lieu de mean/std,
+        # le rendant resistant aux outliers (contrairement a StandardScaler)
+        scaler = RobustScaler()
         X_train_scaled = pd.DataFrame(
             scaler.fit_transform(X_train_imp),
             columns=X_train_imp.columns, index=X_train_imp.index,
@@ -331,7 +333,7 @@ class ModelTrainer:
             columns=X_test_exo.columns, index=X_test_exo.index,
         )
 
-        scaler_exo = StandardScaler()
+        scaler_exo = RobustScaler()
         X_train_exo_sc = pd.DataFrame(
             scaler_exo.fit_transform(X_train_exo_imp),
             columns=X_train_exo_imp.columns, index=X_train_exo_imp.index,

@@ -14,7 +14,8 @@ Architecture :
     - LSTM a 1 couche (32 unites), dropout 0.3
     - Couche dense de sortie (1 neurone, regression)
     - Sequences de longueur 3 mois (lookback minimal)
-    - Loss = MSE, optimizer = Adam (lr=0.001)
+    - Loss = HuberLoss (robuste aux outliers, delta=1.0)
+    - Optimizer = Adam (lr=0.001)
 
 Dependances :
     pip install -r requirements-dl.txt  # torch>=2.1.0
@@ -183,7 +184,9 @@ class LSTMModel:
 
         # Definir le modele
         model = _LSTMNet(n_features, self.hidden_size).to(device)
-        criterion = nn.MSELoss()
+        # HuberLoss : combine MSE (petites erreurs) et MAE (grandes erreurs)
+        # Robuste aux outliers contrairement a MSE qui les amplifie au carre
+        criterion = nn.HuberLoss(delta=1.0)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
         # Entrainement avec early stopping

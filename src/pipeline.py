@@ -203,21 +203,64 @@ def run_features() -> None:
     )
 
 
-def run_process() -> None:
-    """Exécute le pipeline de traitement complet (clean → merge → features).
+def run_outliers(strategy: str = "clip") -> None:
+    """Detecte et traite les outliers dans le dataset features.
 
-    Enchaîne les trois étapes de traitement en séquence.
+    Execute l'analyse multi-methode (IQR + Z-score modifie + Isolation Forest)
+    et applique la strategie choisie. Genere un rapport detaille.
+
+    Prerequis : avoir execute 'features' (dataset dans data/features/).
+
+    Args:
+        strategy: Strategie de traitement ("flag", "clip", "remove").
+    """
+    from src.processing.outlier_detection import OutlierDetector
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Phase 2.2 — Detection des outliers")
+    logger.info("  Strategie : %s", strategy)
+    logger.info("=" * 60)
+
+    detector = OutlierDetector(config)
+
+    # Charger le dataset features
+    features_path = config.features_data_dir / "hvac_features_dataset.csv"
+    if not features_path.exists():
+        logger.error("Dataset features introuvable : %s", features_path)
+        logger.error("Lancer 'python -m src.pipeline features' d'abord.")
+        return
+
+    import pandas as pd
+    df = pd.read_csv(features_path)
+    logger.info("Dataset charge : %d lignes x %d colonnes", len(df), len(df.columns))
+
+    # Analyse et traitement
+    df_treated, report_path = detector.run_full_analysis(df, strategy=strategy)
+
+    # Sauvegarder le dataset traite
+    output_path = config.features_data_dir / "hvac_features_dataset.csv"
+    df_treated.to_csv(output_path, index=False)
+    logger.info("Dataset traite sauvegarde → %s", output_path)
+    logger.info("Rapport outliers → %s", report_path)
+
+
+def run_process() -> None:
+    """Exécute le pipeline de traitement complet (clean → merge → features → outliers).
+
+    Enchaîne les quatre étapes de traitement en séquence.
     C'est la commande recommandée pour traiter les données en une fois.
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
     logger.info("  Pipeline de traitement complet")
-    logger.info("  clean → merge → features")
+    logger.info("  clean → merge → features → outliers")
     logger.info("=" * 60)
 
     run_clean()
     run_merge()
     run_features()
+    run_outliers()
 
     logger.info("Pipeline de traitement terminé.")
 
@@ -357,6 +400,34 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
     logger.info("  Rapport : data/models/evaluation_report.txt")
 
 
+def run_sync_pcloud(force: bool = False) -> None:
+    """Synchronise les donnees depuis pCloud et met a jour la base.
+
+    Verifie les mises a jour sur le lien public pCloud, telecharge
+    les fichiers nouveaux/modifies, puis declenche le pipeline
+    d'import complet (import → clean → merge → features → outliers).
+
+    Prerequis : variable PCLOUD_PUBLIC_CODE dans .env (ou valeur par defaut).
+
+    Args:
+        force: Si True, re-telecharge tout meme si rien n'a change.
+    """
+    from src.collectors.pcloud_sync import PCloudSync
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Synchronisation pCloud")
+    logger.info("=" * 60)
+
+    sync = PCloudSync(config)
+    result = sync.sync_and_update(force=force)
+
+    logger.info(
+        "Synchronisation terminee : %d fichiers telecharges.",
+        result["files_downloaded"],
+    )
+
+
 def run_list() -> None:
     """Liste les collecteurs disponibles."""
     # Importer pour déclencher l'enregistrement
@@ -397,8 +468,9 @@ Exemples :
         "stage",
         choices=[
             "collect", "init_db", "import_data",
-            "clean", "merge", "features", "process",
-            "eda", "train", "evaluate", "list", "all",
+            "clean", "merge", "features", "outliers", "process",
+            "eda", "train", "evaluate",
+            "sync_pcloud", "list", "all",
         ],
         help="Étape du pipeline à exécuter",
     )
@@ -455,6 +527,9 @@ Exemples :
     elif args.stage == "features":
         run_features()
 
+    elif args.stage == "outliers":
+        run_outliers()
+
     elif args.stage == "process":
         run_process()
 
@@ -466,6 +541,9 @@ Exemples :
 
     elif args.stage == "evaluate":
         run_evaluate(target=args.target)
+
+    elif args.stage == "sync_pcloud":
+        run_sync_pcloud()
 
     elif args.stage == "list":
         run_list()
