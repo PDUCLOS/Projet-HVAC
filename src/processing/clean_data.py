@@ -76,7 +76,7 @@ class DataCleaner:
             Dictionary {source: {rows_in, rows_out, dropped, ...}}.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  PHASE 2.1 — Nettoyage des données brutes")
+        self.logger.info("  PHASE 2.1 — Raw Data Cleaning")
         self.logger.info("=" * 60)
 
         self.clean_weather()
@@ -86,11 +86,11 @@ class DataCleaner:
 
         # Summary
         self.logger.info("=" * 60)
-        self.logger.info("  BILAN NETTOYAGE")
+        self.logger.info("  CLEANING SUMMARY")
         self.logger.info("=" * 60)
         for source, stat in self.stats.items():
             self.logger.info(
-                "  %-15s : %6d → %6d lignes (-%d doublons, -%d aberrants)",
+                "  %-15s : %6d → %6d rows (-%d duplicates, -%d outliers)",
                 source,
                 stat.get("rows_in", 0),
                 stat.get("rows_out", 0),
@@ -122,37 +122,37 @@ class DataCleaner:
         Returns:
             Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage MÉTÉO...")
+        self.logger.info("Cleaning WEATHER...")
         filepath = self.config.raw_data_dir / "weather" / "weather_france.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
+        self.logger.info("  Raw rows: %d", rows_in)
 
         # 1. Date conversion
         date_col = "time" if "time" in df.columns else "date"
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
         null_dates = df[date_col].isna().sum()
         if null_dates > 0:
-            self.logger.warning("  %d dates invalides supprimées", null_dates)
+            self.logger.warning("  %d invalid dates removed", null_dates)
             df = df.dropna(subset=[date_col])
 
         # 2. Duplicates (date x city)
         key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
         dups = df.duplicated(subset=key_cols).sum()
         df = df.drop_duplicates(subset=key_cols, keep="last")
-        self.logger.info("  Doublons supprimés : %d", dups)
+        self.logger.info("  Duplicates removed: %d", dups)
 
         # 3. Critical missing values (temperature)
         temp_cols = [c for c in df.columns if "temperature" in c.lower()]
         null_temps = df[temp_cols].isna().all(axis=1).sum() if temp_cols else 0
         if null_temps > 0:
             df = df.dropna(subset=temp_cols, how="all")
-            self.logger.info("  Lignes sans aucune température : %d supprimées", null_temps)
+            self.logger.info("  Rows with no temperature: %d removed", null_temps)
 
         # 4. Clip outlier values
         outliers_removed = 0
@@ -169,7 +169,7 @@ class DataCleaner:
                 n_out = mask_out.sum()
                 if n_out > 0:
                     self.logger.info(
-                        "  %s : %d valeurs hors [%s, %s] clippées",
+                        "  %s: %d values outside [%s, %s] clipped",
                         col, n_out, vmin, vmax,
                     )
                     outliers_removed += n_out
@@ -208,7 +208,7 @@ class DataCleaner:
             "null_dates_removed": null_dates,
         }
         self.logger.info(
-            "  ✓ Météo nettoyée : %d → %d lignes", rows_in, rows_out,
+            "  ✓ Weather cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
@@ -231,17 +231,17 @@ class DataCleaner:
         Returns:
             Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage INSEE...")
+        self.logger.info("Cleaning INSEE...")
         filepath = self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
-        self.logger.info("  Colonnes : %s", list(df.columns))
+        self.logger.info("  Raw rows: %d", rows_in)
+        self.logger.info("  Columns: %s", list(df.columns))
 
         # 1. Filter monthly periods (YYYY-MM)
         if "period" in df.columns:
@@ -249,7 +249,7 @@ class DataCleaner:
             non_monthly = (~mask_monthly).sum()
             if non_monthly > 0:
                 self.logger.info(
-                    "  %d lignes non mensuelles filtrées (trimestrielles, etc.)",
+                    "  %d non-monthly rows filtered (quarterly, etc.)",
                     non_monthly,
                 )
             df = df[mask_monthly].copy()
@@ -278,7 +278,7 @@ class DataCleaner:
 
         if interpolated > 0:
             self.logger.info(
-                "  %d valeurs interpolées (gaps ≤ 3 mois)", interpolated,
+                "  %d values interpolated (gaps ≤ 3 months)", interpolated,
             )
 
         # 6. Log remaining NaN per column
@@ -286,7 +286,7 @@ class DataCleaner:
         for col, count in remaining_nulls.items():
             if count > 0:
                 self.logger.warning(
-                    "  ⚠ %s : %d NaN restants (%.1f%%)",
+                    "  ⚠ %s: %d remaining NaN (%.1f%%)",
                     col, count, 100 * count / len(df),
                 )
 
@@ -305,7 +305,7 @@ class DataCleaner:
             "non_monthly_filtered": non_monthly if "period" in df.columns else 0,
         }
         self.logger.info(
-            "  ✓ INSEE nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ INSEE cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
@@ -327,17 +327,17 @@ class DataCleaner:
         Returns:
             Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage EUROSTAT...")
+        self.logger.info("Cleaning EUROSTAT...")
         filepath = self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
-        self.logger.info("  Colonnes : %s", list(df.columns))
+        self.logger.info("  Raw rows: %d", rows_in)
+        self.logger.info("  Columns: %s", list(df.columns))
 
         # 1. Filter monthly periods
         if "period" in df.columns:
@@ -345,7 +345,7 @@ class DataCleaner:
             non_monthly = (~mask_monthly).sum()
             if non_monthly > 0:
                 self.logger.info(
-                    "  %d lignes non mensuelles filtrées", non_monthly,
+                    "  %d non-monthly rows filtered", non_monthly,
                 )
             df = df[mask_monthly].copy()
 
@@ -375,7 +375,7 @@ class DataCleaner:
             interpolated = nulls_before - nulls_after
             if interpolated > 0:
                 self.logger.info(
-                    "  %d valeurs IPI interpolées", interpolated,
+                    "  %d IPI values interpolated", interpolated,
                 )
 
             # 6. Detect suspicious variations (> 30%)
@@ -385,7 +385,7 @@ class DataCleaner:
             suspects = (df["ipi_pct_change"] > 0.30).sum()
             if suspects > 0:
                 self.logger.warning(
-                    "  ⚠ %d variations IPI > 30%% détectées (ruptures potentielles)",
+                    "  ⚠ %d IPI variations > 30%% detected (potential breaks)",
                     suspects,
                 )
             # Keep the column for diagnosis but do not remove the rows
@@ -406,7 +406,7 @@ class DataCleaner:
             "interpolated": interpolated,
         }
         self.logger.info(
-            "  ✓ Eurostat nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ Eurostat cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
@@ -437,11 +437,11 @@ class DataCleaner:
         Returns:
             Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage DPE (volumétrie ~1.4M lignes)...")
+        self.logger.info("Cleaning DPE (~1.4M rows)...")
         filepath = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         # Read in chunks to manage memory
@@ -453,7 +453,7 @@ class DataCleaner:
         outliers_removed = 0
 
         chunk_size = 200_000
-        self.logger.info("  Lecture par chunks de %d lignes...", chunk_size)
+        self.logger.info("  Reading in chunks of %d rows...", chunk_size)
 
         for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
             rows_in += len(chunk)
@@ -550,11 +550,11 @@ class DataCleaner:
 
             if (i + 1) % 5 == 0:
                 self.logger.info(
-                    "  Chunk %d : %d lignes traitées au total", i + 1, rows_in,
+                    "  Chunk %d: %d rows processed total", i + 1, rows_in,
                 )
 
         if not chunks:
-            self.logger.error("  Aucune donnée DPE après nettoyage")
+            self.logger.error("  No DPE data after cleaning")
             return None
 
         df = pd.concat(chunks, ignore_index=True)
@@ -582,22 +582,22 @@ class DataCleaner:
 
         # Detailed DPE log
         self.logger.info(
-            "  ✓ DPE nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ DPE cleaned: %d → %d rows", rows_in, rows_out,
         )
-        self.logger.info("    - Doublons supprimés : %d", dups)
-        self.logger.info("    - Dates invalides : %d", date_invalid)
-        self.logger.info("    - Étiquettes invalides : %d", etiquette_invalid)
-        self.logger.info("    - Valeurs clippées : %d", outliers_removed)
+        self.logger.info("    - Duplicates removed: %d", dups)
+        self.logger.info("    - Invalid dates: %d", date_invalid)
+        self.logger.info("    - Invalid labels: %d", etiquette_invalid)
+        self.logger.info("    - Values clipped: %d", outliers_removed)
 
         # DPE label distribution after cleaning
         if "etiquette_dpe" in df.columns:
             distrib = df["etiquette_dpe"].value_counts().sort_index()
-            self.logger.info("    Distribution DPE nettoyée :\n%s", distrib.to_string())
+            self.logger.info("    Cleaned DPE distribution:\n%s", distrib.to_string())
 
         # Heat pump rate after cleaning
         n_pac = df["is_pac"].sum()
         self.logger.info(
-            "    PAC détectées : %d (%.1f%%)", n_pac, 100 * n_pac / max(len(df), 1),
+            "    Heat pumps detected: %d (%.1f%%)", n_pac, 100 * n_pac / max(len(df), 1),
         )
 
         return df
@@ -629,6 +629,6 @@ class DataCleaner:
         df.to_csv(output_path, index=False)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         self.logger.info(
-            "  Sauvegardé → %s (%.1f Mo)", output_path, size_mb,
+            "  Saved → %s (%.1f MB)", output_path, size_mb,
         )
         return output_path

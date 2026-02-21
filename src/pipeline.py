@@ -80,20 +80,20 @@ def run_collect(sources: Optional[List[str]] = None) -> None:
 
     if sources:
         # Collect only the requested sources
-        logger.info("Collecte ciblée : %s", sources)
+        logger.info("Targeted collection: %s", sources)
         for source in sources:
             try:
                 result = CollectorRegistry.run(source, collector_config)
                 logger.info("%s", result)
             except KeyError:
                 logger.error(
-                    "Source inconnue : '%s'. Disponibles : %s",
+                    "Unknown source: '%s'. Available: %s",
                     source, CollectorRegistry.available(),
                 )
     else:
         # Collect all sources in the recommended order
         order = ["weather", "insee", "eurostat", "sitadel", "dpe"]
-        logger.info("Collecte complète dans l'ordre : %s", order)
+        logger.info("Full collection in order: %s", order)
         results = CollectorRegistry.run_all(collector_config, order=order)
         for result in results:
             logger.info("%s", result)
@@ -104,14 +104,14 @@ def run_init_db() -> None:
     from src.database.db_manager import DatabaseManager
 
     logger = logging.getLogger("pipeline")
-    logger.info("Initialisation de la base de données...")
+    logger.info("Initializing the database...")
 
     db = DatabaseManager(config.database.connection_string)
     db.init_database()
 
     # Display table summary
     table_info = db.get_table_info()
-    logger.info("Tables créées :\n%s", table_info.to_string(index=False))
+    logger.info("Tables created:\n%s", table_info.to_string(index=False))
 
 
 def run_import_data() -> None:
@@ -124,14 +124,14 @@ def run_import_data() -> None:
     from src.database.db_manager import DatabaseManager
 
     logger = logging.getLogger("pipeline")
-    logger.info("Import des donnees collectees dans la BDD...")
+    logger.info("Importing collected data into the database...")
 
     db = DatabaseManager(config.database.connection_string)
     results = db.import_collected_data(raw_data_dir=config.raw_data_dir)
 
     # Display table summary after import
     table_info = db.get_table_info()
-    logger.info("Etat des tables apres import :\n%s", table_info.to_string(index=False))
+    logger.info("Table status after import:\n%s", table_info.to_string(index=False))
 
 
 def run_clean() -> None:
@@ -146,12 +146,12 @@ def run_clean() -> None:
     from src.processing.clean_data import DataCleaner
 
     logger = logging.getLogger("pipeline")
-    logger.info("Nettoyage des données brutes...")
+    logger.info("Cleaning raw data...")
 
     cleaner = DataCleaner(config)
     stats = cleaner.clean_all()
 
-    logger.info("Nettoyage terminé : %d sources traitées", len(stats))
+    logger.info("Cleaning complete: %d sources processed", len(stats))
 
 
 def run_merge() -> None:
@@ -167,13 +167,13 @@ def run_merge() -> None:
     from src.processing.merge_datasets import DatasetMerger
 
     logger = logging.getLogger("pipeline")
-    logger.info("Fusion multi-sources → dataset ML...")
+    logger.info("Multi-source merge → ML dataset...")
 
     merger = DatasetMerger(config)
     df_ml = merger.build_ml_dataset()
 
     if df_ml.empty:
-        logger.error("Dataset ML vide ! Vérifier les données sources.")
+        logger.error("ML dataset empty! Check source data.")
     else:
         logger.info(
             "Dataset ML construit : %d lignes × %d colonnes",
@@ -218,8 +218,8 @@ def run_outliers(strategy: str = "clip") -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Phase 2.2 — Detection des outliers")
-    logger.info("  Strategie : %s", strategy)
+    logger.info("  Phase 2.2 — Outlier Detection")
+    logger.info("  Strategy: %s", strategy)
     logger.info("=" * 60)
 
     detector = OutlierDetector(config)
@@ -227,13 +227,13 @@ def run_outliers(strategy: str = "clip") -> None:
     # Load the features dataset
     features_path = config.features_data_dir / "hvac_features_dataset.csv"
     if not features_path.exists():
-        logger.error("Dataset features introuvable : %s", features_path)
-        logger.error("Lancer 'python -m src.pipeline features' d'abord.")
+        logger.error("Features dataset not found: %s", features_path)
+        logger.error("Run 'python -m src.pipeline features' first.")
         return
 
     import pandas as pd
     df = pd.read_csv(features_path)
-    logger.info("Dataset charge : %d lignes x %d colonnes", len(df), len(df.columns))
+    logger.info("Dataset loaded: %d rows x %d columns", len(df), len(df.columns))
 
     # Analysis and treatment
     df_treated, report_path = detector.run_full_analysis(df, strategy=strategy)
@@ -241,8 +241,8 @@ def run_outliers(strategy: str = "clip") -> None:
     # Save the treated dataset
     output_path = config.features_data_dir / "hvac_features_dataset.csv"
     df_treated.to_csv(output_path, index=False)
-    logger.info("Dataset traite sauvegarde → %s", output_path)
-    logger.info("Rapport outliers → %s", report_path)
+    logger.info("Treated dataset saved → %s", output_path)
+    logger.info("Outliers report → %s", report_path)
 
 
 def run_process() -> None:
@@ -253,7 +253,7 @@ def run_process() -> None:
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Pipeline de traitement complet")
+    logger.info("  Full processing pipeline")
     logger.info("  clean → merge → features → outliers")
     logger.info("=" * 60)
 
@@ -262,7 +262,7 @@ def run_process() -> None:
     run_features()
     run_outliers()
 
-    logger.info("Pipeline de traitement terminé.")
+    logger.info("Processing pipeline complete.")
 
 
 def run_eda() -> None:
@@ -278,8 +278,8 @@ def run_eda() -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Phase 3 — Analyse Exploratoire")
-    logger.info("  EDA + Corrélations")
+    logger.info("  Phase 3 — Exploratory Analysis")
+    logger.info("  EDA + Correlations")
     logger.info("=" * 60)
 
     # 1. EDA (Exploratory Data Analysis)
@@ -291,9 +291,9 @@ def run_eda() -> None:
     corr_results = corr.run_full_correlation()
 
     total_figs = len(eda_results.get("figures", [])) + len(corr_results.get("figures", []))
-    logger.info("Phase 3 terminée : %d graphiques générés.", total_figs)
-    logger.info("  Figures : data/analysis/figures/")
-    logger.info("  Rapports : data/analysis/")
+    logger.info("Phase 3 complete: %d charts generated.", total_figs)
+    logger.info("  Figures: data/analysis/figures/")
+    logger.info("  Reports: data/analysis/")
 
 
 def run_train(target: str = "nb_installations_pac") -> None:
@@ -316,16 +316,16 @@ def run_train(target: str = "nb_installations_pac") -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Phase 4 — Entraînement ML")
-    logger.info("  Cible : %s", target)
+    logger.info("  Phase 4 — ML Training")
+    logger.info("  Target: %s", target)
     logger.info("=" * 60)
 
     trainer = ModelTrainer(config, target=target)
     results = trainer.train_all()
 
-    logger.info("Phase 4 (train) terminée : %d modèles entraînés.", len(results))
-    logger.info("  Modèles : data/models/")
-    logger.info("  Résultats : data/models/training_results.csv")
+    logger.info("Phase 4 (train) complete: %d models trained.", len(results))
+    logger.info("  Models: data/models/")
+    logger.info("  Results: data/models/training_results.csv")
 
 
 def run_evaluate(target: str = "nb_installations_pac") -> None:
@@ -350,7 +350,7 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Phase 4 — Évaluation et comparaison")
+    logger.info("  Phase 4 — Evaluation and Comparison")
     logger.info("=" * 60)
 
     # Re-train to get results in memory
@@ -395,9 +395,9 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
     # Report
     evaluator.generate_full_report(results, target)
 
-    logger.info("Phase 4 (evaluate) terminée.")
-    logger.info("  Figures : data/models/figures/")
-    logger.info("  Rapport : data/models/evaluation_report.txt")
+    logger.info("Phase 4 (evaluate) complete.")
+    logger.info("  Figures: data/models/figures/")
+    logger.info("  Report: data/models/evaluation_report.txt")
 
 
 def run_sync_pcloud(force: bool = False) -> None:
@@ -416,14 +416,14 @@ def run_sync_pcloud(force: bool = False) -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Synchronisation pCloud")
+    logger.info("  pCloud Synchronization")
     logger.info("=" * 60)
 
     sync = PCloudSync(config)
     result = sync.sync_and_update(force=force)
 
     logger.info(
-        "Synchronisation terminee : %d fichiers telecharges.",
+        "Synchronization complete: %d files downloaded.",
         result["files_downloaded"],
     )
 
@@ -441,14 +441,14 @@ def run_upload_pcloud(folder_id: int = 0) -> None:
 
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  Upload vers pCloud")
+    logger.info("  Upload to pCloud")
     logger.info("=" * 60)
 
     sync = PCloudSync(config)
     result = sync.upload_collected_data(remote_folder_id=folder_id)
 
     logger.info(
-        "Upload termine : %d fichiers uploades, %d echecs.",
+        "Upload complete: %d files uploaded, %d failures.",
         result["files_uploaded"], result["files_failed"],
     )
 
@@ -473,55 +473,55 @@ def run_update_all(target: str = "nb_installations_pac") -> None:
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
-    logger.info("  MISE A JOUR COMPLETE")
+    logger.info("  FULL UPDATE")
     logger.info("  collect → process → train → upload")
     logger.info("=" * 60)
 
     # 1. Collect from APIs
     logger.info("-" * 40)
-    logger.info("  ETAPE 1/7 — Collecte des donnees")
+    logger.info("  STEP 1/7 — Data Collection")
     logger.info("-" * 40)
     run_collect()
 
     # 2. Database initialization
     logger.info("-" * 40)
-    logger.info("  ETAPE 2/7 — Initialisation BDD")
+    logger.info("  STEP 2/7 — DB Initialization")
     logger.info("-" * 40)
     run_init_db()
 
     # 3. Import
     logger.info("-" * 40)
-    logger.info("  ETAPE 3/7 — Import des CSV")
+    logger.info("  STEP 3/7 — CSV Import")
     logger.info("-" * 40)
     run_import_data()
 
     # 4. Processing (clean + merge + features + outliers)
     logger.info("-" * 40)
-    logger.info("  ETAPE 4/7 — Processing complet")
+    logger.info("  STEP 4/7 — Full Processing")
     logger.info("-" * 40)
     run_process()
 
     # 5. EDA
     logger.info("-" * 40)
-    logger.info("  ETAPE 5/7 — Analyse exploratoire")
+    logger.info("  STEP 5/7 — Exploratory Analysis")
     logger.info("-" * 40)
     run_eda()
 
     # 6. Train + Evaluate
     logger.info("-" * 40)
-    logger.info("  ETAPE 6/7 — Entrainement et evaluation ML")
+    logger.info("  STEP 6/7 — ML Training and Evaluation")
     logger.info("-" * 40)
     run_train(target=target)
     run_evaluate(target=target)
 
     # 7. Upload to pCloud
     logger.info("-" * 40)
-    logger.info("  ETAPE 7/7 — Upload vers pCloud")
+    logger.info("  STEP 7/7 — Upload to pCloud")
     logger.info("-" * 40)
     run_upload_pcloud()
 
     logger.info("=" * 60)
-    logger.info("  MISE A JOUR COMPLETE TERMINEE")
+    logger.info("  FULL UPDATE COMPLETE")
     logger.info("=" * 60)
 
 
@@ -530,7 +530,7 @@ def run_list() -> None:
     # Import to trigger registration
     import src.collectors  # noqa: F401
 
-    print("\nCollecteurs disponibles :")
+    print("\nAvailable collectors:")
     print("-" * 40)
     for name in CollectorRegistry.available():
         collector_class = CollectorRegistry.get(name)
@@ -604,7 +604,7 @@ Examples:
 
     logger.info("=" * 60)
     logger.info("  HVAC Market Analysis — Pipeline")
-    logger.info("  Étape : %s", args.stage)
+    logger.info("  Stage: %s", args.stage)
     logger.info("=" * 60)
 
     # Dispatch to the requested stage
@@ -664,7 +664,7 @@ Examples:
         run_train(target=args.target)
         run_evaluate(target=args.target)
 
-    logger.info("Pipeline terminé.")
+    logger.info("Pipeline complete.")
 
 
 if __name__ == "__main__":
