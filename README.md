@@ -1,4 +1,4 @@
-# HVAC Market Analysis — France metropolitaine
+# HVAC Market Analysis — Metropolitan France
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![Tests](https://img.shields.io/badge/tests-119%20passed-brightgreen)
@@ -8,58 +8,58 @@
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi)
 ![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit)
 
-**Analyse predictive du marche HVAC (chauffage, ventilation, climatisation) sur les 96 departements metropolitains francais par croisement de donnees energetiques, meteorologiques et economiques.**
+**Predictive analysis of the HVAC market (heating, ventilation, air conditioning) across 96 metropolitan French departments by cross-referencing energy, weather, and economic data.**
 
-> Projet portfolio Data Science — Pipeline complet de la collecte a la prediction ML avec API REST, dashboard interactif, deploiement Docker et orchestration Airflow.
+> Data Science portfolio project — Complete pipeline from data collection to ML prediction with REST API, interactive dashboard, Docker deployment, and Airflow orchestration.
 
 ---
 
-## Acces rapide
+## Quick Access
 
-| Ressource | Lien |
+| Resource | Link |
 |-----------|------|
 | **API REST** (Swagger) | `http://localhost:8000/docs` |
 | **Dashboard** | `http://localhost:8501` |
-| **Donnees pCloud** | [Telecharger](https://e.pcloud.link/publink/show?code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy) |
+| **pCloud Data** | [Download](https://e.pcloud.link/publink/show?code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy) |
 | **Documentation** | [`docs/`](docs/) |
 
 ---
 
-## Vue d'ensemble
+## Overview
 
-Ce projet construit un **pipeline data de bout en bout** pour analyser et predire les installations d'equipements HVAC (pompes a chaleur, climatisation) dans les **96 departements** metropolitains :
+This project builds an **end-to-end data pipeline** to analyze and predict HVAC equipment installations (heat pumps, air conditioning) across **96 metropolitan departments**:
 
 ```mermaid
 graph LR
-    A[5 APIs<br/>Open Data] -->|Collecte| B[Data Lake<br/>CSV/SQLite]
+    A[5 APIs<br/>Open Data] -->|Collection| B[Data Lake<br/>CSV/SQLite]
     B -->|ETL| C[Features<br/>~90 variables]
-    C -->|ML| D[Modeles<br/>Ridge, LightGBM]
+    C -->|ML| D[Models<br/>Ridge, LightGBM]
     D -->|Serving| E[API FastAPI<br/>+ Dashboard]
 ```
 
-### Resultats cles
+### Key Results
 
-| Metrique | Valeur |
+| Metric | Value |
 |----------|--------|
-| Couverture geographique | 96 departements (France metro.) |
-| Periode | 2019 - 2025 |
-| Meilleur modele | Ridge (R2 test = 0.989, RMSE = 0.93) |
-| Modeles entraines | Ridge, LightGBM, Ridge exogenes, Prophet, LSTM |
-| Tests unitaires | 119 tests |
-| Dashboard | Streamlit (6 pages interactives) |
-| API | FastAPI (6 endpoints, Swagger auto) |
+| Geographic coverage | 96 departments (Metropolitan France) |
+| Period | 2019 - 2025 |
+| Best model | Ridge (R2 test = 0.989, RMSE = 0.93) |
+| Trained models | Ridge, LightGBM, Ridge exogenous, Prophet, LSTM |
+| Unit tests | 119 tests |
+| Dashboard | Streamlit (6 interactive pages) |
+| API | FastAPI (6 endpoints, auto Swagger) |
 
 ---
 
-## Demarrage rapide
+## Quick Start
 
-### Option 1 — Docker (recommande)
+### Option 1 — Docker (recommended)
 
 ```bash
 git clone https://github.com/PDUCLOS/Projet-HVAC.git
 cd Projet-HVAC
 
-# Lancer avec donnees de demo
+# Launch with demo data
 docker compose run --rm pipeline demo
 docker compose up
 
@@ -78,13 +78,13 @@ chmod +x deploy.sh && ./deploy.sh
 ### Option 3 — Make
 
 ```bash
-make install       # Creer venv + installer dependances
-make demo          # Generer les donnees de demo
-make pipeline      # Executer le pipeline complet
-make dashboard     # Lancer le dashboard Streamlit
+make install       # Create venv + install dependencies
+make demo          # Generate demo data
+make pipeline      # Run the full pipeline
+make dashboard     # Launch the Streamlit dashboard
 ```
 
-### Option 4 — Manuel
+### Option 4 — Manual
 
 ```bash
 python -m venv venv && source venv/bin/activate
@@ -99,53 +99,53 @@ streamlit run app/app.py
 
 ---
 
-## Architecture technique
+## Technical Architecture
 
 ```
 Projet-HVAC/
-├── config/settings.py              # Configuration centralisee (96 departements)
+├── config/settings.py              # Centralized configuration (96 departments)
 ├── src/
-│   ├── pipeline.py                 # Orchestrateur CLI (16 commandes)
-│   ├── collectors/                 # Collecte (architecture plugin)
+│   ├── pipeline.py                 # CLI orchestrator (16 commands)
+│   ├── collectors/                 # Collection (plugin architecture)
 │   │   ├── base.py                 # BaseCollector + Registry
 │   │   ├── weather.py              # Open-Meteo (96 prefectures)
 │   │   ├── insee.py                # INSEE BDM (SDMX)
 │   │   ├── eurostat_col.py         # Eurostat IPI
-│   │   ├── sitadel.py              # Permis de construire
+│   │   ├── sitadel.py              # Building permits
 │   │   ├── dpe.py                  # DPE ADEME
-│   │   └── pcloud_sync.py          # Synchronisation pCloud
-│   ├── processing/                 # Traitement des donnees
-│   │   ├── clean_data.py           # Nettoyage par source
-│   │   ├── merge_datasets.py       # Fusion multi-sources
-│   │   ├── feature_engineering.py  # ~90 features ML
+│   │   └── pcloud_sync.py          # pCloud synchronization
+│   ├── processing/                 # Data processing
+│   │   ├── clean_data.py           # Cleaning by source
+│   │   ├── merge_datasets.py       # Multi-source merging
+│   │   ├── feature_engineering.py  # ~90 ML features
 │   │   └── outlier_detection.py    # IQR + Z-score + Isolation Forest
-│   ├── models/                     # Modelisation
+│   ├── models/                     # Modeling
 │   │   ├── baseline.py             # Ridge, LightGBM, Prophet
 │   │   ├── deep_learning.py        # LSTM (PyTorch)
-│   │   ├── train.py                # Orchestrateur d'entrainement
-│   │   ├── evaluate.py             # Metriques, SHAP, visualisations
-│   │   └── reinforcement_learning_demo.py  # Demo RL (Gymnasium)
+│   │   ├── train.py                # Training orchestrator
+│   │   ├── evaluate.py             # Metrics, SHAP, visualizations
+│   │   └── reinforcement_learning_demo.py  # RL demo (Gymnasium)
 │   ├── analysis/                   # EDA + correlations
-│   └── database/                   # Schema en etoile, SQLAlchemy
-├── api/                            # API REST FastAPI
+│   └── database/                   # Star schema, SQLAlchemy
+├── api/                            # REST API FastAPI
 │   ├── main.py                     # Endpoints (health, predict, metrics)
-│   ├── models.py                   # Schemas Pydantic
-│   └── dependencies.py             # Chargement modeles, config
-├── app/                            # Dashboard Streamlit (6 pages)
-├── airflow/dags/                   # DAG Airflow (orchestration)
-├── kubernetes/                     # Manifests K8s (Deployment, Service, Ingress)
-├── docs/                           # Documentation formation
-│   ├── DATA_GOVERNANCE.md          # Module 1 : Gouvernance, RGPD, AI Act
-│   ├── DATABASE_ARCHITECTURE.md    # Module 3 : Schema etoile, OLAP, NoSQL
-│   └── DATA_PIPELINE.md            # Module 4 : ETL, monitoring, Airbyte
-├── scripts/                        # Scripts utilitaires
+│   ├── models.py                   # Pydantic schemas
+│   └── dependencies.py             # Model loading, config
+├── app/                            # Streamlit dashboard (6 pages)
+├── airflow/dags/                   # Airflow DAG (orchestration)
+├── kubernetes/                     # K8s manifests (Deployment, Service, Ingress)
+├── docs/                           # Training documentation
+│   ├── DATA_GOVERNANCE.md          # Module 1: Governance, GDPR, AI Act
+│   ├── DATABASE_ARCHITECTURE.md    # Module 3: Star schema, OLAP, NoSQL
+│   └── DATA_PIPELINE.md            # Module 4: ETL, monitoring, Airbyte
+├── scripts/                        # Utility scripts
 ├── tests/                          # 119 tests (pytest)
-├── Dockerfile                      # Build multi-stage
+├── Dockerfile                      # Multi-stage build
 ├── docker-compose.yml              # API + Dashboard + PostgreSQL
-├── Makefile                        # Commandes raccourcies
-├── deploy.sh                       # Deploiement one-click
-├── render.yaml                     # Config Render.com
-└── requirements.txt                # Dependances (toutes bornees)
+├── Makefile                        # Shortcut commands
+├── deploy.sh                       # One-click deployment
+├── render.yaml                     # Render.com config
+└── requirements.txt                # Dependencies (all pinned)
 ```
 
 ---
@@ -153,28 +153,28 @@ Projet-HVAC/
 ## API REST (FastAPI)
 
 ```bash
-# Lancer l'API
+# Launch the API
 pip install -r requirements-api.txt
 uvicorn api.main:app --reload
 
-# Documentation Swagger : http://localhost:8000/docs
+# Swagger documentation: http://localhost:8000/docs
 ```
 
-| Endpoint | Methode | Description |
+| Endpoint | Method | Description |
 |----------|---------|-------------|
-| `/health` | GET | Statut de l'API, version, info modele |
-| `/predictions` | GET | Predictions par departement et horizon |
-| `/predict` | POST | Prediction custom avec parametres JSON |
-| `/data/summary` | GET | Resume des donnees disponibles |
-| `/model/metrics` | GET | Metriques ML (RMSE, MAE, R2, MAPE) |
-| `/departments` | GET | Liste des 96 departements |
+| `/health` | GET | API status, version, model info |
+| `/predictions` | GET | Predictions by department and horizon |
+| `/predict` | POST | Custom prediction with JSON parameters |
+| `/data/summary` | GET | Summary of available data |
+| `/model/metrics` | GET | ML metrics (RMSE, MAE, R2, MAPE) |
+| `/departments` | GET | List of the 96 departments |
 
-Exemple :
+Example:
 ```bash
-# Predictions pour le Rhone sur 6 mois
+# Predictions for the Rhone department over 6 months
 curl "http://localhost:8000/predictions?departement=69&horizon=6"
 
-# Metriques du modele
+# Model metrics
 curl "http://localhost:8000/model/metrics"
 ```
 
@@ -188,30 +188,30 @@ streamlit run app/app.py
 
 | Page | Description |
 |------|-------------|
-| **Accueil** | Vue d'ensemble, metriques, architecture du pipeline |
-| **Exploration** | Exploration interactive (stats, distributions, correlations) |
-| **Carte de France** | Carte interactive des 96 departements |
-| **Predictions ML** | Predictions vs realite, residus, feature importance |
-| **Comparaison modeles** | Tableau comparatif, radar chart |
-| **Pipeline** | Etat des donnees, lancement pipeline, pCloud sync |
+| **Home** | Overview, metrics, pipeline architecture |
+| **Exploration** | Interactive exploration (stats, distributions, correlations) |
+| **Map of France** | Interactive map of the 96 departments |
+| **ML Predictions** | Predictions vs actual, residuals, feature importance |
+| **Model Comparison** | Comparison table, radar chart |
+| **Pipeline** | Data status, pipeline launch, pCloud sync |
 
 ---
 
-## Commandes CLI
+## CLI Commands
 
 ```bash
-# Collecte
-python -m src.pipeline collect                        # Toutes les sources
-python -m src.pipeline collect --sources weather,insee # Sources specifiques
+# Collection
+python -m src.pipeline collect                        # All sources
+python -m src.pipeline collect --sources weather,insee # Specific sources
 
-# Traitement
+# Processing
 python -m src.pipeline process                        # clean+merge+features+outliers
 
 # Machine Learning
-python -m src.pipeline train                          # Entrainer
-python -m src.pipeline evaluate                       # Evaluer
+python -m src.pipeline train                          # Train
+python -m src.pipeline evaluate                       # Evaluate
 
-# Tout-en-un
+# All-in-one
 python -m src.pipeline update_all                     # Collect + process + train + upload
 ```
 
@@ -226,48 +226,48 @@ docker build -t hvac-market .
 # Run (API + Dashboard)
 docker compose up
 
-# Avec PostgreSQL
+# With PostgreSQL
 docker compose --profile db up
 
-# Pipeline seul
+# Pipeline only
 docker compose run --rm pipeline
 ```
 
 ---
 
-## Couverture formation Data Science Lead
+## Data Science Lead Training Coverage
 
-Ce projet couvre les 6 modules de la formation certifiante Bac+5 :
+This project covers the 6 modules of the Bac+5 certification:
 
-| Module | Sujet | Implementation |
-|--------|-------|----------------|
-| **M1** | Data Governance | [`docs/DATA_GOVERNANCE.md`](docs/DATA_GOVERNANCE.md) — RGPD, AI Act, lignage, maturite data |
-| **M2** | Deploiement & ML Distribue | `Dockerfile`, `docker-compose.yml`, `kubernetes/`, `render.yaml` |
-| **M3** | Architecture BDD | [`docs/DATABASE_ARCHITECTURE.md`](docs/DATABASE_ARCHITECTURE.md) — Schema etoile, OLAP, MongoDB |
+| Module | Subject | Implementation |
+|--------|---------|----------------|
+| **M1** | Data Governance | [`docs/DATA_GOVERNANCE.md`](docs/DATA_GOVERNANCE.md) — GDPR, AI Act, lineage, data maturity |
+| **M2** | Deployment & Distributed ML | `Dockerfile`, `docker-compose.yml`, `kubernetes/`, `render.yaml` |
+| **M3** | Database Architecture | [`docs/DATABASE_ARCHITECTURE.md`](docs/DATABASE_ARCHITECTURE.md) — Star schema, OLAP, MongoDB |
 | **M4** | Data Pipelines | [`docs/DATA_PIPELINE.md`](docs/DATA_PIPELINE.md) — ETL, Airbyte, monitoring |
-| **M5** | Automation & Workflow | [`airflow/dags/hvac_pipeline_dag.py`](airflow/dags/hvac_pipeline_dag.py) — DAG Airflow |
+| **M5** | Automation & Workflow | [`airflow/dags/hvac_pipeline_dag.py`](airflow/dags/hvac_pipeline_dag.py) — Airflow DAG |
 | **M6** | Reinforcement Learning | [`src/models/reinforcement_learning_demo.py`](src/models/reinforcement_learning_demo.py) — Gymnasium, Q-Learning |
 
 ---
 
-## Sources de donnees
+## Data Sources
 
-| Source | API | Couverture | Donnees |
-|--------|-----|-----------|---------|
-| **DPE ADEME** | data.ademe.fr | 96 departements | Diagnostics energetiques |
-| **Open-Meteo** | archive-api.open-meteo.com | 96 prefectures, 7 ans | Temperature, precipitations, HDD/CDD |
-| **INSEE** | bdm.insee.fr (SDMX) | France, mensuel | Indicateurs economiques |
-| **Eurostat** | package `eurostat` | France, mensuel | IPI HVAC |
-| **SITADEL** | DiDo API (SDES) | 96 departements | Permis de construire |
+| Source | API | Coverage | Data |
+|--------|-----|----------|------|
+| **DPE ADEME** | data.ademe.fr | 96 departments | Energy performance diagnostics |
+| **Open-Meteo** | archive-api.open-meteo.com | 96 prefectures, 7 years | Temperature, precipitation, HDD/CDD |
+| **INSEE** | bdm.insee.fr (SDMX) | France, monthly | Economic indicators |
+| **Eurostat** | package `eurostat` | France, monthly | IPI HVAC |
+| **SITADEL** | DiDo API (SDES) | 96 departments | Building permits |
 
-> Toutes les sources sont **Open Data** — aucune cle API requise.
+> All sources are **Open Data** — no API key required.
 
 ---
 
-## Resultats ML
+## ML Results
 
 ```
-Modele             Val RMSE   Val R2    Test RMSE   Test R2
+Model              Val RMSE   Val R2    Test RMSE   Test R2
 ridge              1.178      0.9798    0.929       0.9885
 lightgbm           1.456      0.9691    1.283       0.9781
 ridge_exogenes     1.535      0.9657    1.339       0.9762
@@ -277,17 +277,17 @@ Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `n
 
 ---
 
-## Stack technique
+## Tech Stack
 
-| Categorie | Technologies |
+| Category | Technologies |
 |-----------|-------------|
-| **Langage** | Python 3.10+ |
+| **Language** | Python 3.10+ |
 | **Data** | pandas, numpy, SQLAlchemy |
 | **ML** | scikit-learn, LightGBM, XGBoost, Prophet, SHAP |
 | **Deep Learning** | PyTorch (LSTM), Gymnasium (RL) |
 | **API** | FastAPI, Pydantic, uvicorn |
 | **Dashboard** | Streamlit, Plotly |
-| **BDD** | SQLite, PostgreSQL, SQL Server |
+| **Database** | SQLite, PostgreSQL, SQL Server |
 | **DevOps** | Docker, Kubernetes, Airflow, Makefile |
 | **Cloud** | pCloud (sync), Render.com (deploy) |
 
@@ -297,19 +297,19 @@ Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `n
 
 ```bash
 python -m pytest tests/ -v                              # 119 tests
-python -m pytest tests/ -v --cov=src --cov-report=term  # Avec couverture
+python -m pytest tests/ -v --cov=src --cov-report=term  # With coverage
 ```
 
 ---
 
-## Auteur
+## Author
 
-**Patrice DUCLOS** — Data Analyst Senior (20 ans d'experience)
+**Patrice DUCLOS** — Senior Data Analyst (20 years of experience)
 
-Projet portfolio pour candidature a la formation **Data Science Lead** (Jedha Bootcamp, certification Bac+5 RNCP Niveau 7).
+Portfolio project for the **Data Science Lead** program (Jedha Bootcamp, Bac+5 RNCP Level 7 certification).
 
 ---
 
-## Licence
+## License
 
-[MIT](LICENSE) — Ce projet est open source.
+[MIT](LICENSE) — This project is open source.
