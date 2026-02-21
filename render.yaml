@@ -1,16 +1,16 @@
 # =============================================================================
-# HVAC Market Analysis — Configuration Render.com
+# HVAC Market Analysis — Render.com Configuration
 # =============================================================================
-# Deploiement automatique depuis GitHub.
-# Render detecte ce fichier et propose la configuration.
+# Automatic deployment from GitHub.
+# Render detects this file and offers the configuration.
 #
-# Services deployes :
-#   - API FastAPI (web service)
-#   - Dashboard Streamlit (web service)
+# Deployed services :
+#   - FastAPI API (web service)
+#   - Streamlit Dashboard (web service)
 # =============================================================================
 
 services:
-  # --- API FastAPI ---
+  # --- FastAPI API ---
   - type: web
     name: hvac-api
     runtime: python
@@ -26,7 +26,7 @@ services:
     healthCheckPath: /health
     plan: free
 
-  # --- Dashboard Streamlit ---
+  # --- Streamlit Dashboard ---
   - type: web
     name: hvac-dashboard
     runtime: python

@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Evaluation et comparaison des modeles — Phase 4.3-4.4.
-======================================================
+Model evaluation and comparison — Phase 4.3-4.4.
+==================================================
 
-Ce module fournit :
+This module provides:
 
-    1. Calcul des metriques standard (RMSE, MAE, MAPE, R2)
-    2. Comparaison entre modeles (tableau recapitulatif)
-    3. Analyse SHAP (feature importance interpretable)
-    4. Visualisations (predictions vs reel, residus, comparaison)
+    1. Standard metric computation (RMSE, MAE, MAPE, R2)
+    2. Model comparison (summary table)
+    3. SHAP analysis (interpretable feature importance)
+    4. Visualizations (predictions vs actual, residuals, comparison)
 
-Les graphiques sont sauvegardes dans data/models/figures/.
+Charts are saved in data/models/figures/.
 
-Usage :
+Usage:
     >>> from src.models.evaluate import ModelEvaluator
     >>> evaluator = ModelEvaluator(config)
     >>> metrics = evaluator.compute_metrics(y_true, y_pred)
     >>> evaluator.plot_comparison(results)
 
-    # Ou via CLI
+    # Or via CLI
     python -m src.pipeline evaluate
 """
 
@@ -45,11 +45,11 @@ from config.settings import ProjectConfig
 
 
 class ModelEvaluator:
-    """Evalue et compare les modeles de la Phase 4.
+    """Evaluate and compare Phase 4 models.
 
     Attributes:
-        config: Configuration du projet.
-        figures_dir: Repertoire de sauvegarde des figures.
+        config: Project configuration.
+        figures_dir: Directory for saving figures.
     """
 
     def __init__(self, config: ProjectConfig) -> None:
@@ -61,16 +61,16 @@ class ModelEvaluator:
     def compute_metrics(
         self, y_true: np.ndarray, y_pred: np.ndarray
     ) -> Dict[str, float]:
-        """Calcule les metriques de regression.
+        """Compute regression metrics.
 
         Args:
-            y_true: Valeurs reelles.
-            y_pred: Valeurs predites.
+            y_true: Actual values.
+            y_pred: Predicted values.
 
         Returns:
-            Dictionnaire avec RMSE, MAE, MAPE, R2.
+            Dictionary with RMSE, MAE, MAPE, R2.
         """
-        # Filtrer les NaN
+        # Filter NaN
         mask = ~(np.isnan(y_true) | np.isnan(y_pred))
         y_true = y_true[mask]
         y_pred = y_pred[mask]
@@ -83,7 +83,7 @@ class ModelEvaluator:
         mae = float(mean_absolute_error(y_true, y_pred))
         r2 = float(r2_score(y_true, y_pred))
 
-        # MAPE : eviter la division par zero
+        # MAPE: avoid division by zero
         mask_nonzero = y_true != 0
         if mask_nonzero.any():
             mape = float(
@@ -99,13 +99,13 @@ class ModelEvaluator:
     def compare_models(
         self, results: Dict[str, Any]
     ) -> pd.DataFrame:
-        """Cree un tableau comparatif des modeles.
+        """Create a comparative table of models.
 
         Args:
-            results: Dictionnaire {nom_modele: resultats} depuis ModelTrainer.
+            results: Dictionary {model_name: results} from ModelTrainer.
 
         Returns:
-            DataFrame avec metriques val et test pour chaque modele.
+            DataFrame with val and test metrics for each model.
         """
         rows = []
         for model_name, res in results.items():
@@ -131,16 +131,16 @@ class ModelEvaluator:
         y_test: np.ndarray,
         target_name: str = "nb_installations_pac",
     ) -> List[Path]:
-        """Trace les predictions vs valeurs reelles pour chaque modele.
+        """Plot predictions vs actual values for each model.
 
         Args:
-            results: Resultats des modeles.
-            y_val: Valeurs reelles validation.
-            y_test: Valeurs reelles test.
-            target_name: Nom de la variable cible.
+            results: Model results.
+            y_val: Validation actual values.
+            y_test: Test actual values.
+            target_name: Target variable name.
 
         Returns:
-            Liste des chemins des figures sauvegardees.
+            List of saved figure paths.
         """
         figures = []
 
@@ -188,13 +188,13 @@ class ModelEvaluator:
     def plot_model_comparison(
         self, results: Dict[str, Any]
     ) -> Path:
-        """Graphique comparatif des metriques par modele.
+        """Comparative chart of metrics per model.
 
         Args:
-            results: Resultats des modeles.
+            results: Model results.
 
         Returns:
-            Chemin de la figure sauvegardee.
+            Path of the saved figure.
         """
         df = self.compare_models(results)
 
@@ -219,7 +219,7 @@ class ModelEvaluator:
             ax.legend()
             ax.grid(True, alpha=0.3, axis="y")
 
-            # Ajouter les valeurs sur les barres
+            # Add values on bars
             for bar in bars_val:
                 h = bar.get_height()
                 if not np.isnan(h):
@@ -244,15 +244,15 @@ class ModelEvaluator:
         y_val: np.ndarray,
         y_test: np.ndarray,
     ) -> Path:
-        """Trace les residus pour chaque modele (diagnostic).
+        """Plot residuals for each model (diagnostics).
 
         Args:
-            results: Resultats des modeles.
-            y_val: Valeurs reelles validation.
-            y_test: Valeurs reelles test.
+            results: Model results.
+            y_val: Validation actual values.
+            y_test: Test actual values.
 
         Returns:
-            Chemin de la figure sauvegardee.
+            Path of the saved figure.
         """
         model_names = [
             name for name, res in results.items()
@@ -279,13 +279,13 @@ class ModelEvaluator:
 
             residuals = y_test[:n] - preds_test[:n]
 
-            # Distribution des residus
+            # Residual distribution
             axes[i, 0].hist(residuals, bins=20, edgecolor="black", alpha=0.7)
             axes[i, 0].axvline(0, color="red", linestyle="--")
             axes[i, 0].set_title(f"{name} — Distribution des residus")
             axes[i, 0].set_xlabel("Residu (reel - predit)")
 
-            # Residus vs predictions
+            # Residuals vs predictions
             axes[i, 1].scatter(preds_test[:n], residuals, alpha=0.6, s=30)
             axes[i, 1].axhline(0, color="red", linestyle="--")
             axes[i, 1].set_title(f"{name} — Residus vs Predictions")
@@ -305,14 +305,14 @@ class ModelEvaluator:
         results: Dict[str, Any],
         top_n: int = 20,
     ) -> List[Path]:
-        """Trace l'importance des features pour les modeles qui le supportent.
+        """Plot feature importance for models that support it.
 
         Args:
-            results: Resultats des modeles.
-            top_n: Nombre de features a afficher.
+            results: Model results.
+            top_n: Number of features to display.
 
         Returns:
-            Liste des chemins des figures.
+            List of figure paths.
         """
         figures = []
 
@@ -344,19 +344,19 @@ class ModelEvaluator:
         model_name: str = "lightgbm",
         max_display: int = 20,
     ) -> Optional[Path]:
-        """Analyse SHAP : impact de chaque feature sur les predictions.
+        """SHAP analysis: impact of each feature on predictions.
 
-        Utilise TreeExplainer pour LightGBM (rapide) ou
-        KernelExplainer pour les autres modeles (lent).
+        Uses TreeExplainer for LightGBM (fast) or
+        KernelExplainer for other models (slow).
 
         Args:
-            model: Modele entraine.
-            X: Features (DataFrame avec noms de colonnes).
-            model_name: Nom du modele (pour le titre et le fichier).
-            max_display: Nombre max de features a afficher.
+            model: Trained model.
+            X: Features (DataFrame with column names).
+            model_name: Model name (for title and filename).
+            max_display: Maximum number of features to display.
 
         Returns:
-            Chemin de la figure SHAP, ou None si SHAP echoue.
+            Path of the SHAP figure, or None if SHAP fails.
         """
         try:
             import shap
@@ -371,7 +371,7 @@ class ModelEvaluator:
                 explainer = shap.TreeExplainer(model)
                 shap_values = explainer.shap_values(X)
             else:
-                # KernelExplainer (lent, utiliser un sous-echantillon)
+                # KernelExplainer (slow, use a subsample)
                 sample = X.sample(min(50, len(X)), random_state=42)
                 explainer = shap.KernelExplainer(model.predict, sample)
                 shap_values = explainer.shap_values(X)
@@ -396,14 +396,14 @@ class ModelEvaluator:
     def generate_full_report(
         self, results: Dict[str, Any], target: str = "nb_installations_pac"
     ) -> Path:
-        """Genere un rapport textuel complet des resultats.
+        """Generate a complete text report of the results.
 
         Args:
-            results: Resultats de tous les modeles.
-            target: Variable cible utilisee.
+            results: Results from all models.
+            target: Target variable used.
 
         Returns:
-            Chemin du fichier rapport.
+            Path of the report file.
         """
         report_lines = [
             "=" * 70,
@@ -413,14 +413,14 @@ class ModelEvaluator:
             "",
         ]
 
-        # Tableau comparatif
+        # Comparative table
         df_comp = self.compare_models(results)
         report_lines.append("COMPARAISON DES MODELES :")
         report_lines.append("-" * 70)
         report_lines.append(df_comp.to_string(index=False))
         report_lines.append("")
 
-        # Details par modele
+        # Details per model
         for model_name, res in results.items():
             report_lines.append(f"\n--- {model_name.upper()} ---")
             for split in ["val", "test"]:
@@ -443,11 +443,11 @@ class ModelEvaluator:
                 for feat, val in importance.head(10).items():
                     report_lines.append(f"    {feat:>40s} : {val:.4f}")
 
-        # Recommandation
+        # Recommendation
         report_lines.append("\n" + "=" * 70)
         report_lines.append("RECOMMANDATION :")
 
-        # Trouver le meilleur modele sur val
+        # Find the best model on val
         best_model = min(
             results.items(),
             key=lambda x: x[1].get("metrics_val", {}).get("rmse", float("inf")),
@@ -458,7 +458,7 @@ class ModelEvaluator:
         )
         report_lines.append("=" * 70)
 
-        # Sauvegarder
+        # Save
         report = "\n".join(report_lines)
         path = Path("data/models") / "evaluation_report.txt"
         path.write_text(report, encoding="utf-8")

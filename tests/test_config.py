@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour la configuration du projet."""
+"""Tests for the project configuration."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ from config.settings import (
 
 
 class TestGeoConfig:
-    """Tests pour GeoConfig."""
+    """Tests for GeoConfig."""
 
     def test_default_france_departments(self):
-        """Le defaut est toute la France metropolitaine (96 departements)."""
+        """The default covers all metropolitan France (96 departments)."""
         geo = GeoConfig()
         assert len(geo.departments) == 96
         assert "69" in geo.departments  # Rhone
@@ -42,32 +42,32 @@ class TestGeoConfig:
         assert "Marseille" in geo.cities
 
     def test_one_city_per_department(self):
-        """Verifie qu'il y a exactement une ville par departement."""
+        """Verify there is exactly one city per department."""
         geo = GeoConfig()
         depts_from_cities = [info["dept"] for info in geo.cities.values()]
         assert len(depts_from_cities) == len(set(depts_from_cities))
         assert set(depts_from_cities) == set(geo.departments)
 
     def test_aura_scope(self):
-        """Perimetre AURA = 12 departements."""
+        """AURA scope = 12 departments (legacy)."""
         depts = _get_departments_for_scope("84")
         assert len(depts) == 12
         assert "69" in depts  # Lyon
         assert "63" in depts  # Clermont-Ferrand
 
     def test_idf_scope(self):
-        """Perimetre Ile-de-France = 8 departements."""
+        """Ile-de-France scope = 8 departments."""
         depts = _get_departments_for_scope("11")
         assert len(depts) == 8
         assert "75" in depts  # Paris
 
     def test_france_departments_reference(self):
-        """La reference FRANCE_DEPARTMENTS couvre bien 96 departements."""
+        """The FRANCE_DEPARTMENTS reference covers all 96 departments."""
         depts = {info["dept"] for info in FRANCE_DEPARTMENTS.values()}
         assert len(depts) == 96
 
     def test_get_cities_for_departments(self):
-        """Filtre les villes pour un sous-ensemble de departements."""
+        """Filter cities for a subset of departments."""
         cities = _get_cities_for_departments(["69", "38"])
         assert len(cities) == 2
         city_names = list(cities.keys())
@@ -77,7 +77,7 @@ class TestGeoConfig:
 
 
 class TestTimeConfig:
-    """Tests pour TimeConfig."""
+    """Tests for TimeConfig."""
 
     def test_default_dates(self):
         time = TimeConfig()
@@ -87,7 +87,7 @@ class TestTimeConfig:
         assert time.frequency == "MS"
 
     def test_split_chronological(self):
-        """Le split temporel doit être chronologique."""
+        """The temporal split must be chronological."""
         time = TimeConfig()
         assert time.start_date < time.train_end
         assert time.train_end < time.val_end
@@ -95,7 +95,7 @@ class TestTimeConfig:
 
 
 class TestDatabaseConfig:
-    """Tests pour DatabaseConfig."""
+    """Tests for DatabaseConfig."""
 
     def test_sqlite_connection_string(self):
         db = DatabaseConfig(db_type="sqlite", db_path="test.db")
@@ -151,7 +151,7 @@ class TestDatabaseConfig:
 
 
 class TestProjectConfig:
-    """Tests pour ProjectConfig."""
+    """Tests for ProjectConfig."""
 
     def test_default_config(self):
         config = ProjectConfig()
@@ -177,7 +177,7 @@ class TestProjectConfig:
 
 
 class TestModelConfig:
-    """Tests pour ModelConfig."""
+    """Tests for ModelConfig."""
 
     def test_default_values(self):
         model = ModelConfig()
@@ -192,4 +192,4 @@ class TestModelConfig:
         assert "max_depth" in params
         assert "num_leaves" in params
         assert "learning_rate" in params
-        assert params["max_depth"] <= 6  # Régularisé
+        assert params["max_depth"] <= 6  # Regularized

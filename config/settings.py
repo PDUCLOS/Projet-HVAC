@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Configuration centralisée du projet HVAC Market Analysis.
-=========================================================
+Centralized configuration for the HVAC Market Analysis project.
+================================================================
 
-Regroupe TOUS les paramètres du projet en un seul endroit.
-Les valeurs sont chargées depuis le fichier .env (via python-dotenv)
-avec des valeurs par défaut sensées.
+Groups ALL project parameters in a single place.
+Values are loaded from the .env file (via python-dotenv)
+with sensible default values.
 
-Architecture :
+Architecture:
     ProjectConfig
-    ├── GeoConfig       — Région, départements, villes de référence
-    ├── TimeConfig      — Périodes de collecte et split train/val/test
+    ├── GeoConfig       — Region, departments, reference cities
+    ├── TimeConfig      — Collection periods and train/val/test split
     ├── NetworkConfig   — Timeouts, retries, rate limiting
-    ├── DatabaseConfig  — Type de BDD et chemin/credentials
-    └── ModelConfig     — Hyperparamètres ML, lags, rolling windows
+    ├── DatabaseConfig  — Database type and path/credentials
+    └── ModelConfig     — ML hyperparameters, lags, rolling windows
 
 Usage:
     >>> from config.settings import config
@@ -22,11 +22,11 @@ Usage:
     >>> print(config.geo.region_code)
     'FR'
 
-Extensibilité:
-    Pour ajouter un nouveau paramètre :
-    1. Ajouter l'attribut dans la dataclass appropriée
-    2. Ajouter la variable d'environnement correspondante dans .env.example
-    3. Mapper la variable dans from_env() si nécessaire
+Extensibility:
+    To add a new parameter:
+    1. Add the attribute in the appropriate dataclass
+    2. Add the corresponding environment variable in .env.example
+    3. Map the variable in from_env() if necessary
 """
 
 from __future__ import annotations
@@ -38,20 +38,20 @@ from typing import Any, Dict, List
 
 from dotenv import load_dotenv
 
-# Charger le .env dès l'import du module
+# Load the .env file as soon as the module is imported
 load_dotenv()
 
 
 # =============================================================================
-# Sous-configurations thématiques
+# Thematic sub-configurations
 # =============================================================================
 
 # =============================================================================
-# Reference geographique : 96 departements de France metropolitaine
+# Geographic reference: 96 departments of metropolitan France
 # =============================================================================
-# Chaque entree = prefecture du departement avec coordonnees GPS
-# Organise par region (13 regions metropolitaines)
-# Usage : GeoConfig filtre automatiquement selon TARGET_DEPARTMENTS
+# Each entry = department prefecture with GPS coordinates
+# Organized by region (13 metropolitan regions)
+# Usage: GeoConfig automatically filters based on TARGET_DEPARTMENTS
 
 FRANCE_DEPARTMENTS: Dict[str, Dict[str, Any]] = {
     # --- Auvergne-Rhone-Alpes (84) ---
@@ -165,7 +165,7 @@ FRANCE_DEPARTMENTS: Dict[str, Dict[str, Any]] = {
     "Avignon":             {"lat": 43.95, "lon": 4.81, "dept": "84", "region": "93"},
 }
 
-# Mapping code region → nom
+# Mapping region code → name
 REGION_NAMES: Dict[str, str] = {
     "84": "Auvergne-Rhone-Alpes",
     "27": "Bourgogne-Franche-Comte",
@@ -185,13 +185,13 @@ REGION_NAMES: Dict[str, str] = {
 
 
 def _get_departments_for_scope(scope: str) -> List[str]:
-    """Retourne la liste des departements selon le perimetre choisi.
+    """Return the list of departments for the chosen scope.
 
     Args:
-        scope: Code region INSEE ("84" pour AURA) ou "FR" pour toute la France.
+        scope: INSEE region code or "FR" for metropolitan France.
 
     Returns:
-        Liste des codes departements.
+        List of department codes.
     """
     if scope.upper() == "FR":
         return sorted({info["dept"] for info in FRANCE_DEPARTMENTS.values()})
@@ -203,13 +203,13 @@ def _get_departments_for_scope(scope: str) -> List[str]:
 
 
 def _get_cities_for_departments(departments: List[str]) -> Dict[str, Dict[str, Any]]:
-    """Retourne les villes de reference pour les departements donnes.
+    """Return the reference cities for the given departments.
 
     Args:
-        departments: Liste des codes departements.
+        departments: List of department codes.
 
     Returns:
-        Dictionnaire {ville: {lat, lon, dept, region}}.
+        Dictionary {city: {lat, lon, dept, region}}.
     """
     dept_set = set(departments)
     return {
@@ -221,17 +221,17 @@ def _get_cities_for_departments(departments: List[str]) -> Dict[str, Dict[str, A
 
 @dataclass(frozen=True)
 class GeoConfig:
-    """Configuration geographique du perimetre d'etude.
+    """Geographic configuration for the study area.
 
-    Supporte 3 modes :
-    - Region specifique : TARGET_REGION=84 (AURA, 12 depts)
-    - France complete   : TARGET_REGION=FR (96 departements)
-    - Liste manuelle    : TARGET_DEPARTMENTS=69,38,42 (override)
+    Supports 3 modes:
+    - Metropolitan France: TARGET_REGION=FR (96 depts)
+    - Full France:         TARGET_REGION=FR (96 departments)
+    - Manual list:         TARGET_DEPARTMENTS=69,38,42 (override)
 
     Attributes:
-        region_code: Code INSEE de la region ("FR" pour toute la France).
-        departments: Liste des codes departements a analyser.
-        cities: Dictionnaire des villes de reference avec coordonnees.
+        region_code: INSEE region code ("FR" for all of France).
+        departments: List of department codes to analyze.
+        cities: Dictionary of reference cities with coordinates.
     """
     region_code: str = "FR"
     departments: List[str] = field(
@@ -244,39 +244,39 @@ class GeoConfig:
 
 @dataclass(frozen=True)
 class TimeConfig:
-    """Configuration temporelle : périodes de collecte et split ML.
+    """Temporal configuration: collection periods and ML split.
 
-    Le split temporel est conçu pour respecter la chronologie :
-    - Train  : période la plus ancienne (apprentissage)
-    - Val    : période intermédiaire (tuning hyperparamètres)
-    - Test   : période la plus récente (évaluation finale)
+    The temporal split is designed to respect chronological order:
+    - Train: oldest period (learning)
+    - Val:   intermediate period (hyperparameter tuning)
+    - Test:  most recent period (final evaluation)
 
     Attributes:
-        start_date: Début de la période de collecte (format YYYY-MM-DD).
-        end_date: Fin de la période de collecte.
-        dpe_start_date: Début des DPE v2 (juillet 2021) — variable cible.
-        train_end: Fin de la période d'entraînement.
-        val_end: Fin de la période de validation.
-        frequency: Fréquence temporelle du dataset ML ('MS' = Month Start).
+        start_date: Start of the collection period (format YYYY-MM-DD).
+        end_date: End of the collection period.
+        dpe_start_date: Start of DPE v2 (July 2021) — target variable.
+        train_end: End of the training period.
+        val_end: End of the validation period.
+        frequency: Temporal frequency of the ML dataset ('MS' = Month Start).
     """
     start_date: str = "2019-01-01"
     end_date: str = "2026-02-28"
-    dpe_start_date: str = "2021-07-01"    # DPE v2 disponible depuis cette date
-    train_end: str = "2024-06-30"          # 36 mois de train
-    val_end: str = "2024-12-31"            # 6 mois de validation
-    frequency: str = "MS"                  # Month Start pour pandas
+    dpe_start_date: str = "2021-07-01"    # DPE v2 available since this date
+    train_end: str = "2024-06-30"          # 36 months of training
+    val_end: str = "2024-12-31"            # 6 months of validation
+    frequency: str = "MS"                  # Month Start for pandas
 
 
 @dataclass(frozen=True)
 class NetworkConfig:
-    """Configuration réseau pour les collecteurs HTTP.
+    """Network configuration for HTTP collectors.
 
     Attributes:
-        request_timeout: Timeout HTTP en secondes par requête.
-        max_retries: Nombre max de tentatives sur erreur réseau/serveur.
-        retry_backoff_factor: Facteur multiplicatif entre les retries
-                              (1.0 → 1s, 2s, 4s de délai entre retries).
-        rate_limit_delay: Pause minimale entre deux appels API (en secondes).
+        request_timeout: HTTP timeout in seconds per request.
+        max_retries: Maximum number of attempts on network/server errors.
+        retry_backoff_factor: Multiplicative factor between retries
+                              (1.0 → 1s, 2s, 4s delay between retries).
+        rate_limit_delay: Minimum pause between two API calls (in seconds).
     """
     request_timeout: int = 30
     max_retries: int = 3
@@ -286,25 +286,25 @@ class NetworkConfig:
 
 @dataclass(frozen=True)
 class DatabaseConfig:
-    """Configuration de la base de données.
+    """Database configuration.
 
-    Trois moteurs supportés, par ordre de complexité :
-      1. SQLite  (défaut) — aucune installation, fichier local
-      2. SQL Server (mssql) — via pyodbc, pour environnement entreprise
-      3. PostgreSQL — pour déploiement cloud/production
+    Three supported engines, in order of complexity:
+      1. SQLite  (default) — no installation required, local file
+      2. SQL Server (mssql) — via pyodbc, for enterprise environments
+      3. PostgreSQL — for cloud/production deployments
 
-    Le basculement se fait uniquement via la variable DB_TYPE dans .env.
+    Switching is done solely via the DB_TYPE variable in .env.
 
     Attributes:
-        db_type: Type de BDD ('sqlite', 'mssql' ou 'postgresql').
-        db_path: Chemin du fichier SQLite (ignoré si autre moteur).
-        db_host: Hôte du serveur (SQL Server ou PostgreSQL).
-        db_port: Port du serveur (1433 pour SQL Server, 5432 pour PostgreSQL).
-        db_name: Nom de la base.
-        db_user: Utilisateur (vide = Windows Authentication pour SQL Server).
-        db_password: Mot de passe (vide = Windows Authentication pour SQL Server).
-        db_driver: Driver ODBC pour SQL Server (ex: 'ODBC Driver 17 for SQL Server').
-        allow_non_local: Autorise l'utilisation de bases non locales.
+        db_type: Database type ('sqlite', 'mssql', or 'postgresql').
+        db_path: SQLite file path (ignored for other engines).
+        db_host: Server host (SQL Server or PostgreSQL).
+        db_port: Server port (1433 for SQL Server, 5432 for PostgreSQL).
+        db_name: Database name.
+        db_user: User (empty = Windows Authentication for SQL Server).
+        db_password: Password (empty = Windows Authentication for SQL Server).
+        db_driver: ODBC driver for SQL Server (e.g., 'ODBC Driver 17 for SQL Server').
+        allow_non_local: Allow usage of non-local databases.
     """
     db_type: str = "sqlite"
     db_path: str = "data/hvac_market.db"
@@ -318,26 +318,26 @@ class DatabaseConfig:
 
     @property
     def connection_string(self) -> str:
-        """Génère la chaîne de connexion SQLAlchemy selon le moteur choisi.
+        """Generate the SQLAlchemy connection string based on the chosen engine.
 
-        Moteurs supportés :
-          - sqlite   → sqlite:///data/hvac_market.db
-          - mssql    → mssql+pyodbc://user:pass@host:port/db?driver=...
-                        Si user est vide → Windows Authentication (Trusted_Connection=yes)
+        Supported engines:
+          - sqlite     → sqlite:///data/hvac_market.db
+          - mssql      → mssql+pyodbc://user:pass@host:port/db?driver=...
+                          If user is empty → Windows Authentication (Trusted_Connection=yes)
           - postgresql → postgresql://user:pass@host:port/db
 
         Returns:
-            URL de connexion au format SQLAlchemy.
+            Connection URL in SQLAlchemy format.
 
         Raises:
-            ValueError: Si une base non locale est utilisée sans autorisation,
-                        ou si le db_type est inconnu.
+            ValueError: If a non-local database is used without authorization,
+                        or if the db_type is unknown.
         """
-        # SQLite : toujours local, pas de restriction
+        # SQLite: always local, no restriction
         if self.db_type == "sqlite":
             return f"sqlite:///{self.db_path}"
 
-        # Pour les bases réseau, vérifier l'autorisation explicite
+        # For network databases, check explicit authorization
         if not self.allow_non_local:
             raise ValueError(
                 f"Base de données '{self.db_type}' non locale désactivée. "
@@ -348,13 +348,13 @@ class DatabaseConfig:
         if self.db_type == "mssql":
             driver_encoded = self.db_driver.replace(" ", "+")
             if self.db_user:
-                # Authentification SQL Server (login/mot de passe)
+                # SQL Server authentication (login/password)
                 return (
                     f"mssql+pyodbc://{self.db_user}:{self.db_password}"
                     f"@{self.db_host}:{self.db_port}/{self.db_name}"
                     f"?driver={driver_encoded}"
                 )
-            # Windows Authentication (pas de login/mdp)
+            # Windows Authentication (no login/password)
             return (
                 f"mssql+pyodbc://@{self.db_host}:{self.db_port}/{self.db_name}"
                 f"?driver={driver_encoded}&Trusted_Connection=yes"
@@ -375,21 +375,21 @@ class DatabaseConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    """Configuration des modèles ML.
+    """ML model configuration.
 
-    NOTES AUDIT :
-    - Les lags sont limités à 6 mois max (lag_12m élimine 33% des données).
-    - La saisonnalité annuelle est capturée par les features calendaires.
-    - Les rolling windows sont plafonnées à 6 mois.
-    - Le Transformer a été retiré (insuffisance de données).
+    AUDIT NOTES:
+    - Lags are limited to 6 months max (lag_12m eliminates 33% of data).
+    - Annual seasonality is captured by calendar features.
+    - Rolling windows are capped at 6 months.
+    - The Transformer was removed (insufficient data).
 
     Attributes:
-        max_lag_months: Lag maximum en mois pour les features retardées.
-        rolling_windows: Tailles des fenêtres glissantes (en mois).
-        hdd_base_temp: Température de base pour les HDD (°C).
-        cdd_base_temp: Température de base pour les CDD (°C).
-        lightgbm_params: Hyperparamètres LightGBM par défaut
-                         (régularisation forte pour petit dataset).
+        max_lag_months: Maximum lag in months for lagged features.
+        rolling_windows: Rolling window sizes (in months).
+        hdd_base_temp: Base temperature for HDD (°C).
+        cdd_base_temp: Base temperature for CDD (°C).
+        lightgbm_params: Default LightGBM hyperparameters
+                         (strong regularization for small dataset).
     """
     max_lag_months: int = 6
     rolling_windows: List[int] = field(default_factory=lambda: [3, 6])
@@ -408,26 +408,26 @@ class ModelConfig:
 
 
 # =============================================================================
-# Configuration principale (agrège toutes les sous-configs)
+# Main configuration (aggregates all sub-configs)
 # =============================================================================
 
 @dataclass(frozen=True)
 class ProjectConfig:
-    """Configuration globale du projet.
+    """Global project configuration.
 
-    Regroupe toutes les sous-configurations thématiques.
-    Peut être instanciée directement ou via la factory `from_env()`.
+    Groups all thematic sub-configurations.
+    Can be instantiated directly or via the `from_env()` factory method.
 
     Attributes:
-        geo: Configuration géographique.
-        time: Configuration temporelle.
-        network: Configuration réseau.
-        database: Configuration BDD.
-        model: Configuration ML.
-        raw_data_dir: Répertoire des données brutes.
-        processed_data_dir: Répertoire des données nettoyées.
-        features_data_dir: Répertoire des features ML.
-        log_level: Niveau de logging global.
+        geo: Geographic configuration.
+        time: Temporal configuration.
+        network: Network configuration.
+        database: Database configuration.
+        model: ML configuration.
+        raw_data_dir: Directory for raw data.
+        processed_data_dir: Directory for cleaned data.
+        features_data_dir: Directory for ML features.
+        log_level: Global logging level.
     """
     geo: GeoConfig = field(default_factory=GeoConfig)
     time: TimeConfig = field(default_factory=TimeConfig)
@@ -441,18 +441,18 @@ class ProjectConfig:
 
     @classmethod
     def from_env(cls) -> ProjectConfig:
-        """Construit la configuration à partir des variables d'environnement.
+        """Build the configuration from environment variables.
 
-        Charge les variables depuis le fichier .env et les mappe
-        sur les sous-configurations. Utilise les valeurs par défaut
-        si une variable est absente.
+        Loads variables from the .env file and maps them
+        to sub-configurations. Uses default values
+        if a variable is absent.
 
         Returns:
-            Instance de ProjectConfig complètement initialisée.
+            Fully initialized ProjectConfig instance.
         """
         region_code = os.getenv("TARGET_REGION", "FR")
-        # Si TARGET_DEPARTMENTS est defini, l'utiliser en priorite
-        # Sinon, deduire les departements depuis TARGET_REGION
+        # If TARGET_DEPARTMENTS is defined, use it with priority
+        # Otherwise, derive departments from TARGET_REGION
         departments_env = os.getenv("TARGET_DEPARTMENTS", "")
         if departments_env:
             departments = departments_env.split(",")
@@ -495,7 +495,7 @@ class ProjectConfig:
 
 
 # =============================================================================
-# Instance globale — importable directement
+# Global instance — directly importable
 # =============================================================================
 # Usage: from config.settings import config
 config = ProjectConfig.from_env()

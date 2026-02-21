@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-HVAC Market Analysis — Dashboard Streamlit.
-============================================
+HVAC Market Analysis — Streamlit Dashboard.
+=============================================
 
-Point d'entree de l'interface web.
-Lancer avec : streamlit run app/app.py
+Entry point for the web interface.
+Run with: streamlit run app/app.py
 """
 
 import sys
 from pathlib import Path
 
-# Ajouter la racine du projet au PYTHONPATH
+# Add the project root to PYTHONPATH
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
 
-# --- Configuration de la page ---
+# --- Page configuration ---
 st.set_page_config(
     page_title="HVAC Market Analysis - France",
     page_icon="🏠",
@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# --- Sidebar : Navigation ---
+# --- Sidebar: Navigation ---
 st.sidebar.title("HVAC Market Analysis")
 st.sidebar.caption("Analyse du marche HVAC en France")
 
@@ -48,7 +48,7 @@ st.sidebar.info(
     "**ML** : LightGBM, XGBoost, Ridge, Prophet, LSTM"
 )
 
-# --- Dispatch des pages ---
+# --- Page dispatch ---
 PAGE_MODULES = {
     "Accueil": "home",
     "Exploration des donnees": "exploration",

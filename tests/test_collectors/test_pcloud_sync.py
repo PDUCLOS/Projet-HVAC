@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le module de synchronisation pCloud."""
+"""Tests for the pCloud synchronization module."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from src.collectors.pcloud_sync import PCloudSync
 
 @pytest.fixture
 def pcloud_sync(test_config: ProjectConfig) -> PCloudSync:
-    """Instance PCloudSync pour les tests."""
+    """PCloudSync instance for tests."""
     return PCloudSync(
         test_config,
         access_token="test_token",
@@ -25,7 +25,7 @@ def pcloud_sync(test_config: ProjectConfig) -> PCloudSync:
 
 @pytest.fixture
 def mock_pcloud_response():
-    """Reponse mock de l'API pCloud showpublink."""
+    """Mock response from the pCloud showpublink API."""
     return {
         "result": 0,
         "metadata": {
@@ -66,25 +66,25 @@ def mock_pcloud_response():
 
 
 # ==================================================================
-# Tests initialisation
+# Initialization tests
 # ==================================================================
 
 class TestInit:
-    """Tests pour l'initialisation."""
+    """Tests for initialization."""
 
     def test_default_public_code(self, test_config):
-        """Le code public par defaut est celui du README."""
+        """Without env var, public_code defaults to empty string (secure)."""
         with patch.dict("os.environ", {}, clear=True):
             sync = PCloudSync(test_config)
-            assert sync.public_code == "kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy"
+            assert sync.public_code == ""
 
     def test_custom_token(self, test_config):
-        """Le token peut etre passe en parametre."""
+        """The token can be passed as a parameter."""
         sync = PCloudSync(test_config, access_token="my_token")
         assert sync.access_token == "my_token"
 
     def test_env_variables(self, test_config):
-        """Les variables d'environnement sont lues."""
+        """Environment variables are read."""
         with patch.dict("os.environ", {
             "PCLOUD_ACCESS_TOKEN": "env_token",
             "PCLOUD_PUBLIC_CODE": "env_code",
@@ -95,14 +95,14 @@ class TestInit:
 
 
 # ==================================================================
-# Tests listing
+# Listing tests
 # ==================================================================
 
 class TestListPublicFolder:
-    """Tests pour le listing des fichiers."""
+    """Tests for file listing."""
 
     def test_parses_response(self, pcloud_sync, mock_pcloud_response):
-        """Parse correctement la reponse API."""
+        """Correctly parses the API response."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_pcloud_response
         mock_resp.raise_for_status = MagicMock()
@@ -116,7 +116,7 @@ class TestListPublicFolder:
         assert "indicateurs_economiques.csv" in names
 
     def test_includes_subfolder_files(self, pcloud_sync, mock_pcloud_response):
-        """Les fichiers dans les sous-dossiers sont aussi listes."""
+        """Files in subfolders are also listed."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_pcloud_response
         mock_resp.raise_for_status = MagicMock()
@@ -128,7 +128,7 @@ class TestListPublicFolder:
         assert "dpe_france_all.csv" in names
 
     def test_api_error(self, pcloud_sync):
-        """Retourne une liste vide sur erreur API."""
+        """Returns an empty list on API error."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"result": 2000, "error": "test error"}
         mock_resp.raise_for_status = MagicMock()
@@ -139,7 +139,7 @@ class TestListPublicFolder:
         assert files == []
 
     def test_network_error(self, pcloud_sync):
-        """Retourne une liste vide sur erreur reseau."""
+        """Returns an empty list on network error."""
         import requests
         with patch.object(
             pcloud_sync.session, "get",
@@ -150,19 +150,19 @@ class TestListPublicFolder:
 
 
 # ==================================================================
-# Tests detection mises a jour
+# Update detection tests
 # ==================================================================
 
 class TestCheckForUpdates:
-    """Tests pour la detection des mises a jour."""
+    """Tests for update detection."""
 
     def test_new_file_detected(self, pcloud_sync, mock_pcloud_response):
-        """Un nouveau fichier est detecte comme mise a jour."""
+        """A new file is detected as an update."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_pcloud_response
         mock_resp.raise_for_status = MagicMock()
 
-        # Etat vide = tout est nouveau
+        # Empty state = everything is new
         pcloud_sync.sync_state = {}
 
         with patch.object(pcloud_sync.session, "get", return_value=mock_resp):
@@ -172,12 +172,12 @@ class TestCheckForUpdates:
         assert any(u["update_reason"] == "nouveau" for u in updates)
 
     def test_modified_file_detected(self, pcloud_sync, mock_pcloud_response):
-        """Un fichier modifie est detecte."""
+        """A modified file is detected."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_pcloud_response
         mock_resp.raise_for_status = MagicMock()
 
-        # Etat avec ancien hash
+        # State with old hash
         pcloud_sync.sync_state = {
             "weather_france.csv": {"hash": 99999, "size": 1024000},
         }
@@ -190,12 +190,12 @@ class TestCheckForUpdates:
         assert weather_updates[0]["update_reason"] == "modifie"
 
     def test_no_update_same_hash(self, pcloud_sync, mock_pcloud_response):
-        """Pas de mise a jour si le hash n'a pas change."""
+        """No update if the hash has not changed."""
         mock_resp = MagicMock()
         mock_resp.json.return_value = mock_pcloud_response
         mock_resp.raise_for_status = MagicMock()
 
-        # Meme hash et taille
+        # Same hash and size
         pcloud_sync.sync_state = {
             "weather_france.csv": {"hash": 12345, "size": 1024000},
             "indicateurs_economiques.csv": {"hash": 67890, "size": 50000},
@@ -204,7 +204,7 @@ class TestCheckForUpdates:
         with patch.object(pcloud_sync.session, "get", return_value=mock_resp):
             updates = pcloud_sync.check_for_updates()
 
-        # Seul dpe_france_all.csv (dans sous-dossier) est nouveau
+        # Only dpe_france_all.csv (in subfolder) is new
         top_level_updates = [
             u for u in updates
             if u["name"] in ("weather_france.csv", "indicateurs_economiques.csv")
@@ -213,26 +213,26 @@ class TestCheckForUpdates:
 
 
 # ==================================================================
-# Tests file mapping
+# File mapping tests
 # ==================================================================
 
 class TestFileMapping:
-    """Tests pour le mapping des fichiers."""
+    """Tests for file mapping."""
 
     def test_weather_path(self, pcloud_sync):
-        """weather_france.csv va dans data/raw/weather/."""
+        """weather_france.csv goes into data/raw/weather/."""
         path = pcloud_sync._get_local_path("weather_france.csv")
         assert path is not None
         assert "weather" in str(path)
 
     def test_dpe_path(self, pcloud_sync):
-        """dpe_france_all.csv va dans data/raw/dpe/."""
+        """dpe_france_all.csv goes into data/raw/dpe/."""
         path = pcloud_sync._get_local_path("dpe_france_all.csv")
         assert path is not None
         assert "dpe" in str(path)
 
     def test_retrocompat_aura_names(self, pcloud_sync):
-        """Les anciens noms AURA sont toujours reconnus."""
+        """Legacy AURA names are still recognized."""
         path = pcloud_sync._get_local_path("weather_aura.csv")
         assert path is not None
         assert "weather" in str(path)
@@ -242,49 +242,49 @@ class TestFileMapping:
         assert "dpe" in str(path)
 
     def test_database_path(self, pcloud_sync):
-        """hvac_market.db va dans data/."""
+        """hvac_market.db goes into data/."""
         path = pcloud_sync._get_local_path("hvac_market.db")
         assert path is not None
         assert path.name == "hvac_market.db"
 
     def test_unknown_csv(self, pcloud_sync):
-        """Les CSV inconnus vont dans data/raw/other/."""
+        """Unknown CSV files go into data/raw/other/."""
         path = pcloud_sync._get_local_path("unknown_file.csv")
         assert path is not None
         assert "other" in str(path)
 
     def test_irrelevant_file(self, pcloud_sync):
-        """Les fichiers non-CSV/DB retournent None."""
+        """Non-CSV/DB files return None."""
         assert pcloud_sync._is_relevant_file("readme.txt") is False
 
 
 # ==================================================================
-# Tests sync state
+# Sync state tests
 # ==================================================================
 
 class TestSyncState:
-    """Tests pour la persistence de l'etat de synchronisation."""
+    """Tests for synchronization state persistence."""
 
     def test_save_and_load(self, pcloud_sync, tmp_path):
-        """L'etat est correctement sauvegarde et recharge."""
+        """The state is correctly saved and reloaded."""
         pcloud_sync.sync_state_file = tmp_path / ".sync_state.json"
         pcloud_sync.sync_state = {
             "weather_france.csv": {"hash": 12345, "last_sync": "2026-02-17"},
         }
         pcloud_sync._save_sync_state()
 
-        # Recharger
+        # Reload
         loaded = pcloud_sync._load_sync_state()
         assert loaded["weather_france.csv"]["hash"] == 12345
 
     def test_load_missing_file(self, pcloud_sync, tmp_path):
-        """Retourne un dict vide si le fichier n'existe pas."""
+        """Returns an empty dict if the file does not exist."""
         pcloud_sync.sync_state_file = tmp_path / "nonexistent.json"
         state = pcloud_sync._load_sync_state()
         assert state == {}
 
     def test_get_sync_status(self, pcloud_sync, tmp_path):
-        """get_sync_status retourne un resume correct."""
+        """get_sync_status returns a correct summary."""
         pcloud_sync.sync_state_file = tmp_path / ".sync_state.json"
         pcloud_sync.sync_state = {
             "a.csv": {"last_sync": "2026-01-01"},
@@ -296,14 +296,14 @@ class TestSyncState:
 
 
 # ==================================================================
-# Tests sync_and_update
+# sync_and_update tests
 # ==================================================================
 
 class TestSyncAndUpdate:
-    """Tests pour la synchronisation complete."""
+    """Tests for full synchronization."""
 
     def test_no_updates(self, pcloud_sync, tmp_path):
-        """Retourne le bon resultat quand rien a synchroniser."""
+        """Returns the correct result when nothing to synchronize."""
         pcloud_sync.sync_state_file = tmp_path / ".sync.json"
 
         with patch.object(pcloud_sync, "check_for_updates", return_value=[]):
@@ -314,7 +314,7 @@ class TestSyncAndUpdate:
         assert result["pipeline_triggered"] is False
 
     def test_download_success(self, pcloud_sync, tmp_path):
-        """Telecharge et met a jour l'etat."""
+        """Downloads and updates the state."""
         pcloud_sync.sync_state_file = tmp_path / ".sync.json"
 
         updates = [{
@@ -335,26 +335,26 @@ class TestSyncAndUpdate:
 
 
 # ==================================================================
-# Tests upload
+# Upload tests
 # ==================================================================
 
 class TestUpload:
-    """Tests pour l'upload vers pCloud."""
+    """Tests for uploading to pCloud."""
 
     def test_upload_requires_token(self, test_config, tmp_path):
-        """L'upload echoue sans access_token."""
+        """Upload fails without access_token."""
         sync = PCloudSync(test_config, access_token="", public_code="test")
         result = sync.upload_file(tmp_path / "test.csv")
         assert result is False
 
     def test_upload_file_missing(self, pcloud_sync, tmp_path):
-        """L'upload echoue si le fichier n'existe pas."""
+        """Upload fails if the file does not exist."""
         result = pcloud_sync.upload_file(tmp_path / "nonexistent.csv")
         assert result is False
 
     def test_upload_success(self, pcloud_sync, tmp_path):
-        """L'upload reussit avec un mock API."""
-        # Creer un fichier test
+        """Upload succeeds with a mock API."""
+        # Create a test file
         test_file = tmp_path / "test.csv"
         test_file.write_text("a,b\n1,2\n")
 
@@ -371,8 +371,8 @@ class TestUpload:
         assert result is True
 
     def test_upload_collected_data(self, pcloud_sync, tmp_path):
-        """upload_collected_data parcourt les fichiers et uploade."""
-        # Creer des fichiers de test
+        """upload_collected_data iterates over files and uploads them."""
+        # Create test files
         weather_dir = tmp_path / "raw" / "weather"
         weather_dir.mkdir(parents=True)
         (weather_dir / "weather_france.csv").write_text("a,b\n1,2\n")
@@ -384,5 +384,5 @@ class TestUpload:
         with patch.object(pcloud_sync, "upload_file", return_value=True) as mock_upload:
             result = pcloud_sync.upload_collected_data()
 
-        # Au moins 1 fichier uploade (weather_france.csv existe)
+        # At least 1 file uploaded (weather_france.csv exists)
         assert result["files_uploaded"] >= 1

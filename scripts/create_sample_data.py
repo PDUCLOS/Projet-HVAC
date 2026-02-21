@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-Cree un dataset d'exemple leger dans data/sample/.
-====================================================
+Create a lightweight sample dataset in data/sample/.
+======================================================
 
-Extrait les 100 premieres lignes de chaque fichier de donnees brutes
-pour permettre a un utilisateur de tester le projet sans telecharger
-toutes les donnees.
+Extracts the first 100 lines from each raw data file
+to allow a user to test the project without downloading
+all the data.
 
 Usage:
     python scripts/create_sample_data.py
@@ -30,7 +30,7 @@ SAMPLE_ROWS = 200
 
 
 def main():
-    """Point d'entree."""
+    """Entry point."""
     print("Creation des donnees d'exemple dans data/sample/")
     print("=" * 50)
 
@@ -44,7 +44,7 @@ def main():
 
         dst.parent.mkdir(parents=True, exist_ok=True)
 
-        # Lire les N premieres lignes
+        # Read the first N lines
         with open(src, "r", encoding="utf-8") as f_in:
             lines = []
             for i, line in enumerate(f_in):
@@ -58,7 +58,7 @@ def main():
         size_kb = dst.stat().st_size / 1024
         print(f"  {source:<10} : {len(lines)-1} lignes ({size_kb:.1f} Ko)")
 
-    # Ajouter un README dans sample/
+    # Add a README in sample/
     readme = SAMPLE_DIR / "README.md"
     readme.write_text(
         "# Donnees d'exemple\n\n"

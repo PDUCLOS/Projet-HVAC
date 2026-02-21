@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
 # =============================================================================
-# HVAC Market Analysis — Script de deploiement local
+# HVAC Market Analysis — Local Deployment Script
 # =============================================================================
-# Deploie le projet complet en une seule commande :
-#   1. Environnement virtuel Python
-#   2. Installation des dependances
-#   3. Configuration .env
-#   4. Generation des donnees de demonstration
-#   5. Pipeline complet (clean → merge → features → outliers → train → evaluate)
-#   6. Lancement du dashboard Streamlit
+# Deploys the complete project in a single command :
+#   1. Python virtual environment
+#   2. Dependency installation
+#   3. .env configuration
+#   4. Demo data generation
+#   5. Full pipeline (clean -> merge -> features -> outliers -> train -> evaluate)
+#   6. Launch the Streamlit dashboard
 #
 # Usage :
 #   chmod +x deploy.sh
-#   ./deploy.sh                 # Deploiement complet + lancement dashboard
-#   ./deploy.sh --no-dashboard  # Deploiement sans lancer le dashboard
-#   ./deploy.sh --api           # Utiliser les APIs reelles au lieu du demo
+#   ./deploy.sh                 # Full deployment + launch dashboard
+#   ./deploy.sh --no-dashboard  # Deployment without launching the dashboard
+#   ./deploy.sh --api           # Use real APIs instead of demo data
 # =============================================================================
 
-set -e  # Arreter en cas d'erreur
+set -e  # Stop on error
 
-# --- Couleurs ---
+# --- Colors ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -38,15 +38,15 @@ for arg in "$@"; do
             echo "Usage: ./deploy.sh [OPTIONS]"
             echo ""
             echo "Options:"
-            echo "  --no-dashboard  Ne pas lancer le dashboard a la fin"
-            echo "  --api           Utiliser les APIs reelles (necessite internet)"
-            echo "  --help, -h      Afficher cette aide"
+            echo "  --no-dashboard  Do not launch the dashboard at the end"
+            echo "  --api           Use real APIs (requires internet access)"
+            echo "  --help, -h      Show this help"
             exit 0
             ;;
     esac
 done
 
-# --- Fonctions ---
+# --- Functions ---
 print_header() {
     echo ""
     echo -e "${BLUE}=============================================${NC}"
@@ -63,22 +63,22 @@ print_warn() {
 }
 
 print_error() {
-    echo -e "${RED}  [ERREUR]${NC} $1"
+    echo -e "${RED}  [ERROR]${NC} $1"
 }
 
-# --- Verifications ---
-print_header "HVAC Market Analysis — Deploiement local"
+# --- Checks ---
+print_header "HVAC Market Analysis — Local Deployment"
 
 echo ""
-echo "  Verification des prerequis..."
+echo "  Checking prerequisites..."
 
 # Python 3.10+
 if ! command -v python3 &> /dev/null && ! command -v python &> /dev/null; then
-    print_error "Python non trouve. Installez Python 3.10+"
+    print_error "Python not found. Please install Python 3.10+"
     exit 1
 fi
 
-# Determiner la commande Python
+# Determine the Python command
 if command -v python3 &> /dev/null; then
     PYTHON=python3
 else
@@ -90,124 +90,124 @@ PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d'.' -f1)
 PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d'.' -f2)
 
 if [ "$PYTHON_MAJOR" -lt 3 ] || ([ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 10 ]); then
-    print_error "Python $PYTHON_VERSION detecte. Python 3.10+ requis."
+    print_error "Python $PYTHON_VERSION detected. Python 3.10+ required."
     exit 1
 fi
 print_step "Python $PYTHON_VERSION"
 
-# --- Etape 1 : Environnement virtuel ---
-print_header "Etape 1/6 — Environnement virtuel"
+# --- Step 1 : Virtual environment ---
+print_header "Step 1/6 — Virtual environment"
 
 if [ -d "venv" ]; then
-    print_warn "Environnement venv/ existe deja, reutilisation."
+    print_warn "venv/ environment already exists, reusing it."
 else
     $PYTHON -m venv venv
-    print_step "Environnement virtuel cree (venv/)"
+    print_step "Virtual environment created (venv/)"
 fi
 
-# Activer le venv
+# Activate the venv
 if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 elif [ -f "venv/Scripts/activate" ]; then
     source venv/Scripts/activate
 else
-    print_error "Impossible d'activer l'environnement virtuel"
+    print_error "Unable to activate the virtual environment"
     exit 1
 fi
-print_step "Environnement virtuel active"
+print_step "Virtual environment activated"
 
-# --- Etape 2 : Dependances ---
-print_header "Etape 2/6 — Installation des dependances"
+# --- Step 2 : Dependencies ---
+print_header "Step 2/6 — Installing dependencies"
 
 pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
-print_step "Dependances installees ($(pip list 2>/dev/null | wc -l) packages)"
+print_step "Dependencies installed ($(pip list 2>/dev/null | wc -l) packages)"
 
-# --- Etape 3 : Configuration ---
-print_header "Etape 3/6 — Configuration"
+# --- Step 3 : Configuration ---
+print_header "Step 3/6 — Configuration"
 
 if [ -f ".env" ]; then
-    print_warn ".env existe deja, conservation du fichier existant."
+    print_warn ".env already exists, keeping the existing file."
 else
     cp .env.example .env
-    print_step ".env cree depuis .env.example"
+    print_step ".env created from .env.example"
 fi
 
-# Creer les repertoires de donnees
+# Create data directories
 mkdir -p data/raw/weather data/raw/insee data/raw/eurostat data/raw/sitadel data/raw/dpe
 mkdir -p data/processed/weather data/processed/dpe data/processed/insee data/processed/eurostat
 mkdir -p data/features data/models/figures data/analysis/figures
-print_step "Repertoires de donnees crees"
+print_step "Data directories created"
 
-# --- Etape 4 : Donnees ---
-print_header "Etape 4/6 — Generation des donnees"
+# --- Step 4 : Data ---
+print_header "Step 4/6 — Data generation"
 
 if [ "$USE_API" = true ]; then
-    echo "  Mode API : collecte depuis les sources reelles..."
+    echo "  API mode : collecting from real sources..."
     python -m src.pipeline collect
-    print_step "Donnees collectees depuis les APIs"
+    print_step "Data collected from APIs"
 else
-    # Verifier si les donnees existent deja
+    # Check if data already exists
     if [ -f "data/raw/weather/weather_france.csv" ] && [ -f "data/raw/dpe/dpe_france_all.csv" ]; then
-        print_warn "Donnees deja presentes dans data/raw/, pas de regeneration."
+        print_warn "Data already present in data/raw/, skipping regeneration."
     else
-        echo "  Mode demo : generation de donnees synthetiques..."
+        echo "  Demo mode : generating synthetic data..."
         python scripts/generate_demo_data.py
-        print_step "Donnees de demonstration generees (96 departements x 2019-2025)"
+        print_step "Demo data generated (96 departments x 2019-2025)"
     fi
 fi
 
-# --- Etape 5 : Pipeline ---
-print_header "Etape 5/6 — Execution du pipeline"
+# --- Step 5 : Pipeline ---
+print_header "Step 5/6 — Running the pipeline"
 
-echo "  Nettoyage + fusion + features + outliers..."
+echo "  Cleaning + merging + features + outliers..."
 python -m src.pipeline process
-print_step "Traitement des donnees termine"
+print_step "Data processing completed"
 
-echo "  Entrainement des modeles ML..."
+echo "  Training ML models..."
 python -m src.pipeline train
-print_step "Modeles entraines"
+print_step "Models trained"
 
-echo "  Evaluation et comparaison..."
+echo "  Evaluating and comparing..."
 python -m src.pipeline evaluate
-print_step "Evaluation terminee"
+print_step "Evaluation completed"
 
-# --- Etape 6 : Tests ---
-print_header "Etape 6/6 — Verification"
+# --- Step 6 : Tests ---
+print_header "Step 6/6 — Verification"
 
-echo "  Lancement des tests unitaires..."
+echo "  Running unit tests..."
 if python -m pytest tests/ -q --tb=no 2>/dev/null; then
     TEST_COUNT=$(python -m pytest tests/ --co -q 2>/dev/null | tail -1)
-    print_step "Tests passes : $TEST_COUNT"
+    print_step "Tests passed : $TEST_COUNT"
 else
-    print_warn "Certains tests ont echoue (non bloquant)"
+    print_warn "Some tests failed (non-blocking)"
 fi
 
-# --- Resume ---
-print_header "Deploiement termine !"
+# --- Summary ---
+print_header "Deployment completed !"
 
 echo ""
-echo "  Fichiers generes :"
-echo "    - data/raw/          Donnees brutes (5 sources)"
-echo "    - data/processed/    Donnees nettoyees"
-echo "    - data/features/     Dataset ML avec features"
-echo "    - data/models/       Modeles entraines + evaluation"
+echo "  Generated files :"
+echo "    - data/raw/          Raw data (5 sources)"
+echo "    - data/processed/    Cleaned data"
+echo "    - data/features/     ML dataset with features"
+echo "    - data/models/       Trained models + evaluation"
 echo ""
-echo "  Commandes utiles :"
-echo "    make dashboard       Lancer le dashboard Streamlit"
-echo "    make test            Lancer les tests"
-echo "    make pipeline        Re-executer le pipeline"
-echo "    make update          Mise a jour complete (API + train)"
+echo "  Useful commands :"
+echo "    make dashboard       Launch the Streamlit dashboard"
+echo "    make test            Run the tests"
+echo "    make pipeline        Re-run the pipeline"
+echo "    make update          Full update (API + train)"
 echo ""
 
-# --- Lancement du dashboard ---
+# --- Launch the dashboard ---
 if [ "$LAUNCH_DASHBOARD" = true ]; then
-    echo -e "${GREEN}  Lancement du dashboard Streamlit...${NC}"
-    echo -e "${GREEN}  Ouvrir http://localhost:8501 dans le navigateur${NC}"
+    echo -e "${GREEN}  Launching the Streamlit dashboard...${NC}"
+    echo -e "${GREEN}  Open http://localhost:8501 in your browser${NC}"
     echo ""
     streamlit run app/app.py
 else
-    echo "  Pour lancer le dashboard :"
+    echo "  To launch the dashboard :"
     echo "    source venv/bin/activate"
     echo "    streamlit run app/app.py"
     echo ""

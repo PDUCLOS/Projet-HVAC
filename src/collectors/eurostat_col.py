@@ -1,32 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-Collecteur Eurostat — Production industrielle HVAC.
-====================================================
+Eurostat collector — HVAC industrial production.
+=================================================
 
-Récupère les indices de production industrielle mensuels depuis Eurostat
-via le package Python dédié `eurostat`.
+Retrieves monthly industrial production indices from Eurostat
+via the dedicated Python package `eurostat`.
 
-Source : https://ec.europa.eu/eurostat
-Package : pip install eurostat (https://pypi.org/project/eurostat/)
-Authentification : Aucune
+Source: https://ec.europa.eu/eurostat
+Package: pip install eurostat (https://pypi.org/project/eurostat/)
+Authentication: None
 
-Datasets utilisés :
-    - sts_inpr_m : Short-term statistics, Industrial Production, Monthly
-      Filtres : geo=FR, nace_r2=C28 (machines) et C2825 (équipements clim),
-      unit=I21 (indice base 2021), s_adj=SCA (CVS-CJO)
+Datasets used:
+    - sts_inpr_m: Short-term statistics, Industrial Production, Monthly
+      Filters: geo=FR, nace_r2=C28 (machinery) and C2825 (HVAC equipment),
+      unit=I21 (index base 2021), s_adj=SCA (seasonally and calendar adjusted)
 
-Codes NACE pertinents pour le HVAC :
-    - C28    : Fabrication de machines et équipements n.c.a.
-    - C2825  : Fabrication d'équipements aérauliques et frigorifiques
-               (inclut climatisation, PAC, ventilation)
+NACE codes relevant to HVAC:
+    - C28   : Manufacture of machinery and equipment n.e.c.
+    - C2825 : Manufacture of non-domestic cooling and ventilation equipment
+              (includes air conditioning, heat pumps, ventilation)
 
-NOTE : Le téléchargement du dataset complet peut prendre 30-60 secondes
-       car Eurostat retourne toutes les combinaisons (pays, secteurs, etc.)
-       avant filtrage local.
+NOTE: Downloading the full dataset can take 30-60 seconds
+      because Eurostat returns all combinations (countries, sectors, etc.)
+      before local filtering.
 
-Extensibilité :
-    Pour ajouter un nouveau code NACE ou un nouveau pays,
-    modifier les constantes NACE_CODES et GEO_FILTER ci-dessous.
+Extensibility:
+    To add a new NACE code or a new country,
+    modify the NACE_CODES and GEO_FILTER constants below.
 """
 
 from __future__ import annotations
@@ -38,34 +38,34 @@ import pandas as pd
 from src.collectors.base import BaseCollector
 
 # =============================================================================
-# Configuration Eurostat
+# Eurostat configuration
 # =============================================================================
 
-# Codes NACE des secteurs industriels liés au HVAC
+# NACE codes for HVAC-related industrial sectors
 NACE_CODES: List[str] = [
-    "C28",    # Fabrication de machines et équipements (agrégat parent)
-    "C2825",  # Fabrication d'équipements de conditionnement d'air
+    "C28",    # Manufacture of machinery and equipment (parent aggregate)
+    "C2825",  # Manufacture of air conditioning equipment
 ]
 
-# Filtres géographiques et statistiques
-GEO_FILTER = "FR"              # France uniquement
-UNIT_FILTER = "I21"            # Indice base 2021
-SEASONAL_ADJ_FILTER = "SCA"    # Corrigé des variations saisonnières et jours ouvrés
+# Geographic and statistical filters
+GEO_FILTER = "FR"              # France only
+UNIT_FILTER = "I21"            # Index base 2021
+SEASONAL_ADJ_FILTER = "SCA"    # Seasonally and calendar adjusted
 
 
 class EurostatCollector(BaseCollector):
-    """Collecteur de l'indice de production industrielle HVAC (Eurostat).
+    """Collector for the HVAC industrial production index (Eurostat).
 
-    Utilise le package Python `eurostat` pour télécharger le dataset
-    sts_inpr_m, puis filtre localement sur la France et les codes NACE
-    liés au HVAC.
+    Uses the Python `eurostat` package to download the sts_inpr_m
+    dataset, then filters locally on France and HVAC-related
+    NACE codes.
 
-    Le résultat est un DataFrame au format long (melted) avec :
-    - period : mois au format YYYY-MM
-    - nace_r2 : code NACE du secteur
-    - ipi_value : valeur de l'indice de production
+    The result is a DataFrame in long (melted) format with:
+    - period: month in YYYY-MM format
+    - nace_r2: sector NACE code
+    - ipi_value: production index value
 
-    Auto-enregistré comme 'eurostat' dans le CollectorRegistry.
+    Auto-registered as 'eurostat' in the CollectorRegistry.
     """
 
     source_name: ClassVar[str] = "eurostat"
@@ -73,17 +73,17 @@ class EurostatCollector(BaseCollector):
     output_filename: ClassVar[str] = "ipi_hvac_france.csv"
 
     def collect(self) -> pd.DataFrame:
-        """Télécharge et filtre l'IPI HVAC France depuis Eurostat.
+        """Download and filter the France HVAC IPI from Eurostat.
 
-        Étapes :
-        1. Télécharger le dataset complet sts_inpr_m via le package eurostat
-        2. Filtrer sur la France (geo=FR)
-        3. Filtrer sur les codes NACE HVAC (C28, C2825)
-        4. Filtrer sur l'unité (I21) et l'ajustement saisonnier (SCA)
-        5. Pivoter en format long (une ligne par mois × code NACE)
+        Steps:
+        1. Download the full sts_inpr_m dataset via the eurostat package
+        2. Filter on France (geo=FR)
+        3. Filter on HVAC NACE codes (C28, C2825)
+        4. Filter on unit (I21) and seasonal adjustment (SCA)
+        5. Pivot to long format (one row per month x NACE code)
 
         Returns:
-            DataFrame avec colonnes : period, nace_r2, ipi_value.
+            DataFrame with columns: period, nace_r2, ipi_value.
         """
         try:
             import eurostat as estat
@@ -99,7 +99,7 @@ class EurostatCollector(BaseCollector):
         )
 
         try:
-            # Télécharger le dataset complet (toutes les dimensions)
+            # Download the full dataset (all dimensions)
             df = estat.get_data_df("sts_inpr_m", flags=False)
             self.logger.info(
                 "Dataset brut téléchargé : %d lignes × %d colonnes",
@@ -110,8 +110,8 @@ class EurostatCollector(BaseCollector):
                 f"Échec du téléchargement Eurostat : {exc}"
             ) from exc
 
-        # Identifier la colonne géographique
-        # Le package eurostat peut nommer la colonne 'geo\\TIME_PERIOD' ou 'geo'
+        # Identify the geographic column
+        # The eurostat package may name the column 'geo\\TIME_PERIOD' or 'geo'
         geo_col = None
         for candidate in ["geo\\TIME_PERIOD", "geo\\time", "geo"]:
             if candidate in df.columns:
@@ -124,7 +124,7 @@ class EurostatCollector(BaseCollector):
                 f"Colonnes disponibles : {list(df.columns[:10])}"
             )
 
-        # Filtrer sur la France + secteurs HVAC + unité + ajustement
+        # Filter on France + HVAC sectors + unit + adjustment
         self.logger.info("Filtrage : geo=%s, NACE=%s, unit=%s, s_adj=%s",
                          GEO_FILTER, NACE_CODES, UNIT_FILTER, SEASONAL_ADJ_FILTER)
 
@@ -133,7 +133,7 @@ class EurostatCollector(BaseCollector):
             & (df["nace_r2"].isin(NACE_CODES))
         )
 
-        # Appliquer les filtres optionnels s'ils existent
+        # Apply optional filters if they exist
         if "s_adj" in df.columns:
             mask &= df["s_adj"] == SEASONAL_ADJ_FILTER
         if "unit" in df.columns:
@@ -153,11 +153,11 @@ class EurostatCollector(BaseCollector):
             )
             return pd.DataFrame()
 
-        # Pivoter en format long (melt)
-        # Les colonnes temporelles sont au format 'YYYY-MM' (ex: '2024-01')
+        # Pivot to long format (melt)
+        # Time columns are in 'YYYY-MM' format (e.g., '2024-01')
         time_cols = [
             c for c in df_filtered.columns
-            if c[:2] == "20" or c[:2] == "19"  # Colonnes commençant par 20xx ou 19xx
+            if c[:2] == "20" or c[:2] == "19"  # Columns starting with 20xx or 19xx
         ]
 
         if not time_cols:
@@ -166,7 +166,7 @@ class EurostatCollector(BaseCollector):
                 f"Colonnes : {list(df_filtered.columns)}"
             )
 
-        # Melt : transformer les colonnes temporelles en lignes
+        # Melt: transform time columns into rows
         df_melted = df_filtered.melt(
             id_vars=["nace_r2"],
             value_vars=time_cols,
@@ -174,10 +174,10 @@ class EurostatCollector(BaseCollector):
             value_name="ipi_value",
         )
 
-        # Nettoyer les valeurs manquantes (NaN = pas de données pour ce mois)
+        # Clean missing values (NaN = no data for this month)
         df_melted = df_melted.dropna(subset=["ipi_value"])
 
-        # Filtrer sur la période configurée
+        # Filter on the configured time period
         start_period = self.config.start_date[:7]  # "2019-01"
         end_period = self.config.end_date[:7]       # "2025-12"
         df_melted = df_melted[
@@ -185,7 +185,7 @@ class EurostatCollector(BaseCollector):
             & (df_melted["period"] <= end_period)
         ].copy()
 
-        # Trier chronologiquement
+        # Sort chronologically
         df_melted = df_melted.sort_values(
             ["nace_r2", "period"]
         ).reset_index(drop=True)
@@ -202,24 +202,24 @@ class EurostatCollector(BaseCollector):
         return df_melted
 
     def validate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Valide la structure et la qualité des données Eurostat.
+        """Validate the structure and quality of Eurostat data.
 
-        Vérifications :
-        1. Colonnes obligatoires présentes
-        2. Au moins un code NACE collecté
-        3. Valeurs IPI dans des plages réalistes (0-200)
-        4. Continuité temporelle (pas de trous majeurs)
+        Checks:
+        1. Required columns present
+        2. At least one NACE code collected
+        3. IPI values within realistic ranges (0-200)
+        4. Temporal continuity (no major gaps)
 
         Args:
-            df: DataFrame brut issu de collect().
+            df: Raw DataFrame from collect().
 
         Returns:
-            DataFrame validé.
+            Validated DataFrame.
 
         Raises:
-            ValueError: Si les colonnes obligatoires sont manquantes.
+            ValueError: If required columns are missing.
         """
-        # 1. Colonnes obligatoires
+        # 1. Required columns
         required = {"period", "nace_r2", "ipi_value"}
         missing = required - set(df.columns)
         if missing:
@@ -227,11 +227,11 @@ class EurostatCollector(BaseCollector):
                 f"Colonnes manquantes dans les données Eurostat : {missing}"
             )
 
-        # 2. Codes NACE présents
+        # 2. NACE codes present
         nace_present = df["nace_r2"].unique().tolist()
         self.logger.info("Codes NACE collectés : %s", nace_present)
 
-        # 3. Plages de valeurs
+        # 3. Value ranges
         ipi_min = df["ipi_value"].min()
         ipi_max = df["ipi_value"].max()
         if ipi_min < 0 or ipi_max > 300:
@@ -240,7 +240,7 @@ class EurostatCollector(BaseCollector):
                 ipi_min, ipi_max,
             )
 
-        # 4. Log résumé
+        # 4. Log summary
         for nace in nace_present:
             subset = df[df["nace_r2"] == nace]
             self.logger.info(

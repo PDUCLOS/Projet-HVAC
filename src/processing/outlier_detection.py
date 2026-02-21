@@ -1,28 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Detection et gestion des outliers — Phase 2.2.
-================================================
+Outlier detection and handling — Phase 2.2.
+============================================
 
-Ce module fournit une detection multi-methode des valeurs aberrantes,
-adaptee au petit dataset HVAC (~96-288 observations).
+This module provides multi-method outlier detection,
+adapted to the small HVAC dataset (~96-288 observations).
 
-Methodes implementees :
-    1. IQR (Tukey) — Robuste, non-parametrique. Seuil = 1.5 * IQR
-    2. Z-score modifie — Utilise la mediane/MAD au lieu de mean/std
-       (robuste aux outliers existants)
-    3. Isolation Forest — Methode ML non-supervisee, detecte les
-       anomalies multivariees
+Implemented methods:
+    1. IQR (Tukey) — Robust, non-parametric. Threshold = 1.5 * IQR
+    2. Modified Z-score — Uses median/MAD instead of mean/std
+       (robust to existing outliers)
+    3. Isolation Forest — Unsupervised ML method, detects
+       multivariate anomalies
 
-Strategies de traitement :
-    - flag   : marquer les outliers (colonne booleenne) sans les modifier
-    - clip   : ramener les outliers aux bornes IQR (winsorization)
-    - remove : supprimer les lignes contenant des outliers
+Treatment strategies:
+    - flag   : mark outliers (boolean column) without modifying them
+    - clip   : bring outliers back to IQR bounds (winsorization)
+    - remove : delete rows containing outliers
 
-Usage :
+Usage:
     >>> from src.processing.outlier_detection import OutlierDetector
     >>> detector = OutlierDetector(config)
     >>> df_flagged, report = detector.detect_and_flag(df)
-    >>> # Ou integre au pipeline :
+    >>> # Or integrated into the pipeline:
     >>> df_clean = detector.detect_and_treat(df, strategy="clip")
 """
 
@@ -39,21 +39,21 @@ from config.settings import ProjectConfig
 
 
 class OutlierDetector:
-    """Detecteur d'outliers multi-methode pour le projet HVAC.
+    """Multi-method outlier detector for the HVAC project.
 
-    Combine IQR, Z-score modifie et Isolation Forest pour identifier
-    les valeurs aberrantes dans le dataset ML. Genere un rapport
-    detaille avec statistiques et recommandations.
+    Combines IQR, modified Z-score, and Isolation Forest to identify
+    outlier values in the ML dataset. Generates a detailed report
+    with statistics and recommendations.
 
     Attributes:
-        config: Configuration du projet.
-        logger: Logger structure.
-        iqr_factor: Facteur IQR pour la detection (defaut: 1.5).
-        zscore_threshold: Seuil Z-score modifie (defaut: 3.5).
-        contamination: Taux attendu d'anomalies pour Isolation Forest.
+        config: Project configuration.
+        logger: Structured logger.
+        iqr_factor: IQR factor for detection (default: 1.5).
+        zscore_threshold: Modified Z-score threshold (default: 3.5).
+        contamination: Expected anomaly rate for Isolation Forest.
     """
 
-    # Colonnes numeriques cles a analyser
+    # Key numeric columns to analyze
     TARGET_COLS = [
         "nb_dpe_total", "nb_installations_pac",
         "nb_installations_clim", "nb_dpe_classe_ab",
@@ -79,28 +79,28 @@ class OutlierDetector:
         self.zscore_threshold = zscore_threshold
         self.contamination = contamination
 
-        # Repertoire pour les rapports
+        # Directory for reports
         self.report_dir = Path("data/analysis")
         self.report_dir.mkdir(parents=True, exist_ok=True)
 
     # ==================================================================
-    # Detection IQR (Tukey)
+    # IQR detection (Tukey)
     # ==================================================================
 
     def detect_iqr(
         self, df: pd.DataFrame, columns: Optional[List[str]] = None,
     ) -> Dict[str, Dict[str, Any]]:
-        """Detecte les outliers par la methode IQR (Tukey).
+        """Detect outliers using the IQR (Tukey) method.
 
-        Un point est outlier si : x < Q1 - factor*IQR  ou  x > Q3 + factor*IQR
-        Avec IQR = Q3 - Q1 (ecart interquartile).
+        A point is an outlier if: x < Q1 - factor*IQR  or  x > Q3 + factor*IQR
+        Where IQR = Q3 - Q1 (interquartile range).
 
         Args:
-            df: DataFrame a analyser.
-            columns: Colonnes a verifier. Si None, utilise les colonnes par defaut.
+            df: DataFrame to analyze.
+            columns: Columns to check. If None, uses default columns.
 
         Returns:
-            Dictionnaire {colonne: {n_outliers, pct, lower_bound, upper_bound, indices}}.
+            Dictionary {column: {n_outliers, pct, lower_bound, upper_bound, indices}}.
         """
         if columns is None:
             columns = self._get_numeric_columns(df)
@@ -138,27 +138,27 @@ class OutlierDetector:
         return results
 
     # ==================================================================
-    # Detection Z-score modifie (MAD-based)
+    # Modified Z-score detection (MAD-based)
     # ==================================================================
 
     def detect_zscore_modified(
         self, df: pd.DataFrame, columns: Optional[List[str]] = None,
     ) -> Dict[str, Dict[str, Any]]:
-        """Detecte les outliers par Z-score modifie (MAD).
+        """Detect outliers using modified Z-score (MAD).
 
-        Le Z-score modifie utilise la mediane et la MAD (Median Absolute
-        Deviation) au lieu de la moyenne et l'ecart-type, le rendant
-        robuste aux outliers existants.
+        The modified Z-score uses the median and MAD (Median Absolute
+        Deviation) instead of mean and standard deviation, making it
+        robust to existing outliers.
 
-        Formule : M_i = 0.6745 * (x_i - median) / MAD
-        Seuil par defaut : |M_i| > 3.5
+        Formula: M_i = 0.6745 * (x_i - median) / MAD
+        Default threshold: |M_i| > 3.5
 
         Args:
-            df: DataFrame a analyser.
-            columns: Colonnes a verifier.
+            df: DataFrame to analyze.
+            columns: Columns to check.
 
         Returns:
-            Dictionnaire {colonne: {n_outliers, pct, indices}}.
+            Dictionary {column: {n_outliers, pct, indices}}.
         """
         if columns is None:
             columns = self._get_numeric_columns(df)
@@ -176,10 +176,10 @@ class OutlierDetector:
             mad = np.median(np.abs(series - median))
 
             if mad == 0:
-                # MAD=0 signifie que > 50% des valeurs sont identiques
+                # MAD=0 means that > 50% of values are identical
                 continue
 
-            # Z-score modifie
+            # Modified Z-score
             modified_z = 0.6745 * (df[col] - median) / mad
             mask = modified_z.abs() > self.zscore_threshold
             mask = mask & df[col].notna()
@@ -196,37 +196,37 @@ class OutlierDetector:
         return results
 
     # ==================================================================
-    # Detection Isolation Forest (multivariee)
+    # Isolation Forest detection (multivariate)
     # ==================================================================
 
     def detect_isolation_forest(
         self, df: pd.DataFrame, columns: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Detecte les outliers multivaries par Isolation Forest.
+        """Detect multivariate outliers using Isolation Forest.
 
-        Contrairement a IQR et Z-score qui sont univaries, Isolation
-        Forest detecte les anomalies dans l'espace multivarie (combinaisons
-        inhabituelles de features).
+        Unlike IQR and Z-score which are univariate, Isolation
+        Forest detects anomalies in multivariate space (unusual
+        feature combinations).
 
         Args:
-            df: DataFrame a analyser.
-            columns: Colonnes a utiliser. Si None, utilise les features par defaut.
+            df: DataFrame to analyze.
+            columns: Columns to use. If None, uses default features.
 
         Returns:
-            Dictionnaire avec indices des outliers et scores d'anomalie.
+            Dictionary with outlier indices and anomaly scores.
         """
         from sklearn.ensemble import IsolationForest
 
         if columns is None:
             columns = self._get_numeric_columns(df)
 
-        # Ne garder que les colonnes presentes et non-NaN
+        # Keep only present and non-NaN columns
         available_cols = [c for c in columns if c in df.columns]
         if len(available_cols) < 2:
             self.logger.warning("Pas assez de colonnes pour Isolation Forest")
             return {"n_outliers": 0, "indices": [], "scores": []}
 
-        # Imputer les NaN avec la mediane pour IF
+        # Impute NaN with median for Isolation Forest
         df_if = df[available_cols].copy()
         df_if = df_if.fillna(df_if.median())
 
@@ -234,7 +234,7 @@ class OutlierDetector:
             self.logger.warning("Pas assez de donnees pour Isolation Forest")
             return {"n_outliers": 0, "indices": [], "scores": []}
 
-        # Ajuster contamination au dataset
+        # Adjust contamination to the dataset
         contamination = min(self.contamination, 0.5)
 
         model = IsolationForest(
@@ -245,7 +245,7 @@ class OutlierDetector:
         predictions = model.fit_predict(df_if)
         scores = model.decision_function(df_if)
 
-        # -1 = anomalie, 1 = normal
+        # -1 = anomaly, 1 = normal
         mask = predictions == -1
         outlier_indices = df.index[mask].tolist()
 
@@ -258,7 +258,7 @@ class OutlierDetector:
         }
 
     # ==================================================================
-    # Detection combinee + flagging
+    # Combined detection + flagging
     # ==================================================================
 
     def detect_and_flag(
@@ -266,21 +266,21 @@ class OutlierDetector:
         df: pd.DataFrame,
         columns: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Detecte les outliers par toutes les methodes et les flag.
+        """Detect outliers using all methods and flag them.
 
-        Ajoute des colonnes booleennes au DataFrame :
-        - _outlier_iqr      : True si outlier IQR sur au moins une colonne
-        - _outlier_zscore   : True si outlier Z-score modifie
-        - _outlier_iforest  : True si outlier Isolation Forest
-        - _outlier_consensus: True si detecte par >= 2 methodes
+        Adds boolean columns to the DataFrame:
+        - _outlier_iqr      : True if IQR outlier on at least one column
+        - _outlier_zscore   : True if modified Z-score outlier
+        - _outlier_iforest  : True if Isolation Forest outlier
+        - _outlier_consensus: True if detected by >= 2 methods
 
         Args:
-            df: DataFrame a analyser.
-            columns: Colonnes a verifier.
+            df: DataFrame to analyze.
+            columns: Columns to check.
 
         Returns:
-            Tuple (df_flagged, report) avec le DataFrame annote et
-            le rapport de detection.
+            Tuple (df_flagged, report) with the annotated DataFrame and
+            the detection report.
         """
         self.logger.info("=" * 60)
         self.logger.info("  DETECTION DES OUTLIERS")
@@ -305,7 +305,7 @@ class OutlierDetector:
             n_iqr, len(iqr_results),
         )
 
-        # 2. Z-score modifie
+        # 2. Modified Z-score
         self.logger.info("  Methode 2 : Z-score modifie (seuil=%.1f)...", self.zscore_threshold)
         zscore_results = self.detect_zscore_modified(df, columns)
         report["zscore"] = zscore_results
@@ -333,7 +333,7 @@ class OutlierDetector:
             "    Isolation Forest : %d outliers", n_iforest,
         )
 
-        # 4. Consensus (detecte par >= 2 methodes)
+        # 4. Consensus (detected by >= 2 methods)
         outlier_count = (
             df["_outlier_iqr"].astype(int)
             + df["_outlier_zscore"].astype(int)
@@ -359,7 +359,7 @@ class OutlierDetector:
         return df, report
 
     # ==================================================================
-    # Traitement des outliers
+    # Outlier treatment
     # ==================================================================
 
     def detect_and_treat(
@@ -369,16 +369,16 @@ class OutlierDetector:
         columns: Optional[List[str]] = None,
         use_consensus: bool = True,
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Detecte et traite les outliers selon la strategie choisie.
+        """Detect and treat outliers according to the chosen strategy.
 
         Args:
-            df: DataFrame a traiter.
-            strategy: Strategie de traitement :
-                - "flag"   : ajouter des colonnes booleennes (pas de modification)
-                - "clip"   : winsorization aux bornes IQR
-                - "remove" : supprimer les lignes outliers
-            columns: Colonnes a traiter.
-            use_consensus: Si True, ne traite que les outliers consensus (>= 2 methodes).
+            df: DataFrame to treat.
+            strategy: Treatment strategy:
+                - "flag"   : add boolean columns (no modification)
+                - "clip"   : winsorization to IQR bounds
+                - "remove" : delete outlier rows
+            columns: Columns to treat.
+            use_consensus: If True, only treat consensus outliers (>= 2 methods).
 
         Returns:
             Tuple (df_treated, report).
@@ -404,10 +404,10 @@ class OutlierDetector:
         columns: Optional[List[str]],
         report: Dict[str, Any],
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Applique le clipping (winsorization) aux bornes IQR.
+        """Apply clipping (winsorization) to IQR bounds.
 
-        Les valeurs au-dela des bornes IQR sont ramenees aux bornes,
-        preservant toutes les lignes mais attenuant l'impact des extremes.
+        Values beyond IQR bounds are brought back to the bounds,
+        preserving all rows but attenuating the impact of extremes.
         """
         if columns is None:
             columns = self._get_numeric_columns(df)
@@ -454,7 +454,7 @@ class OutlierDetector:
         use_consensus: bool,
         report: Dict[str, Any],
     ) -> Tuple[pd.DataFrame, Dict[str, Any]]:
-        """Supprime les lignes identifiees comme outliers."""
+        """Remove rows identified as outliers."""
         col = "_outlier_consensus" if use_consensus else "_outlier_iqr"
         n_before = len(df)
         df = df[~df[col]].copy()
@@ -469,7 +469,7 @@ class OutlierDetector:
         return df, report
 
     # ==================================================================
-    # Analyse temporelle des anomalies
+    # Temporal anomaly analysis
     # ==================================================================
 
     def detect_temporal_anomalies(
@@ -478,19 +478,18 @@ class OutlierDetector:
         target_col: str = "nb_installations_pac",
         threshold_pct: float = 50.0,
     ) -> Dict[str, Any]:
-        """Detecte les anomalies temporelles (pics/chutes soudains).
+        """Detect temporal anomalies (sudden spikes/drops).
 
-        Identifie les mois ou la variation relative depasse un seuil,
-        ce qui peut indiquer des problemes de donnees ou des evenements
-        exceptionnels.
+        Identifies months where the relative variation exceeds a threshold,
+        which may indicate data quality issues or exceptional events.
 
         Args:
-            df: DataFrame avec date_id, dept et la colonne cible.
-            target_col: Colonne a analyser.
-            threshold_pct: Seuil de variation en % pour flaguer une anomalie.
+            df: DataFrame with date_id, dept, and the target column.
+            target_col: Column to analyze.
+            threshold_pct: Variation threshold in % for flagging an anomaly.
 
         Returns:
-            Dictionnaire avec les anomalies detectees par departement.
+            Dictionary with anomalies detected per department.
         """
         if target_col not in df.columns or "dept" not in df.columns:
             return {"anomalies": []}
@@ -518,7 +517,7 @@ class OutlierDetector:
         return {"anomalies": anomalies, "threshold_pct": threshold_pct}
 
     # ==================================================================
-    # Rapport
+    # Report
     # ==================================================================
 
     def generate_report(
@@ -527,15 +526,15 @@ class OutlierDetector:
         report: Dict[str, Any],
         temporal_report: Optional[Dict[str, Any]] = None,
     ) -> Path:
-        """Genere un rapport textuel complet de la detection d'outliers.
+        """Generate a complete text report of the outlier detection.
 
         Args:
-            df: DataFrame avec flags d'outliers.
-            report: Rapport de detection.
-            temporal_report: Rapport d'anomalies temporelles (optionnel).
+            df: DataFrame with outlier flags.
+            report: Detection report.
+            temporal_report: Temporal anomaly report (optional).
 
         Returns:
-            Chemin du fichier rapport.
+            Path of the report file.
         """
         lines = [
             "=" * 70,
@@ -604,7 +603,7 @@ class OutlierDetector:
             )
             lines.append("")
 
-        # Anomalies temporelles
+        # Temporal anomalies
         if temporal_report and temporal_report.get("anomalies"):
             lines.append("--- ANOMALIES TEMPORELLES ---")
             lines.append(
@@ -622,7 +621,7 @@ class OutlierDetector:
 
         lines.append("=" * 70)
 
-        # Sauvegarder
+        # Save
         report_text = "\n".join(lines)
         path = self.report_dir / "outlier_report.txt"
         path.write_text(report_text, encoding="utf-8")
@@ -631,7 +630,7 @@ class OutlierDetector:
         return path
 
     # ==================================================================
-    # Integration pipeline
+    # Pipeline integration
     # ==================================================================
 
     def run_full_analysis(
@@ -640,48 +639,48 @@ class OutlierDetector:
         strategy: str = "clip",
         columns: Optional[List[str]] = None,
     ) -> Tuple[pd.DataFrame, Path]:
-        """Execute l'analyse complete des outliers + traitement + rapport.
+        """Execute the full outlier analysis + treatment + report.
 
-        Methode de convenance qui enchaine detection, traitement,
-        analyse temporelle et generation du rapport.
+        Convenience method that chains detection, treatment,
+        temporal analysis, and report generation.
 
         Args:
-            df: DataFrame a analyser (dataset features ou ML).
-            strategy: Strategie de traitement ("flag", "clip", "remove").
-            columns: Colonnes a analyser.
+            df: DataFrame to analyze (features or ML dataset).
+            strategy: Treatment strategy ("flag", "clip", "remove").
+            columns: Columns to analyze.
 
         Returns:
             Tuple (df_treated, report_path).
         """
-        # Detection et traitement
+        # Detection and treatment
         df_treated, report = self.detect_and_treat(df, strategy, columns)
 
-        # Anomalies temporelles sur les cibles
+        # Temporal anomalies on target variables
         temporal_report = None
         for target in self.TARGET_COLS:
             if target in df_treated.columns:
                 temporal_report = self.detect_temporal_anomalies(df_treated, target)
                 break
 
-        # Rapport
+        # Report
         report_path = self.generate_report(df_treated, report, temporal_report)
 
         return df_treated, report_path
 
     # ==================================================================
-    # Utilitaires
+    # Utilities
     # ==================================================================
 
     def _get_numeric_columns(self, df: pd.DataFrame) -> List[str]:
-        """Retourne les colonnes numeriques pertinentes du DataFrame.
+        """Return the relevant numeric columns of the DataFrame.
 
-        Exclut les identifiants, metadata et colonnes de flags existantes.
+        Excludes identifiers, metadata, and existing flag columns.
         """
         exclude = {
             "date_id", "year", "month", "quarter",
             "n_valid_features", "pct_valid_features",
         }
-        # Exclure aussi les colonnes de flags internes
+        # Also exclude internal flag columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         return [
             c for c in numeric_cols

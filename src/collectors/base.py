@@ -1,40 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-BaseCollector & CollectorRegistry — Fondation du système de collecte.
-=====================================================================
+BaseCollector & CollectorRegistry — Foundation of the data collection system.
+=============================================================================
 
-Ce module définit l'architecture extensible du système de collecte de données.
-Deux composants principaux :
+This module defines the extensible architecture of the data collection system.
+Two main components:
 
-1. **BaseCollector** (classe abstraite) :
-   Fournit le squelette commun à tous les collecteurs : gestion HTTP avec
-   retry automatique, logging structuré, validation des données, et
-   sauvegarde standardisée. Chaque source de données n'a qu'à implémenter
-   `collect()` et `validate()`.
+1. **BaseCollector** (abstract class):
+   Provides the common skeleton for all collectors: HTTP management with
+   automatic retry, structured logging, data validation, and
+   standardized saving. Each data source only needs to implement
+   `collect()` and `validate()`.
 
-2. **CollectorRegistry** (système de plugins) :
-   Enregistre automatiquement chaque sous-classe concrète de BaseCollector
-   grâce au hook `__init_subclass__`. Permet de découvrir, lister et
-   exécuter les collecteurs sans configuration manuelle.
+2. **CollectorRegistry** (plugin system):
+   Automatically registers each concrete subclass of BaseCollector
+   via the `__init_subclass__` hook. Allows discovering, listing, and
+   running collectors without manual configuration.
 
-Architecture :
+Architecture:
     BaseCollector (ABC)
-    ├── collect()     → Récupère les données brutes (à implémenter)
-    ├── validate()    → Vérifie la qualité des données (à implémenter)
-    ├── save()        → Persiste sur disque (CSV par défaut, overridable)
-    ├── run()         → Orchestre le cycle complet collect→validate→save
-    ├── fetch_json()  → GET HTTP avec retry + parsing JSON
-    ├── fetch_xml()   → GET HTTP avec retry + parsing XML
-    └── fetch_bytes() → GET HTTP avec retry + contenu binaire (ZIP, etc.)
+    ├── collect()     → Retrieves raw data (to be implemented)
+    ├── validate()    → Checks data quality (to be implemented)
+    ├── save()        → Persists to disk (CSV by default, overridable)
+    ├── run()         → Orchestrates the full collect→validate→save cycle
+    ├── fetch_json()  → HTTP GET with retry + JSON parsing
+    ├── fetch_xml()   → HTTP GET with retry + XML parsing
+    └── fetch_bytes() → HTTP GET with retry + binary content (ZIP, etc.)
 
-Extensibilité :
-    Pour ajouter une nouvelle source de données :
-    1. Créer un fichier dans src/collectors/ (ex: src/collectors/my_source.py)
-    2. Définir une classe héritant de BaseCollector avec source_name
-    3. Implémenter collect() et validate()
-    4. C'est tout ! La source est auto-enregistrée et disponible dans le registry.
+Extensibility:
+    To add a new data source:
+    1. Create a file in src/collectors/ (e.g., src/collectors/my_source.py)
+    2. Define a class inheriting from BaseCollector with source_name
+    3. Implement collect() and validate()
+    4. That's it! The source is auto-registered and available in the registry.
 
-    Exemple minimal :
+    Minimal example:
         class MySourceCollector(BaseCollector):
             source_name = "my_source"
 
@@ -43,16 +43,16 @@ Extensibilité :
                 return pd.DataFrame(data)
 
             def validate(self, df: pd.DataFrame) -> pd.DataFrame:
-                assert "id" in df.columns, "Colonne 'id' manquante"
+                assert "id" in df.columns, "Column 'id' missing"
                 return df
 
 Usage:
     >>> from src.collectors.base import CollectorRegistry, CollectorConfig
     >>> config = CollectorConfig.from_env()
-    >>> # Lancer un seul collecteur
+    >>> # Run a single collector
     >>> result = CollectorRegistry.run("weather", config)
-    >>> print(f"{result.name}: {result.rows_collected} lignes")
-    >>> # Lancer tous les collecteurs
+    >>> print(f"{result.name}: {result.rows_collected} rows")
+    >>> # Run all collectors
     >>> results = CollectorRegistry.run_all(config)
 """
 
@@ -75,17 +75,17 @@ from urllib3.util.retry import Retry
 
 
 # =============================================================================
-# Énumération des statuts de collecte
+# Collection status enumeration
 # =============================================================================
 
 class CollectorStatus(Enum):
-    """États possibles d'une exécution de collecteur.
+    """Possible states of a collector execution.
 
     Values:
-        SUCCESS: Collecte complète, toutes les données récupérées.
-        PARTIAL: Collecte partielle (certains éléments ont échoué).
-        FAILED: Échec total de la collecte.
-        SKIPPED: Collecteur ignoré (données déjà à jour, etc.).
+        SUCCESS: Complete collection, all data retrieved.
+        PARTIAL: Partial collection (some items failed).
+        FAILED: Total collection failure.
+        SKIPPED: Collector skipped (data already up to date, etc.).
     """
     SUCCESS = "success"
     PARTIAL = "partial"
@@ -94,28 +94,28 @@ class CollectorStatus(Enum):
 
 
 # =============================================================================
-# Configuration des collecteurs
+# Collector configuration
 # =============================================================================
 
 @dataclass(frozen=True)
 class CollectorConfig:
-    """Configuration partagée par tous les collecteurs.
+    """Shared configuration for all collectors.
 
-    Peut être construite manuellement (tests) ou depuis les variables
-    d'environnement via `from_env()`.
+    Can be built manually (tests) or from environment variables
+    via `from_env()`.
 
     Attributes:
-        raw_data_dir: Répertoire racine pour les données brutes.
-        processed_data_dir: Répertoire racine pour les données structurées.
-        start_date: Date de début de collecte (ISO YYYY-MM-DD).
-        end_date: Date de fin de collecte.
-        departments: Liste des codes départements cibles.
-        region_code: Code INSEE de la region ("FR" = France, "84" = AURA).
-        request_timeout: Timeout HTTP en secondes.
-        max_retries: Nombre max de retries sur erreur transitoire.
-        retry_backoff_factor: Facteur exponentiel entre retries.
-        rate_limit_delay: Pause minimale entre appels API (secondes).
-        log_level: Niveau de logging (DEBUG, INFO, WARNING, ERROR).
+        raw_data_dir: Root directory for raw data.
+        processed_data_dir: Root directory for structured data.
+        start_date: Collection start date (ISO YYYY-MM-DD).
+        end_date: Collection end date.
+        departments: List of target department codes.
+        region_code: INSEE region code ("FR" = metropolitan France).
+        request_timeout: HTTP timeout in seconds.
+        max_retries: Maximum number of retries on transient errors.
+        retry_backoff_factor: Exponential factor between retries.
+        rate_limit_delay: Minimum pause between API calls (seconds).
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
     """
     raw_data_dir: Path = Path("data/raw")
     processed_data_dir: Path = Path("data/processed")
@@ -142,13 +142,13 @@ class CollectorConfig:
 
     @classmethod
     def from_env(cls) -> CollectorConfig:
-        """Construit la configuration depuis les variables d'environnement.
+        """Build configuration from environment variables.
 
-        Charge le fichier .env via python-dotenv puis mappe les variables
-        sur les attributs. Valeurs par défaut utilisées si absent.
+        Loads the .env file via python-dotenv then maps variables
+        to attributes. Default values are used if absent.
 
         Returns:
-            CollectorConfig initialisée depuis l'environnement.
+            CollectorConfig initialized from the environment.
         """
         import os
         from dotenv import load_dotenv
@@ -183,24 +183,24 @@ class CollectorConfig:
 
 
 # =============================================================================
-# Résultat d'une collecte
+# Collection result
 # =============================================================================
 
 @dataclass
 class CollectorResult:
-    """Résultat d'une exécution de collecteur.
+    """Result of a collector execution.
 
-    Fournit un rapport structuré de ce qui s'est passé : nombre de lignes
-    collectées, chemin de sauvegarde, durée, erreurs rencontrées.
+    Provides a structured report of what happened: number of rows
+    collected, save path, duration, errors encountered.
 
     Attributes:
-        name: Nom de la source collectée.
-        status: Statut final (SUCCESS, PARTIAL, FAILED, SKIPPED).
-        rows_collected: Nombre de lignes dans le DataFrame final.
-        output_path: Chemin du fichier sauvegardé (si applicable).
-        started_at: Horodatage de début de collecte.
-        finished_at: Horodatage de fin de collecte.
-        errors: Liste des messages d'erreur rencontrés.
+        name: Name of the collected source.
+        status: Final status (SUCCESS, PARTIAL, FAILED, SKIPPED).
+        rows_collected: Number of rows in the final DataFrame.
+        output_path: Path of the saved file (if applicable).
+        started_at: Collection start timestamp.
+        finished_at: Collection end timestamp.
+        errors: List of error messages encountered.
     """
     name: str
     status: CollectorStatus
@@ -212,13 +212,13 @@ class CollectorResult:
 
     @property
     def duration_seconds(self) -> Optional[float]:
-        """Durée totale de la collecte en secondes."""
+        """Total collection duration in seconds."""
         if self.started_at and self.finished_at:
             return (self.finished_at - self.started_at).total_seconds()
         return None
 
     def __str__(self) -> str:
-        """Résumé lisible du résultat."""
+        """Human-readable summary of the result."""
         duration = f"{self.duration_seconds:.1f}s" if self.duration_seconds else "N/A"
         return (
             f"[{self.status.value.upper():>7}] {self.name:<15} "
@@ -227,80 +227,80 @@ class CollectorResult:
 
 
 # =============================================================================
-# Classe abstraite BaseCollector
+# Abstract class BaseCollector
 # =============================================================================
 
 class BaseCollector(ABC):
-    """Classe abstraite de base pour tous les collecteurs de données.
+    """Abstract base class for all data collectors.
 
-    Fournit :
-    - Session HTTP avec retry automatique (429, 500, 502, 503, 504)
+    Provides:
+    - HTTP session with automatic retry (429, 500, 502, 503, 504)
     - Helpers `fetch_json()`, `fetch_xml()`, `fetch_bytes()`
-    - Logging structuré avec horodatage
-    - Cycle de vie orchestré par `run()` : collect → validate → save
-    - Auto-enregistrement dans le CollectorRegistry
+    - Structured logging with timestamps
+    - Lifecycle orchestrated by `run()`: collect -> validate -> save
+    - Auto-registration in the CollectorRegistry
 
-    Sous-classes DOIVENT implémenter :
-        - `source_name` (ClassVar[str]) : identifiant unique de la source
-        - `collect()` : logique de récupération des données → DataFrame
-        - `validate(df)` : vérifications de qualité → DataFrame nettoyé
+    Subclasses MUST implement:
+        - `source_name` (ClassVar[str]): unique identifier for the source
+        - `collect()`: data retrieval logic -> DataFrame
+        - `validate(df)`: quality checks -> cleaned DataFrame
 
-    Sous-classes PEUVENT surcharger :
-        - `output_subdir` : sous-répertoire de sortie (défaut = source_name)
-        - `output_filename` : nom du fichier (défaut = "{source_name}.csv")
-        - `save(df, path)` : logique de persistance custom (Parquet, etc.)
+    Subclasses MAY override:
+        - `output_subdir`: output subdirectory (default = source_name)
+        - `output_filename`: file name (default = "{source_name}.csv")
+        - `save(df, path)`: custom persistence logic (Parquet, etc.)
     """
 
-    # --- Contrat de classe (à définir par les sous-classes) ---------------
+    # --- Class contract (to be defined by subclasses) ---------------------
 
-    source_name: ClassVar[str]                       # Identifiant unique
-    output_subdir: ClassVar[Optional[str]] = None    # Sous-dossier output
-    output_filename: ClassVar[Optional[str]] = None  # Nom du fichier output
+    source_name: ClassVar[str]                       # Unique identifier
+    output_subdir: ClassVar[Optional[str]] = None    # Output subdirectory
+    output_filename: ClassVar[Optional[str]] = None  # Output file name
 
-    # --- Hook d'auto-enregistrement ---------------------------------------
+    # --- Auto-registration hook -------------------------------------------
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Enregistre automatiquement chaque sous-classe concrète.
+        """Automatically registers each concrete subclass.
 
-        Ce hook Python est appelé à chaque fois qu'une classe hérite de
-        BaseCollector. Si la classe est concrète (pas de méthodes abstraites
-        non implémentées), elle est ajoutée au CollectorRegistry.
+        This Python hook is called every time a class inherits from
+        BaseCollector. If the class is concrete (no unimplemented abstract
+        methods), it is added to the CollectorRegistry.
         """
         super().__init_subclass__(**kwargs)
-        # N'enregistrer que les classes concrètes (pas les ABC intermédiaires)
+        # Only register concrete classes (not intermediate ABCs)
         if hasattr(cls, "source_name") and not getattr(cls, "__abstractmethods__", None):
             CollectorRegistry._register(cls)
 
-    # --- Initialisation ---------------------------------------------------
+    # --- Initialization ---------------------------------------------------
 
     def __init__(self, config: CollectorConfig) -> None:
-        """Initialise le collecteur avec sa configuration.
+        """Initialize the collector with its configuration.
 
         Args:
-            config: Configuration partagée (chemins, dates, réseau, etc.).
+            config: Shared configuration (paths, dates, network, etc.).
         """
         self.config = config
         self.logger = logging.getLogger(f"collectors.{self.source_name}")
         self._setup_logging()
         self._session: Optional[requests.Session] = None
 
-    # --- Point d'entrée principal -----------------------------------------
+    # --- Main entry point -------------------------------------------------
 
     def run(self) -> CollectorResult:
-        """Exécute le cycle complet de collecte.
+        """Execute the full collection cycle.
 
-        Orchestre les étapes :
-        1. Log de démarrage avec les paramètres
-        2. `collect()` — récupération des données brutes
-        3. `validate()` — vérification de la qualité
-        4. `save()` — persistance sur disque
-        5. Log de fin avec le bilan
+        Orchestrates the steps:
+        1. Log startup with parameters
+        2. `collect()` — retrieve raw data
+        3. `validate()` — check data quality
+        4. `save()` — persist to disk
+        5. Log completion with summary
 
-        En cas d'exception, le statut passe à FAILED et l'erreur est loguée.
-        La collecte ne s'interrompt jamais brutalement (toujours un résultat).
+        On exception, the status becomes FAILED and the error is logged.
+        The collection never abruptly terminates (always returns a result).
 
         Returns:
-            CollectorResult avec le bilan complet de la collecte.
+            CollectorResult with the complete collection summary.
         """
         result = CollectorResult(
             name=self.source_name,
@@ -321,7 +321,7 @@ class BaseCollector(ABC):
         )
 
         try:
-            # Étape 1 : Collecte des données brutes
+            # Step 1: Collect raw data
             self.logger.info("Étape 1/3 — Collecte des données...")
             df = self.collect()
 
@@ -330,11 +330,11 @@ class BaseCollector(ABC):
                 result.status = CollectorStatus.PARTIAL
                 result.errors.append("DataFrame vide retourné par collect().")
             else:
-                # Étape 2 : Validation et nettoyage léger
+                # Step 2: Validation and light cleaning
                 self.logger.info("Étape 2/3 — Validation des données...")
                 df = self.validate(df)
 
-                # Étape 3 : Sauvegarde sur disque
+                # Step 3: Save to disk
                 self.logger.info("Étape 3/3 — Sauvegarde...")
                 output_path = self._resolve_output_path()
                 self.save(df, output_path)
@@ -364,56 +364,56 @@ class BaseCollector(ABC):
         )
         return result
 
-    # --- Méthodes abstraites (contrat des sous-classes) -------------------
+    # --- Abstract methods (subclass contract) -----------------------------
 
     @abstractmethod
     def collect(self) -> pd.DataFrame:
-        """Récupère les données depuis la source externe.
+        """Retrieve data from the external source.
 
-        Cette méthode contient toute la logique spécifique à la source :
-        appels API, téléchargement de fichiers, parsing, etc.
+        This method contains all the source-specific logic:
+        API calls, file downloads, parsing, etc.
 
         Returns:
-            DataFrame pandas avec les données brutes collectées.
+            Pandas DataFrame with the collected raw data.
 
         Raises:
-            requests.RequestException: En cas d'erreur réseau.
-            ValueError: Si le format de données est inattendu.
+            requests.RequestException: On network errors.
+            ValueError: If the data format is unexpected.
         """
         ...
 
     @abstractmethod
     def validate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Valide et nettoie légèrement le DataFrame collecté.
+        """Validate and lightly clean the collected DataFrame.
 
-        Vérifications attendues :
-        - Présence des colonnes obligatoires
-        - Types de données corrects
-        - Pas de valeurs nulles critiques
-        - Nombre de lignes dans les bornes attendues
+        Expected checks:
+        - Presence of required columns
+        - Correct data types
+        - No critical null values
+        - Row count within expected bounds
 
         Args:
-            df: DataFrame brut issu de `collect()`.
+            df: Raw DataFrame from `collect()`.
 
         Returns:
-            DataFrame validé (éventuellement nettoyé).
+            Validated (and possibly cleaned) DataFrame.
 
         Raises:
-            ValueError: Si la validation échoue de manière critique.
+            ValueError: If validation fails critically.
         """
         ...
 
-    # --- Sauvegarde (overridable) -----------------------------------------
+    # --- Save (overridable) -----------------------------------------------
 
     def save(self, df: pd.DataFrame, path: Path) -> None:
-        """Persiste le DataFrame sur disque.
+        """Persist the DataFrame to disk.
 
-        Implémentation par défaut : sauvegarde en CSV.
-        Les sous-classes peuvent surcharger pour utiliser Parquet, etc.
+        Default implementation: saves as CSV.
+        Subclasses can override to use Parquet, etc.
 
         Args:
-            df: DataFrame validé à sauvegarder.
-            path: Chemin complet du fichier de sortie.
+            df: Validated DataFrame to save.
+            path: Full path of the output file.
         """
         path.parent.mkdir(parents=True, exist_ok=True)
         df.to_csv(path, index=False)
@@ -429,21 +429,21 @@ class BaseCollector(ABC):
             df.drop_duplicates(keep="last").to_csv(structured_path, index=False)
         self.logger.debug("Sauvegardé %d lignes → %s", len(df), path)
 
-    # --- Helpers HTTP (partagés par tous les collecteurs) ------------------
+    # --- HTTP helpers (shared by all collectors) --------------------------
 
     @property
     def session(self) -> requests.Session:
-        """Session HTTP avec retry automatique (lazy-initialisée).
+        """HTTP session with automatic retry (lazily initialized).
 
-        Configure des retries automatiques sur les codes HTTP transitoires :
-        - 429 : Too Many Requests (rate limiting)
-        - 500, 502, 503, 504 : Erreurs serveur
+        Configures automatic retries on transient HTTP status codes:
+        - 429: Too Many Requests (rate limiting)
+        - 500, 502, 503, 504: Server errors
 
-        Le délai entre retries suit une progression exponentielle :
+        The delay between retries follows an exponential progression:
         retry_backoff_factor * (2 ** (retry_number - 1))
 
         Returns:
-            Session requests réutilisable avec retry intégré.
+            Reusable requests session with built-in retry.
         """
         if self._session is None:
             self._session = requests.Session()
@@ -460,18 +460,18 @@ class BaseCollector(ABC):
     def fetch_json(
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> Any:
-        """GET HTTP → JSON avec gestion d'erreurs complète.
+        """HTTP GET -> JSON with comprehensive error handling.
 
         Args:
-            url: URL de l'endpoint.
-            params: Paramètres de query string (optionnel).
+            url: Endpoint URL.
+            params: Query string parameters (optional).
 
         Returns:
-            Objet Python parsé depuis le JSON (dict, list, etc.).
+            Python object parsed from JSON (dict, list, etc.).
 
         Raises:
-            requests.HTTPError: Sur code 4xx/5xx après retries.
-            ValueError: Si le corps de réponse n'est pas du JSON valide.
+            requests.HTTPError: On 4xx/5xx status codes after retries.
+            ValueError: If the response body is not valid JSON.
         """
         self.logger.debug("GET %s | params=%s", url, params)
         response = self.session.get(
@@ -483,20 +483,20 @@ class BaseCollector(ABC):
     def fetch_xml(
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> etree._Element:
-        """GET HTTP → XML parsé avec gestion d'erreurs.
+        """HTTP GET -> parsed XML with error handling.
 
-        Utilisé principalement pour l'API SDMX de l'INSEE.
+        Primarily used for the INSEE SDMX API.
 
         Args:
-            url: URL de l'endpoint.
-            params: Paramètres de query string (optionnel).
+            url: Endpoint URL.
+            params: Query string parameters (optional).
 
         Returns:
-            Élément racine de l'arbre XML parsé (lxml).
+            Root element of the parsed XML tree (lxml).
 
         Raises:
-            requests.HTTPError: Sur code 4xx/5xx.
-            etree.XMLSyntaxError: Si le contenu n'est pas du XML valide.
+            requests.HTTPError: On 4xx/5xx status codes.
+            etree.XMLSyntaxError: If the content is not valid XML.
         """
         self.logger.debug("GET (XML) %s | params=%s", url, params)
         response = self.session.get(
@@ -508,17 +508,17 @@ class BaseCollector(ABC):
     def fetch_bytes(
         self, url: str, params: Optional[Dict[str, Any]] = None
     ) -> bytes:
-        """GET HTTP → contenu binaire brut (ZIP, fichiers volumineux).
+        """HTTP GET -> raw binary content (ZIP, large files).
 
         Args:
-            url: URL de l'endpoint.
-            params: Paramètres de query string (optionnel).
+            url: Endpoint URL.
+            params: Query string parameters (optional).
 
         Returns:
-            Contenu brut de la réponse en bytes.
+            Raw response content as bytes.
 
         Raises:
-            requests.HTTPError: Sur code 4xx/5xx.
+            requests.HTTPError: On 4xx/5xx status codes.
         """
         self.logger.debug("GET (bytes) %s", url)
         response = self.session.get(
@@ -528,24 +528,24 @@ class BaseCollector(ABC):
         return response.content
 
     def rate_limit_pause(self) -> None:
-        """Pause de politesse entre deux appels API.
+        """Courtesy pause between two API calls.
 
-        Respecte le délai configuré dans `rate_limit_delay`.
-        Évite de surcharger les APIs gratuites.
+        Respects the delay configured in `rate_limit_delay`.
+        Prevents overloading free APIs.
         """
         if self.config.rate_limit_delay > 0:
             time.sleep(self.config.rate_limit_delay)
 
-    # --- Méthodes privées -------------------------------------------------
+    # --- Private methods --------------------------------------------------
 
     def _resolve_output_path(self, base_dir: Optional[Path] = None) -> Path:
-        """Calcule le chemin complet du fichier de sortie.
+        """Compute the full output file path.
 
-        Utilise les overrides de classe (output_subdir, output_filename)
-        ou les valeurs par défaut basées sur source_name.
+        Uses class overrides (output_subdir, output_filename)
+        or default values based on source_name.
 
         Returns:
-            Path absolue ou relative du fichier de sortie.
+            Absolute or relative path of the output file.
         """
         subdir = self.output_subdir or self.source_name
         filename = self.output_filename or f"{self.source_name}.csv"
@@ -553,13 +553,13 @@ class BaseCollector(ABC):
         return root / subdir / filename
 
     def _setup_logging(self) -> None:
-        """Configure le logger pour cette instance de collecteur.
+        """Configure the logger for this collector instance.
 
-        Format : YYYY-MM-DD HH:MM:SS | collectors.source_name | LEVEL | message
+        Format: YYYY-MM-DD HH:MM:SS | collectors.source_name | LEVEL | message
         """
         level = getattr(logging, self.config.log_level.upper(), logging.INFO)
         self.logger.setLevel(level)
-        # Éviter les handlers dupliqués si le module est rechargé
+        # Avoid duplicate handlers if the module is reloaded
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter(
@@ -571,18 +571,18 @@ class BaseCollector(ABC):
 
 
 # =============================================================================
-# Registry des collecteurs (système de plugins)
+# Collector registry (plugin system)
 # =============================================================================
 
 class CollectorRegistry:
-    """Registre central de tous les collecteurs disponibles.
+    """Central registry of all available collectors.
 
-    Les collecteurs sont enregistrés automatiquement via le hook
-    `__init_subclass__` de BaseCollector. Il suffit d'importer le module
-    contenant un collecteur pour qu'il soit disponible.
+    Collectors are automatically registered via the `__init_subclass__`
+    hook of BaseCollector. Simply importing the module containing a
+    collector makes it available.
 
-    Ce pattern "plugin" permet d'ajouter de nouvelles sources sans
-    modifier aucun fichier existant — juste créer un nouveau module.
+    This "plugin" pattern allows adding new sources without
+    modifying any existing file -- just create a new module.
 
     Usage:
         >>> CollectorRegistry.available()
@@ -595,15 +595,15 @@ class CollectorRegistry:
         >>> results = CollectorRegistry.run_all(config)
     """
 
-    # Stockage des classes de collecteurs (pas des instances)
+    # Storage of collector classes (not instances)
     _collectors: ClassVar[Dict[str, Type[BaseCollector]]] = {}
 
     @classmethod
     def _register(cls, collector_class: Type[BaseCollector]) -> None:
-        """Enregistre une classe de collecteur (appelé automatiquement).
+        """Register a collector class (called automatically).
 
         Args:
-            collector_class: Sous-classe concrète de BaseCollector.
+            collector_class: Concrete subclass of BaseCollector.
         """
         name = collector_class.source_name
         if name in cls._collectors:
@@ -618,25 +618,25 @@ class CollectorRegistry:
 
     @classmethod
     def available(cls) -> List[str]:
-        """Liste les noms de tous les collecteurs enregistrés.
+        """List the names of all registered collectors.
 
         Returns:
-            Liste triée des source_name disponibles.
+            Sorted list of available source_name values.
         """
         return sorted(cls._collectors.keys())
 
     @classmethod
     def get(cls, name: str) -> Type[BaseCollector]:
-        """Récupère une classe de collecteur par son nom.
+        """Retrieve a collector class by its name.
 
         Args:
-            name: Le source_name du collecteur souhaité.
+            name: The source_name of the desired collector.
 
         Returns:
-            La classe du collecteur (pas une instance).
+            The collector class (not an instance).
 
         Raises:
-            KeyError: Si aucun collecteur n'est enregistré avec ce nom.
+            KeyError: If no collector is registered with this name.
         """
         if name not in cls._collectors:
             raise KeyError(
@@ -647,14 +647,14 @@ class CollectorRegistry:
 
     @classmethod
     def run(cls, name: str, config: CollectorConfig) -> CollectorResult:
-        """Instancie et exécute un collecteur par son nom.
+        """Instantiate and execute a collector by its name.
 
         Args:
-            name: Le source_name du collecteur.
-            config: Configuration partagée.
+            name: The source_name of the collector.
+            config: Shared configuration.
 
         Returns:
-            CollectorResult avec le bilan de la collecte.
+            CollectorResult with the collection summary.
         """
         collector_class = cls.get(name)
         collector = collector_class(config)
@@ -666,15 +666,15 @@ class CollectorRegistry:
         config: CollectorConfig,
         order: Optional[List[str]] = None,
     ) -> List[CollectorResult]:
-        """Exécute plusieurs collecteurs en séquence.
+        """Execute multiple collectors in sequence.
 
         Args:
-            config: Configuration partagée.
-            order: Ordre d'exécution explicite. Si None, exécute
-                   tous les collecteurs par ordre alphabétique.
+            config: Shared configuration.
+            order: Explicit execution order. If None, runs
+                   all collectors in alphabetical order.
 
         Returns:
-            Liste des CollectorResult, un par collecteur.
+            List of CollectorResult, one per collector.
         """
         logger = logging.getLogger("collectors.registry")
         names = order or cls.available()
@@ -696,13 +696,13 @@ class CollectorRegistry:
                 )
             results.append(result)
 
-            # Log d'avancement si un collecteur échoue
+            # Log progress if a collector fails
             if result.status == CollectorStatus.FAILED:
                 logger.warning(
                     "⚠ Collecteur '%s' ÉCHOUÉ — passage au suivant.", name
                 )
 
-        # Bilan final
+        # Final summary
         succeeded = sum(1 for r in results if r.status == CollectorStatus.SUCCESS)
         logger.info(
             "\n" + "="*60 + "\n"

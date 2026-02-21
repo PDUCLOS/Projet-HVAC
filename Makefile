@@ -1,15 +1,15 @@
 # =============================================================================
 # HVAC Market Analysis — Makefile
 # =============================================================================
-# Commandes raccourcies pour le deploiement et l'utilisation du projet.
+# Shortcut commands for project deployment and usage.
 #
 # Usage :
-#   make install       Creer venv + installer dependances
-#   make demo          Generer les donnees de demonstration
-#   make pipeline      Executer le pipeline complet (process + train + evaluate)
-#   make dashboard     Lancer le dashboard Streamlit
-#   make test          Lancer les tests unitaires
-#   make all           install + demo + pipeline (setup complet)
+#   make install       Create venv + install dependencies
+#   make demo          Generate demonstration data
+#   make pipeline      Run the full pipeline (process + train + evaluate)
+#   make dashboard     Launch the Streamlit dashboard
+#   make test          Run unit tests
+#   make all           install + demo + pipeline (complete setup)
 # =============================================================================
 
 PYTHON := python
@@ -18,7 +18,7 @@ PIP := $(VENV)/bin/pip
 PYTHON_VENV := $(VENV)/bin/python
 STREAMLIT := $(VENV)/bin/streamlit
 
-# Detecter Windows
+# Detect Windows
 ifeq ($(OS),Windows_NT)
     PIP := $(VENV)/Scripts/pip
     PYTHON_VENV := $(VENV)/Scripts/python
@@ -30,40 +30,40 @@ endif
 
 .PHONY: help install demo pipeline dashboard test clean collect update all setup
 
-# --- Aide ---
+# --- Help ---
 help:
 	@echo ""
-	@echo "  HVAC Market Analysis — Commandes disponibles"
+	@echo "  HVAC Market Analysis — Available commands"
 	@echo "  ============================================="
 	@echo ""
 	@echo "  Setup :"
-	@echo "    make install       Creer venv + installer dependances"
-	@echo "    make setup         install + config .env"
-	@echo "    make all           Setup complet (install + demo + pipeline)"
+	@echo "    make install       Create venv + install dependencies"
+	@echo "    make setup         install + configure .env"
+	@echo "    make all           Complete setup (install + demo + pipeline)"
 	@echo ""
-	@echo "  Donnees :"
-	@echo "    make demo          Generer les donnees de demonstration"
-	@echo "    make collect       Collecter les donnees depuis les APIs"
-	@echo "    make sync          Telecharger les donnees depuis pCloud"
+	@echo "  Data :"
+	@echo "    make demo          Generate demonstration data"
+	@echo "    make collect       Collect data from APIs"
+	@echo "    make sync          Download data from pCloud"
 	@echo ""
 	@echo "  Pipeline :"
-	@echo "    make pipeline      Executer clean + merge + features + outliers + train + evaluate"
-	@echo "    make process       Executer clean + merge + features + outliers"
-	@echo "    make train         Entrainer les modeles ML"
-	@echo "    make evaluate      Evaluer et comparer les modeles"
-	@echo "    make eda           Analyse exploratoire (EDA)"
-	@echo "    make update        Mise a jour complete (collect + process + train + upload)"
+	@echo "    make pipeline      Run clean + merge + features + outliers + train + evaluate"
+	@echo "    make process       Run clean + merge + features + outliers"
+	@echo "    make train         Train ML models"
+	@echo "    make evaluate      Evaluate and compare models"
+	@echo "    make eda           Exploratory Data Analysis (EDA)"
+	@echo "    make update        Full update (collect + process + train + upload)"
 	@echo ""
 	@echo "  Interface :"
-	@echo "    make dashboard     Lancer le dashboard Streamlit"
+	@echo "    make dashboard     Launch the Streamlit dashboard"
 	@echo ""
 	@echo "  Tests :"
-	@echo "    make test          Lancer les 119 tests unitaires"
-	@echo "    make test-cov      Tests avec couverture de code"
+	@echo "    make test          Run the 119 unit tests"
+	@echo "    make test-cov      Tests with code coverage"
 	@echo ""
 	@echo "  Maintenance :"
-	@echo "    make clean         Supprimer les fichiers temporaires Python"
-	@echo "    make clean-data    Supprimer toutes les donnees generees"
+	@echo "    make clean         Remove temporary Python files"
+	@echo "    make clean-data    Remove all generated data"
 	@echo ""
 
 # --- Installation ---
@@ -74,8 +74,8 @@ $(VENV)/bin/activate:
 	$(PIP) install --upgrade pip
 	$(PIP) install -r requirements.txt
 	@echo ""
-	@echo "  Environnement virtuel cree et dependances installees."
-	@echo "  Activer avec : $(ACTIVATE)"
+	@echo "  Virtual environment created and dependencies installed."
+	@echo "  Activate with : $(ACTIVATE)"
 	@echo ""
 
 setup: install
@@ -83,12 +83,12 @@ setup: install
 	@echo "  Configuration .env OK"
 	$(PYTHON_VENV) setup_project.py
 
-# --- Donnees ---
+# --- Data ---
 demo: install
 	@test -f .env || cp .env.example .env
 	$(PYTHON_VENV) scripts/generate_demo_data.py
 	@echo ""
-	@echo "  Donnees de demonstration generees dans data/raw/"
+	@echo "  Demonstration data generated in data/raw/"
 
 collect: install
 	@test -f .env || cp .env.example .env
@@ -116,9 +116,9 @@ pipeline: install
 	$(PYTHON_VENV) -m src.pipeline train
 	$(PYTHON_VENV) -m src.pipeline evaluate
 	@echo ""
-	@echo "  Pipeline complet termine."
-	@echo "  Resultats dans data/models/"
-	@echo "  Lancer le dashboard : make dashboard"
+	@echo "  Full pipeline completed."
+	@echo "  Results in data/models/"
+	@echo "  Launch the dashboard : make dashboard"
 
 update: install
 	$(PYTHON_VENV) -m src.pipeline update_all
@@ -126,8 +126,8 @@ update: install
 # --- Interface ---
 dashboard: install
 	@echo ""
-	@echo "  Lancement du dashboard Streamlit..."
-	@echo "  Ouvrir http://localhost:8501 dans le navigateur"
+	@echo "  Launching the Streamlit dashboard..."
+	@echo "  Open http://localhost:8501 in your browser"
 	@echo ""
 	$(STREAMLIT) run app/app.py
 
@@ -143,20 +143,20 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	@echo "  Fichiers temporaires supprimes."
+	@echo "  Temporary files removed."
 
 clean-data:
 	rm -rf data/raw data/processed data/features data/models data/analysis
 	rm -f data/*.db
-	@echo "  Donnees supprimees. Relancer : make demo && make pipeline"
+	@echo "  Data removed. Re-run : make demo && make pipeline"
 
-# --- Setup complet ---
+# --- Complete setup ---
 all: install demo pipeline
 	@echo ""
 	@echo "  ============================================="
-	@echo "  Setup complet termine !"
+	@echo "  Complete setup finished !"
 	@echo "  ============================================="
 	@echo ""
-	@echo "  Lancer le dashboard : make dashboard"
-	@echo "  Ou : $(STREAMLIT) run app/app.py"
+	@echo "  Launch the dashboard : make dashboard"
+	@echo "  Or : $(STREAMLIT) run app/app.py"
 	@echo ""

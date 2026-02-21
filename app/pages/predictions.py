@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Page de predictions ML."""
+"""ML predictions page."""
 
 import streamlit as st
 import pandas as pd
@@ -14,7 +14,7 @@ import json
 def render():
     st.title("Predictions ML")
 
-    # --- Charger les resultats d'evaluation ---
+    # --- Load evaluation results ---
     eval_dir = Path("data/models")
     results_file = eval_dir / "evaluation_results.json"
     models_dir = eval_dir
@@ -24,7 +24,7 @@ def render():
         st.code("python -m src.pipeline train", language="bash")
         return
 
-    # --- Charger le dataset ---
+    # --- Load the dataset ---
     features_path = Path("data/features/hvac_features_dataset.csv")
     if not features_path.exists():
         st.warning("Dataset de features non disponible.")
@@ -33,7 +33,7 @@ def render():
     df = pd.read_csv(features_path, low_memory=False)
     st.success(f"Dataset charge : {len(df):,} lignes x {len(df.columns)} colonnes")
 
-    # --- Choix de la variable cible ---
+    # --- Target variable selection ---
     target_cols = [c for c in df.columns if c.startswith("nb_") or c.startswith("pct_")]
     if not target_cols:
         st.error("Aucune variable cible trouvee dans le dataset.")
@@ -41,16 +41,16 @@ def render():
 
     target = st.selectbox("Variable cible", target_cols, index=0)
 
-    # --- Charger les resultats ---
+    # --- Load results ---
     if results_file.exists():
         with open(results_file) as f:
             eval_results = json.load(f)
         _display_eval_results(eval_results)
 
-    # --- Visualiser les predictions ---
+    # --- Visualize predictions ---
     st.subheader("Predictions vs Realite")
 
-    # Chercher les fichiers de predictions
+    # Look for prediction files
     pred_files = list(eval_dir.glob("predictions_*.csv"))
     if pred_files:
         selected_pred = st.selectbox(
@@ -68,7 +68,7 @@ def render():
                 name="Predictions",
                 marker=dict(opacity=0.5),
             ))
-            # Ligne parfaite
+            # Perfect line
             min_val = min(df_pred["y_true"].min(), df_pred["y_pred"].min())
             max_val = max(df_pred["y_true"].max(), df_pred["y_pred"].max())
             fig.add_trace(go.Scatter(
@@ -85,7 +85,7 @@ def render():
             )
             st.plotly_chart(fig, use_container_width=True)
 
-            # Residus
+            # Residuals
             df_pred["residual"] = df_pred["y_true"] - df_pred["y_pred"]
             fig_res = px.histogram(
                 df_pred, x="residual", nbins=50,
@@ -115,7 +115,7 @@ def render():
                 )
                 st.plotly_chart(fig, use_container_width=True)
     else:
-        # Essayer de charger les importances depuis SHAP
+        # Try to load importances from SHAP
         shap_dir = eval_dir / "shap"
         if shap_dir.exists():
             shap_files = list(shap_dir.glob("*.png"))
@@ -127,7 +127,7 @@ def render():
 
 
 def _display_eval_results(results: dict):
-    """Affiche les metriques d'evaluation."""
+    """Display evaluation metrics."""
     st.subheader("Metriques d'evaluation")
 
     if isinstance(results, dict):
@@ -142,7 +142,7 @@ def _display_eval_results(results: dict):
             df_metrics = pd.DataFrame(metrics_data)
             st.dataframe(df_metrics, use_container_width=True, hide_index=True)
 
-            # Graphique comparatif
+            # Comparison chart
             metric_cols = [c for c in df_metrics.columns if c != "Modele"]
             if metric_cols:
                 selected_metric = st.selectbox("Metrique a comparer", metric_cols)

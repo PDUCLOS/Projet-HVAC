@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour verifier l'utilisation de RobustScaler et HuberLoss."""
+"""Tests to verify the use of RobustScaler and HuberLoss."""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ import pytest
 
 
 class TestRobustScaler:
-    """Verifie que train.py utilise RobustScaler au lieu de StandardScaler."""
+    """Verify that train.py uses RobustScaler instead of StandardScaler."""
 
     def test_imports_robust_scaler(self):
-        """Le module train importe RobustScaler."""
+        """The train module imports RobustScaler."""
         from src.models import train
         import inspect
         source = inspect.getsource(train)
@@ -19,20 +19,20 @@ class TestRobustScaler:
         assert "scaler = RobustScaler()" in source
 
     def test_robust_scaler_available(self):
-        """RobustScaler est bien disponible dans sklearn."""
+        """RobustScaler is available in sklearn."""
         from sklearn.preprocessing import RobustScaler
         scaler = RobustScaler()
         assert scaler is not None
 
 
 class TestHuberLoss:
-    """Verifie que deep_learning.py utilise HuberLoss au lieu de MSELoss."""
+    """Verify that deep_learning.py uses HuberLoss instead of MSELoss."""
 
     def test_uses_huber_loss(self):
-        """Le module deep_learning utilise HuberLoss."""
+        """The deep_learning module uses HuberLoss."""
         from src.models import deep_learning
         import inspect
         source = inspect.getsource(deep_learning)
         assert "HuberLoss" in source
-        # MSELoss ne doit plus etre le criterion principal
+        # MSELoss should no longer be the main criterion
         assert "criterion = nn.MSELoss()" not in source

@@ -1,29 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-Synchronisation pCloud — Mise a jour automatisee des donnees.
-==============================================================
+pCloud synchronization — Automated data update.
+=================================================
 
-Ce module gere la synchronisation des donnees entre pCloud et le projet
-local, avec detection des nouveaux fichiers et mise a jour automatique
-de la base de donnees.
+This module manages data synchronization between pCloud and the local
+project, with detection of new files and automatic database updates.
 
-Fonctionnalites :
-    1. Connexion a l'API pCloud (authentification par token)
-    2. Listing des fichiers disponibles dans le dossier partage
-    3. Telechargement des fichiers nouveaux/modifies
-    4. Detection des mises a jour (comparaison hash/date)
-    5. Declenchement automatique du pipeline d'import
+Features:
+    1. Connection to the pCloud API (token authentication)
+    2. Listing of available files in the shared folder
+    3. Download of new/modified files
+    4. Update detection (hash/date comparison)
+    5. Automatic triggering of the import pipeline
 
-Prerequis :
-    - Token d'acces pCloud (variable PCLOUD_ACCESS_TOKEN dans .env)
-    - Lien public pCloud (variable PCLOUD_PUBLIC_LINK dans .env)
+Prerequisites:
+    - pCloud access token (PCLOUD_ACCESS_TOKEN variable in .env)
+    - pCloud public link (PCLOUD_PUBLIC_LINK variable in .env)
 
-Usage :
+Usage:
     >>> from src.collectors.pcloud_sync import PCloudSync
     >>> sync = PCloudSync(config)
     >>> sync.sync_and_update()
 
-    # Ou via CLI
+    # Or via CLI
     python -m src.pipeline sync_pcloud
 """
 
@@ -43,22 +42,22 @@ from config.settings import ProjectConfig
 
 
 class PCloudSync:
-    """Gestionnaire de synchronisation pCloud pour les donnees HVAC.
+    """pCloud synchronization manager for HVAC data.
 
-    Gere le telechargement, la detection de mises a jour et
-    l'integration automatique des nouvelles donnees dans le pipeline.
+    Manages downloading, update detection, and automatic
+    integration of new data into the pipeline.
 
     Attributes:
-        config: Configuration du projet.
-        access_token: Token d'acces pCloud (OAuth2).
-        public_code: Code du lien public pCloud.
-        api_base: URL de base de l'API pCloud.
-        sync_state_file: Fichier JSON tracking l'etat de synchronisation.
+        config: Project configuration.
+        access_token: pCloud access token (OAuth2).
+        public_code: pCloud public link code.
+        api_base: pCloud API base URL.
+        sync_state_file: JSON file tracking the synchronization state.
     """
 
     API_BASE = "https://eapi.pcloud.com"
 
-    # Mapping des fichiers pCloud vers les dossiers locaux
+    # Mapping of pCloud files to local directories
     FILE_MAPPING = {
         "weather_france.csv": "weather",
         "indicateurs_economiques.csv": "insee",
@@ -66,7 +65,7 @@ class PCloudSync:
         "permis_construire_france.csv": "sitadel",
         "dpe_france_all.csv": "dpe",
         "hvac_market.db": "_database",
-        # Retrocompatibilite : anciens noms AURA
+        # Backward compatibility: old AURA names
         "weather_aura.csv": "weather",
         "permis_construire_aura.csv": "sitadel",
         "dpe_aura_all.csv": "dpe",
@@ -84,30 +83,27 @@ class PCloudSync:
         self.logger = logging.getLogger("collectors.pcloud")
 
         self.access_token = access_token or os.getenv("PCLOUD_ACCESS_TOKEN", "")
-        self.public_code = public_code or os.getenv(
-            "PCLOUD_PUBLIC_CODE",
-            "kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy",
-        )
+        self.public_code = public_code or os.getenv("PCLOUD_PUBLIC_CODE", "")
 
         self.session = requests.Session()
         self.session.timeout = 60
 
-        # Fichier d'etat pour tracker les fichiers deja synchronises
+        # State file to track already synchronized files
         self.sync_state_file = Path("data") / ".pcloud_sync_state.json"
         self.sync_state = self._load_sync_state()
 
     # ==================================================================
-    # API pCloud
+    # pCloud API
     # ==================================================================
 
     def list_public_folder(self) -> List[Dict[str, Any]]:
-        """Liste les fichiers disponibles dans le dossier public pCloud.
+        """List available files in the pCloud public folder.
 
-        Utilise l'endpoint showpublink pour acceder au contenu
-        du lien public sans authentification.
+        Uses the showpublink endpoint to access the content
+        of the public link without authentication.
 
         Returns:
-            Liste de dictionnaires avec les infos fichier
+            List of dictionaries with file info
             (name, size, hash, modified).
         """
         self.logger.info("Listing du dossier public pCloud...")
@@ -141,7 +137,7 @@ class PCloudSync:
                         "fileid": item.get("fileid", 0),
                     })
 
-            # Lister aussi les sous-dossiers (recursif un niveau)
+            # Also list subfolders (recursive one level)
             for item in contents:
                 if item.get("isfolder", False):
                     sub_contents = item.get("contents", [])
@@ -169,20 +165,20 @@ class PCloudSync:
         file_info: Dict[str, Any],
         dest_path: Path,
     ) -> bool:
-        """Telecharge un fichier depuis le lien public pCloud.
+        """Download a file from the pCloud public link.
 
         Args:
-            file_info: Infos du fichier (depuis list_public_folder).
-            dest_path: Chemin local de destination.
+            file_info: File info (from list_public_folder).
+            dest_path: Local destination path.
 
         Returns:
-            True si le telechargement a reussi.
+            True if the download succeeded.
         """
         filename = file_info["name"]
         self.logger.info("  Telechargement : %s...", filename)
 
         try:
-            # Obtenir le lien de telechargement
+            # Get the download link
             resp = self.session.get(
                 f"{self.API_BASE}/getpublinkdownload",
                 params={
@@ -201,7 +197,7 @@ class PCloudSync:
                 )
                 return False
 
-            # Construire l'URL de telechargement
+            # Build the download URL
             hosts = data.get("hosts", [])
             path = data.get("path", "")
             if not hosts or not path:
@@ -210,7 +206,7 @@ class PCloudSync:
 
             download_url = f"https://{hosts[0]}{path}"
 
-            # Telecharger en streaming (gros fichiers possibles)
+            # Download with streaming (large files possible)
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             with self.session.get(download_url, stream=True, timeout=300) as dl:
                 dl.raise_for_status()
@@ -229,20 +225,20 @@ class PCloudSync:
             return False
 
     # ==================================================================
-    # Upload vers pCloud (necessite access_token)
+    # Upload to pCloud (requires access_token)
     # ==================================================================
 
     def upload_file(self, local_path: Path, remote_folder_id: int = 0) -> bool:
-        """Upload un fichier local vers pCloud.
+        """Upload a local file to pCloud.
 
-        Necessite un access_token valide (pas le lien public).
+        Requires a valid access_token (not the public link).
 
         Args:
-            local_path: Chemin du fichier local a uploader.
-            remote_folder_id: ID du dossier pCloud de destination (0 = racine).
+            local_path: Path of the local file to upload.
+            remote_folder_id: pCloud destination folder ID (0 = root).
 
         Returns:
-            True si l'upload a reussi.
+            True if the upload succeeded.
         """
         if not self.access_token:
             self.logger.error(
@@ -280,7 +276,7 @@ class PCloudSync:
                 )
                 return False
 
-            # Extraire les metadonnees du fichier uploade
+            # Extract metadata of the uploaded file
             uploaded = data.get("metadata", [{}])
             if uploaded:
                 size_mb = uploaded[0].get("size", 0) / (1024 * 1024)
@@ -295,16 +291,16 @@ class PCloudSync:
             return False
 
     def upload_collected_data(self, remote_folder_id: int = 0) -> Dict[str, Any]:
-        """Upload tous les fichiers de donnees collectees vers pCloud.
+        """Upload all collected data files to pCloud.
 
-        Parcourt les dossiers data/raw/ et uploade chaque fichier CSV
-        correspondant au FILE_MAPPING.
+        Traverses the data/raw/ directories and uploads each CSV file
+        matching the FILE_MAPPING.
 
         Args:
-            remote_folder_id: ID du dossier pCloud de destination.
+            remote_folder_id: pCloud destination folder ID.
 
         Returns:
-            Dictionnaire resume de l'upload.
+            Dictionary summarizing the upload.
         """
         self.logger.info("=" * 60)
         self.logger.info("  UPLOAD vers pCloud")
@@ -317,7 +313,7 @@ class PCloudSync:
             "files_skipped": 0,
         }
 
-        # Fichiers principaux a uploader (noms France)
+        # Main files to upload (France names)
         upload_targets = {
             "weather_france.csv": self.config.raw_data_dir / "weather" / "weather_france.csv",
             "indicateurs_economiques.csv": self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv",
@@ -326,7 +322,7 @@ class PCloudSync:
             "dpe_france_all.csv": self.config.raw_data_dir / "dpe" / "dpe_france_all.csv",
         }
 
-        # Ajouter la base de donnees si elle existe
+        # Add the database if it exists
         db_path = Path(self.config.database.db_path)
         if db_path.exists():
             upload_targets["hvac_market.db"] = db_path
@@ -353,17 +349,17 @@ class PCloudSync:
         return result
 
     # ==================================================================
-    # Detection des mises a jour
+    # Update detection
     # ==================================================================
 
     def check_for_updates(self) -> List[Dict[str, Any]]:
-        """Verifie quels fichiers ont ete modifies depuis la derniere sync.
+        """Check which files have been modified since the last sync.
 
-        Compare les hash/tailles des fichiers pCloud avec l'etat
-        sauvegarde localement.
+        Compares the hashes/sizes of pCloud files with the locally
+        saved state.
 
         Returns:
-            Liste des fichiers a mettre a jour.
+            List of files to update.
         """
         self.logger.info("Verification des mises a jour pCloud...")
 
@@ -375,11 +371,11 @@ class PCloudSync:
         for file_info in remote_files:
             name = file_info["name"]
 
-            # Verifier si le fichier est connu et pertinent
+            # Check if the file is known and relevant
             if not self._is_relevant_file(name):
                 continue
 
-            # Comparer avec l'etat sauvegarde
+            # Compare with the saved state
             prev_state = self.sync_state.get(name, {})
             prev_hash = prev_state.get("hash", 0)
             prev_size = prev_state.get("size", 0)
@@ -405,7 +401,7 @@ class PCloudSync:
         return updates
 
     # ==================================================================
-    # Synchronisation complete
+    # Full synchronization
     # ==================================================================
 
     def sync_and_update(
@@ -413,20 +409,20 @@ class PCloudSync:
         force: bool = False,
         run_pipeline: bool = True,
     ) -> Dict[str, Any]:
-        """Synchronise les donnees pCloud et met a jour la base.
+        """Synchronize pCloud data and update the database.
 
-        Pipeline complet :
-        1. Verifier les mises a jour sur pCloud
-        2. Telecharger les fichiers modifies
-        3. Copier dans les bons dossiers data/raw/
-        4. Declencher le pipeline d'import si necessaire
+        Full pipeline:
+        1. Check for updates on pCloud
+        2. Download modified files
+        3. Copy into the correct data/raw/ directories
+        4. Trigger the import pipeline if necessary
 
         Args:
-            force: Si True, re-telecharge tout meme si rien n'a change.
-            run_pipeline: Si True, lance l'import DB apres telechargement.
+            force: If True, re-download everything even if nothing has changed.
+            run_pipeline: If True, launch the DB import after download.
 
         Returns:
-            Dictionnaire resume de la synchronisation.
+            Dictionary summarizing the synchronization.
         """
         self.logger.info("=" * 60)
         self.logger.info("  SYNCHRONISATION pCloud")
@@ -440,7 +436,7 @@ class PCloudSync:
             "pipeline_triggered": False,
         }
 
-        # 1. Verifier les mises a jour
+        # 1. Check for updates
         if force:
             updates = self.list_public_folder()
             updates = [f for f in updates if self._is_relevant_file(f["name"])]
@@ -453,7 +449,7 @@ class PCloudSync:
             self.logger.info("Aucun fichier a synchroniser.")
             return result
 
-        # 2. Telecharger chaque fichier
+        # 2. Download each file
         downloaded = []
         for file_info in updates:
             dest = self._get_local_path(file_info["name"])
@@ -465,7 +461,7 @@ class PCloudSync:
                 downloaded.append(file_info)
                 result["files_downloaded"] += 1
 
-                # Mettre a jour l'etat de sync
+                # Update the sync state
                 self.sync_state[file_info["name"]] = {
                     "hash": file_info.get("hash", 0),
                     "size": file_info.get("size", 0),
@@ -474,10 +470,10 @@ class PCloudSync:
             else:
                 result["files_failed"] += 1
 
-        # 3. Sauvegarder l'etat de sync
+        # 3. Save the sync state
         self._save_sync_state()
 
-        # 4. Declencher le pipeline si des donnees ont change
+        # 4. Trigger the pipeline if data has changed
         if downloaded and run_pipeline:
             self.logger.info("-" * 40)
             self.logger.info("Declenchement du pipeline d'import...")
@@ -487,7 +483,7 @@ class PCloudSync:
             except Exception as e:
                 self.logger.error("Erreur pipeline : %s", e)
 
-        # Resume
+        # Summary
         self.logger.info("=" * 60)
         self.logger.info("  RESUME SYNCHRONISATION")
         self.logger.info("  Fichiers verifies   : %d", result["files_checked"])
@@ -503,9 +499,9 @@ class PCloudSync:
     # ==================================================================
 
     def _trigger_pipeline_update(self) -> None:
-        """Declenche la mise a jour de la base de donnees.
+        """Trigger the database update.
 
-        Enchaine : import_data → clean → merge → features → outliers.
+        Chains: import_data -> clean -> merge -> features -> outliers.
         """
         from src.database.db_manager import DatabaseManager
         from src.processing.clean_data import DataCleaner
@@ -513,17 +509,17 @@ class PCloudSync:
         from src.processing.feature_engineering import FeatureEngineer
         from src.processing.outlier_detection import OutlierDetector
 
-        # 1. Import dans la base
+        # 1. Import into the database
         self.logger.info("  1/5 Import des donnees dans la BDD...")
         db = DatabaseManager(self.config.database.connection_string)
         db.import_collected_data(raw_data_dir=self.config.raw_data_dir)
 
-        # 2. Nettoyage
+        # 2. Cleaning
         self.logger.info("  2/5 Nettoyage des donnees brutes...")
         cleaner = DataCleaner(self.config)
         cleaner.clean_all()
 
-        # 3. Fusion
+        # 3. Merging
         self.logger.info("  3/5 Fusion multi-sources...")
         merger = DatasetMerger(self.config)
         merger.build_ml_dataset()
@@ -533,7 +529,7 @@ class PCloudSync:
         fe = FeatureEngineer(self.config)
         fe.engineer_from_file()
 
-        # 5. Detection outliers
+        # 5. Outlier detection
         self.logger.info("  5/5 Detection des outliers...")
         detector = OutlierDetector(self.config)
         import pandas as pd
@@ -546,32 +542,32 @@ class PCloudSync:
         self.logger.info("  Pipeline de mise a jour termine.")
 
     # ==================================================================
-    # Utilitaires
+    # Utilities
     # ==================================================================
 
     def _is_relevant_file(self, filename: str) -> bool:
-        """Verifie si un fichier est pertinent pour le projet."""
+        """Check if a file is relevant to the project."""
         return filename in self.FILE_MAPPING or filename.endswith((".csv", ".db"))
 
     def _get_local_path(self, filename: str) -> Optional[Path]:
-        """Determine le chemin local pour un fichier pCloud."""
+        """Determine the local path for a pCloud file."""
         subdir = self.FILE_MAPPING.get(filename)
 
         if subdir == "_database":
-            # Base de donnees directement dans data/
+            # Database directly in data/
             return Path("data") / filename
 
         if subdir:
             return self.config.raw_data_dir / subdir / filename
 
-        # Fichier CSV inconnu → mettre dans raw/other/
+        # Unknown CSV file -> put in raw/other/
         if filename.endswith(".csv"):
             return self.config.raw_data_dir / "other" / filename
 
         return None
 
     def _load_sync_state(self) -> Dict[str, Any]:
-        """Charge l'etat de synchronisation depuis le fichier JSON."""
+        """Load the synchronization state from the JSON file."""
         if self.sync_state_file.exists():
             try:
                 return json.loads(self.sync_state_file.read_text())
@@ -580,7 +576,7 @@ class PCloudSync:
         return {}
 
     def _save_sync_state(self) -> None:
-        """Sauvegarde l'etat de synchronisation."""
+        """Save the synchronization state."""
         self.sync_state_file.parent.mkdir(parents=True, exist_ok=True)
         self.sync_state_file.write_text(
             json.dumps(self.sync_state, indent=2, ensure_ascii=False),
@@ -589,7 +585,7 @@ class PCloudSync:
         self.logger.info("  Etat de sync sauvegarde → %s", self.sync_state_file)
 
     def get_sync_status(self) -> Dict[str, Any]:
-        """Retourne un resume de l'etat de synchronisation actuel."""
+        """Return a summary of the current synchronization state."""
         state = self._load_sync_state()
         return {
             "n_files_tracked": len(state),

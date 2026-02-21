@@ -1,35 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Référence des Sources de Données — HVAC Market Analysis
-========================================================
+Data Sources Reference — HVAC Market Analysis
+===============================================
 
-Ce fichier documente TOUTES les sources avec les URLs exactes,
-les paramètres de collecte, et les corrections issues de l'audit.
+This file documents ALL sources with exact URLs,
+collection parameters, and corrections from the audit.
 
-STATUT : Ce fichier est une RÉFÉRENCE DOCUMENTAIRE.
-Le code de collecte réel se trouve dans src/collectors/.
+STATUS : This file is a DOCUMENTATION REFERENCE.
+The actual collection code is located in src/collectors/.
 
-DERNIÈRE MISE À JOUR : Février 2026 (audit complet)
+LAST UPDATE : February 2026 (full audit)
 
-CORRECTIONS APPLIQUÉES :
-  - [CRITIQUE] URL DPE ADEME corrigée : dpe-v2-logements-existants → dpe03existant
-  - [CRITIQUE] Idbank INSEE climat affaires corrigé : 001586763 → 001565530
-  - [ÉLEVÉ]   Villeurbanne et Clermont-Ferrand retirés des villes (doublons/hors périmètre)
-  - [ÉLEVÉ]   Domaine SITADEL : ajout obligatoire de 'www.' (certificat TLS)
-  - [MOYEN]   SDES : migration vers API DiDo (data.gouv.fr archivé)
+APPLIED CORRECTIONS :
+  - [CRITICAL] DPE ADEME URL corrected : dpe-v2-logements-existants -> dpe03existant
+  - [CRITICAL] INSEE business climate idbank corrected : 001586763 -> 001565530
+  - [HIGH]     Villeurbanne and Clermont-Ferrand removed from cities (duplicates/out of scope)
+  - [HIGH]     SITADEL domain : mandatory addition of 'www.' (TLS certificate)
+  - [MEDIUM]   SDES : migration to DiDo API (data.gouv.fr archived)
 """
 
 # =============================================================================
-# SOURCE 1 : OPEN-METEO — Météo historique
+# SOURCE 1 : OPEN-METEO — Historical Weather
 # =============================================================================
-# API gratuite, pas de clé, pas d'inscription
+# Free API, no key, no registration
 # Doc : https://open-meteo.com/en/docs/historical-weather-api
-# Limite : fair use, pas plus de 10 000 appels/jour
-# Collecteur : src/collectors/weather.py (WeatherCollector)
+# Limit : fair use, no more than 10,000 calls/day
+# Collector : src/collectors/weather.py (WeatherCollector)
 
-# Villes de référence AURA — UNE seule ville par département
-# CORRECTION AUDIT : Villeurbanne (doublon dept 69) et
-#                    Clermont-Ferrand (dept 63, hors périmètre) RETIRÉS
+# Reference cities — ONE single city per department (historical AURA region)
+# AUDIT CORRECTION : Villeurbanne (duplicate dept 69) and
+#                    Clermont-Ferrand (dept 63, out of scope) REMOVED
 CITIES_AURA = {
     "Lyon":            {"lat": 45.76, "lon": 4.84, "dept": "69"},
     "Grenoble":        {"lat": 45.19, "lon": 5.72, "dept": "38"},
@@ -54,55 +54,55 @@ OPENMETEO_PARAMS = {
     ]),
     "timezone": "Europe/Paris",
 }
-# Note: HDD et CDD calculés dans le collecteur :
-# HDD = max(0, 18 - temp_mean)  (base 18°C, demande chauffage)
-# CDD = max(0, temp_mean - 18)  (base 18°C, demande climatisation)
+# Note: HDD and CDD are computed in the collector :
+# HDD = max(0, 18 - temp_mean)  (base 18C, heating demand)
+# CDD = max(0, temp_mean - 18)  (base 18C, cooling demand)
 
 
 # =============================================================================
-# SOURCE 2 : INSEE BDM — Confiance ménages & Climat affaires
+# SOURCE 2 : INSEE BDM — Household Confidence & Business Climate
 # =============================================================================
-# API SDMX ouverte, pas de clé
+# Open SDMX API, no key
 # Doc : https://www.bdm.insee.fr/series/sdmx
-# Format : XML SDMX 2.1 → parser avec lxml
-# Collecteur : src/collectors/insee.py (InseeCollector)
+# Format : XML SDMX 2.1 -> parse with lxml
+# Collector : src/collectors/insee.py (InseeCollector)
 
-# CORRECTION AUDIT : idbank climat affaires industrie corrigé
-# L'ancien 001586763 était spécifique à l'industrie uniquement
-# Le nouveau 001565530 couvre tous les secteurs (plus pertinent)
+# AUDIT CORRECTION : industry business climate idbank corrected
+# The old 001586763 was specific to industry only
+# The new 001565530 covers all sectors (more relevant)
 INSEE_SERIES = {
     "confiance_menages": {
         "idbank": "001759970",
-        "desc": "Indicateur synthétique de confiance des ménages (CVS)",
-        "freq": "mensuel",
+        "desc": "Synthetic household confidence indicator (seasonally adjusted)",
+        "freq": "monthly",
         "base": 100,
     },
     "climat_affaires_industrie": {
-        "idbank": "001565530",  # CORRIGÉ : tous secteurs
-        "desc": "Indicateur du climat des affaires - Tous secteurs (CVS)",
-        "freq": "mensuel",
+        "idbank": "001565530",  # CORRECTED : all sectors
+        "desc": "Business climate indicator - All sectors (seasonally adjusted)",
+        "freq": "monthly",
         "base": 100,
     },
     "climat_affaires_batiment": {
         "idbank": "001586808",
-        "desc": "Indicateur climat des affaires dans le bâtiment (CVS)",
-        "freq": "mensuel",
+        "desc": "Business climate indicator in construction (seasonally adjusted)",
+        "freq": "monthly",
         "base": 100,
     },
     "opinion_achats_importants": {
         "idbank": "001759974",
-        "desc": "Opportunité de faire des achats importants (solde CVS)",
-        "freq": "mensuel",
+        "desc": "Opportunity to make major purchases (seasonally adjusted balance)",
+        "freq": "monthly",
     },
     "situation_financiere_future": {
         "idbank": "001759972",
-        "desc": "Situation financière future des ménages (solde CVS)",
-        "freq": "mensuel",
+        "desc": "Future household financial situation (seasonally adjusted balance)",
+        "freq": "monthly",
     },
     "ipi_industrie_manuf": {
         "idbank": "010768261",
-        "desc": "IPI Industrie manufacturière (CVS-CJO, base 2021)",
-        "freq": "mensuel",
+        "desc": "Manufacturing IPI (seasonally and calendar adjusted, base 2021)",
+        "freq": "monthly",
     },
 }
 
@@ -110,15 +110,15 @@ INSEE_BDM_URL = "https://www.bdm.insee.fr/series/sdmx/data/SERIES_BDM/{idbank}"
 
 
 # =============================================================================
-# SOURCE 3 : DPE ADEME — Installations HVAC (proxy ventes)
+# SOURCE 3 : DPE ADEME — HVAC Installations (sales proxy)
 # =============================================================================
-# CORRECTION AUDIT : ancienne URL (dpe-v2-logements-existants) CASSÉE
-# Nouvelle URL : dpe03existant (vérifiée février 2026, ~14M de DPE)
-# Collecteur : src/collectors/dpe.py (DpeCollector)
+# AUDIT CORRECTION : old URL (dpe-v2-logements-existants) BROKEN
+# New URL : dpe03existant (verified February 2026, ~14M DPE records)
+# Collector : src/collectors/dpe.py (DpeCollector)
 
 DEPTS_RHONE_ALPES = ["01", "07", "26", "38", "42", "69", "73", "74"]
 
-# URL CORRIGÉE (février 2026)
+# CORRECTED URL (February 2026)
 DPE_API_BASE = "https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines"
 DPE_API_PARAMS = {
     "size": 10000,
@@ -140,12 +140,12 @@ DPE_API_PARAMS = {
 
 
 # =============================================================================
-# SOURCE 4 : SITADEL — Permis de construire
+# SOURCE 4 : SITADEL — Building Permits
 # =============================================================================
-# CORRECTION AUDIT : toujours utiliser 'www.' dans le domaine (certificat TLS)
-# L'URL du ZIP change à chaque mise à jour mensuelle
-# Alternative recommandée : API DiDo
-# Collecteur : src/collectors/sitadel.py (SitadelCollector)
+# AUDIT CORRECTION : always use 'www.' in the domain (TLS certificate)
+# The ZIP URL changes with each monthly update
+# Recommended alternative : DiDo API
+# Collector : src/collectors/sitadel.py (SitadelCollector)
 
 SITADEL_URL = (
     "https://www.statistiques.developpement-durable.gouv.fr/"
@@ -155,63 +155,63 @@ SITADEL_URL = (
 
 
 # =============================================================================
-# SOURCE 5 : EUROSTAT — Production industrielle HVAC
+# SOURCE 5 : EUROSTAT — HVAC Industrial Production
 # =============================================================================
-# Package Python : pip install eurostat
+# Python package : pip install eurostat
 # Doc : https://pypi.org/project/eurostat/
-# Collecteur : src/collectors/eurostat_col.py (EurostatCollector)
+# Collector : src/collectors/eurostat_col.py (EurostatCollector)
 
 EUROSTAT_DATASETS = {
     "production_industrielle": {
         "code": "sts_inpr_m",
-        "desc": "Indice de production industrielle mensuel",
+        "desc": "Monthly industrial production index",
         "nace_filter": ["C28", "C2825"],
         "geo": "FR",
-        "unit": "I21",       # Indice base 2021
-        "s_adj": "SCA",      # CVS-CJO
+        "unit": "I21",       # Index base 2021
+        "s_adj": "SCA",      # Seasonally and calendar adjusted
     },
 }
 
 
 # =============================================================================
-# SOURCE 6 : SDES — Consommation énergie locale
+# SOURCE 6 : SDES — Local Energy Consumption
 # =============================================================================
-# CORRECTION AUDIT : data.gouv.fr archivé depuis 2018
-# Source primaire : API DiDo du SDES
+# AUDIT CORRECTION : data.gouv.fr archived since 2018
+# Primary source : SDES DiDo API
 # API : https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/
-# NOTE : données annuelles (granularité plus faible que les autres sources)
-# Recommandation : utiliser en EDA uniquement, pas en feature ML (annuel vs mensuel)
+# NOTE : annual data (lower granularity than other sources)
+# Recommendation : use in EDA only, not as ML feature (annual vs monthly)
 
 SDES_DIDO_API = "https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/"
 
 
 # =============================================================================
-# NOTES TECHNIQUES
+# TECHNICAL NOTES
 # =============================================================================
 #
-# 1. ORDRE DE COLLECTE : weather → insee → eurostat → sitadel → dpe
-#    (du plus simple/rapide au plus volumineux)
+# 1. COLLECTION ORDER : weather -> insee -> eurostat -> sitadel -> dpe
+#    (from simplest/fastest to most voluminous)
 #
-# 2. TOUT LE CODE DE COLLECTE EST DANS src/collectors/
-#    Ce fichier est une RÉFÉRENCE pour les URLs et paramètres.
+# 2. ALL COLLECTION CODE IS IN src/collectors/
+#    This file is a REFERENCE for URLs and parameters.
 #
-# 3. EXTENSIBILITÉ :
-#    Pour ajouter une nouvelle source :
-#    a) Documenter les URLs/paramètres dans ce fichier
-#    b) Créer un collecteur dans src/collectors/nouvelle_source.py
-#       héritant de BaseCollector
-#    c) C'est tout ! Auto-enregistré dans le registry.
+# 3. EXTENSIBILITY :
+#    To add a new source :
+#    a) Document the URLs/parameters in this file
+#    b) Create a collector in src/collectors/new_source.py
+#       inheriting from BaseCollector
+#    c) That's it ! Auto-registered in the registry.
 #
-# 4. VOLUME DE DONNÉES :
-#    - Open-Meteo  : ~quelques Mo (quotidien, 8 villes, 7 ans)
-#    - INSEE       : ~quelques Ko (mensuel, 6 séries)
-#    - Eurostat    : ~50 Mo brut → quelques Ko filtrés
-#    - SITADEL     : ~50-100 Mo ZIP → quelques Mo filtrés AURA
-#    - DPE         : ~14M lignes total → ~500K-1M lignes AURA
-#    - SDES        : ~100 Mo (annuel, optionnel)
+# 4. DATA VOLUME :
+#    - Open-Meteo  : ~a few MB (daily, 8 cities, 7 years)
+#    - INSEE       : ~a few KB (monthly, 6 series)
+#    - Eurostat    : ~50 MB raw -> a few KB filtered
+#    - SITADEL     : ~50-100 MB ZIP -> a few MB filtered
+#    - DPE         : ~14M total rows -> filtered by departments
+#    - SDES        : ~100 MB (annual, optional)
 #
-# 5. GRANULARITÉ FINALE DU DATASET ML :
-#    Mensuel × Département = ~528 lignes
-#    (8 depts × 66 mois, juil 2021 - dec 2026)
-#    → Suffisant pour Ridge, LightGBM, Prophet
-#    → Insuffisant pour LSTM/Transformer (exploration pédagogique uniquement)
+# 5. FINAL ML DATASET GRANULARITY :
+#    Monthly x Department = ~528 rows
+#    (8 depts x 66 months, Jul 2021 - Dec 2026)
+#    -> Sufficient for Ridge, LightGBM, Prophet
+#    -> Insufficient for LSTM/Transformer (educational exploration only)

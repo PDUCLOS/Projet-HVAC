@@ -3,28 +3,28 @@
 Data Collectors Package
 ========================
 
-Collecteurs de données pour le projet HVAC Market Analysis.
-Chaque source de données a son propre module héritant de BaseCollector.
+Data collectors for the HVAC Market Analysis project.
+Each data source has its own module inheriting from BaseCollector.
 
-Architecture extensible :
-    Pour ajouter une nouvelle source, créer un fichier dans ce package
-    avec une classe héritant de BaseCollector. Elle sera automatiquement
-    enregistrée dans le CollectorRegistry.
+Extensible architecture:
+    To add a new source, create a file in this package
+    with a class inheriting from BaseCollector. It will be automatically
+    registered in the CollectorRegistry.
 
-Exemple:
+Example:
     >>> from src.collectors.base import CollectorRegistry, CollectorConfig
     >>> config = CollectorConfig.from_env()
     >>> results = CollectorRegistry.run_all(config)
 
-Sources disponibles:
-    - weather   : Open-Meteo (météo historique AURA)
-    - insee     : INSEE BDM (confiance ménages, climat affaires, IPI)
-    - eurostat  : Eurostat (production industrielle HVAC)
-    - sitadel   : SITADEL (permis de construire)
-    - dpe       : ADEME DPE (diagnostics énergétiques)
+Available sources:
+    - weather   : Open-Meteo (historical weather data for France)
+    - insee     : INSEE BDM (household confidence, business climate, IPI)
+    - eurostat  : Eurostat (HVAC industrial production)
+    - sitadel   : SITADEL (building permits)
+    - dpe       : ADEME DPE (energy performance diagnostics)
 """
 
-# Importer tous les collecteurs pour déclencher l'auto-enregistrement
+# Import all collectors to trigger auto-registration
 from src.collectors.base import BaseCollector, CollectorConfig, CollectorRegistry
 from src.collectors.weather import WeatherCollector
 from src.collectors.insee import InseeCollector

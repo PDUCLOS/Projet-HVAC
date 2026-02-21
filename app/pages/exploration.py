@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Page d'exploration des donnees."""
+"""Data exploration page."""
 
 import streamlit as st
 import pandas as pd
@@ -11,7 +11,7 @@ from pathlib import Path
 def render():
     st.title("Exploration des donnees")
 
-    # --- Choix du dataset ---
+    # --- Dataset selection ---
     datasets = _list_available_datasets()
     if not datasets:
         st.warning("Aucun dataset disponible. Lancez d'abord la collecte.")
@@ -21,7 +21,7 @@ def render():
     selected = st.selectbox("Dataset a explorer", list(datasets.keys()))
     filepath = datasets[selected]
 
-    # --- Chargement ---
+    # --- Loading ---
     with st.spinner(f"Chargement de {selected}..."):
         df = _load_dataset(str(filepath))
 
@@ -29,7 +29,7 @@ def render():
         st.error(f"Impossible de charger {filepath}")
         return
 
-    # --- Apercu ---
+    # --- Overview ---
     st.subheader(f"Apercu : {selected}")
     col1, col2, col3 = st.columns(3)
     col1.metric("Lignes", f"{len(df):,}")
@@ -38,7 +38,7 @@ def render():
 
     st.dataframe(df.head(50), use_container_width=True)
 
-    # --- Statistiques descriptives ---
+    # --- Descriptive statistics ---
     st.subheader("Statistiques descriptives")
     numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
 
@@ -48,7 +48,7 @@ def render():
             use_container_width=True,
         )
 
-    # --- Valeurs manquantes ---
+    # --- Missing values ---
     st.subheader("Valeurs manquantes")
     missing = df.isnull().sum()
     missing = missing[missing > 0].sort_values(ascending=False)
@@ -90,7 +90,7 @@ def render():
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # --- Serie temporelle ---
+    # --- Time series ---
     date_cols = [c for c in df.columns if "date" in c.lower() or "time" in c.lower() or "period" in c.lower()]
     if date_cols and numeric_cols:
         st.subheader("Evolution temporelle")
@@ -109,7 +109,7 @@ def render():
 
 
 def _list_available_datasets() -> dict:
-    """Liste les datasets disponibles."""
+    """List available datasets."""
     datasets = {}
     paths = {
         "Dataset ML (features)": Path("data/features/hvac_features_dataset.csv"),
@@ -130,7 +130,7 @@ def _list_available_datasets() -> dict:
 
 @st.cache_data(ttl=300)
 def _load_dataset(filepath: str, max_rows: int = 100_000) -> pd.DataFrame:
-    """Charge un dataset avec limite de lignes et cache de 5 minutes."""
+    """Load a dataset with row limit and 5-minute cache."""
     try:
         return pd.read_csv(filepath, nrows=max_rows, low_memory=False,
                            encoding="utf-8")

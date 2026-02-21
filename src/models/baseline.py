@@ -1,27 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-Modeles baseline — Ridge Regression, LightGBM, Prophet (Phase 4.1).
+Baseline models — Ridge Regression, LightGBM, Prophet (Phase 4.1).
 ===================================================================
 
-Trois modeles adaptes au volume de donnees (~288 lignes train) :
+Three models suited to the data volume (~288 training rows):
 
-    1. Ridge Regression (Tier 1 — robuste)
-       - Regression lineaire regularisee L2
-       - Tres stable sur petit dataset
-       - Sert de reference minimale
+    1. Ridge Regression (Tier 1 — robust)
+       - L2-regularized linear regression
+       - Very stable on small datasets
+       - Serves as a minimal baseline
 
-    2. LightGBM (Tier 2 — faisable)
-       - Gradient boosting regularise
-       - Capture les non-linearites
-       - Hyperparametres contraints (max_depth=4, min_child_samples=20)
+    2. LightGBM (Tier 2 — feasible)
+       - Regularized gradient boosting
+       - Captures non-linearities
+       - Constrained hyperparameters (max_depth=4, min_child_samples=20)
 
-    3. Prophet (Tier 1 — series temporelles)
-       - Modele additif de Facebook/Meta
-       - Capture tendance + saisonnalite annuelle
-       - Regresseurs externes (meteo, confiance)
-       - Entraine par departement (univarie + regresseurs)
+    3. Prophet (Tier 1 — time series)
+       - Additive model by Facebook/Meta
+       - Captures trend + yearly seasonality
+       - External regressors (weather, confidence)
+       - Trained per department (univariate + regressors)
 
-Usage :
+Usage:
     >>> from src.models.baseline import BaselineModels
     >>> baseline = BaselineModels(config, target="nb_installations_pac")
     >>> result = baseline.train_ridge(X_train, y_train, X_val, y_val, X_test, y_test)
@@ -41,20 +41,20 @@ from config.settings import ProjectConfig
 
 
 class BaselineModels:
-    """Conteneur pour les modeles baseline ML.
+    """Container for baseline ML models.
 
-    Chaque methode train_xxx() entraine un modele et retourne un dictionnaire
-    standardise avec :
-    - model : l'objet modele entraine
-    - metrics_val : metriques sur le set de validation
-    - metrics_test : metriques sur le set de test
-    - predictions_val : predictions sur validation
-    - predictions_test : predictions sur test
-    - feature_importance : importance des features (si disponible)
+    Each train_xxx() method trains a model and returns a standardized
+    dictionary containing:
+    - model: the trained model object
+    - metrics_val: metrics on the validation set
+    - metrics_test: metrics on the test set
+    - predictions_val: predictions on validation
+    - predictions_test: predictions on test
+    - feature_importance: feature importance (if available)
 
     Attributes:
-        config: Configuration du projet.
-        target: Variable cible.
+        config: Project configuration.
+        target: Target variable.
     """
 
     def __init__(self, config: ProjectConfig, target: str) -> None:
@@ -71,32 +71,31 @@ class BaselineModels:
         X_test: pd.DataFrame,
         y_test: pd.Series,
     ) -> Dict[str, Any]:
-        """Entraine une Ridge Regression.
+        """Train a Ridge Regression model.
 
-        La regularisation L2 empeche l'overfitting sur les features
-        correles (lags, rolling). Alpha est choisi par cross-validation
-        temporelle.
+        L2 regularization prevents overfitting on correlated features
+        (lags, rolling). Alpha is selected via temporal cross-validation.
 
         Args:
-            X_train: Features d'entrainement (scalees).
-            y_train: Cible d'entrainement.
-            X_val: Features de validation.
-            y_val: Cible de validation.
-            X_test: Features de test.
-            y_test: Cible de test.
+            X_train: Training features (scaled).
+            y_train: Training target.
+            X_val: Validation features.
+            y_val: Validation target.
+            X_test: Test features.
+            y_test: Test target.
 
         Returns:
-            Dictionnaire avec modele, metriques et predictions.
+            Dictionary with model, metrics, and predictions.
         """
         from src.models.evaluate import ModelEvaluator
 
         evaluator = ModelEvaluator(self.config)
 
-        # Selection de alpha par CV temporelle
+        # Select alpha via temporal CV
         best_alpha = self._select_ridge_alpha(X_train, y_train)
-        self.logger.info("  Ridge alpha selectionne : %.4f", best_alpha)
+        self.logger.info("  Ridge alpha selected: %.4f", best_alpha)
 
-        # Entrainement final
+        # Final training
         model = Ridge(alpha=best_alpha)
         model.fit(X_train, y_train)
 
@@ -104,15 +103,15 @@ class BaselineModels:
         y_pred_val = model.predict(X_val)
         y_pred_test = model.predict(X_test)
 
-        # Clipper les predictions negatives (des comptages ne sont pas negatifs)
+        # Clip negative predictions (counts cannot be negative)
         y_pred_val = np.clip(y_pred_val, 0, None)
         y_pred_test = np.clip(y_pred_test, 0, None)
 
-        # Metriques
+        # Metrics
         metrics_val = evaluator.compute_metrics(y_val.values, y_pred_val)
         metrics_test = evaluator.compute_metrics(y_test.values, y_pred_test)
 
-        # Feature importance (coefficients absolus)
+        # Feature importance (absolute coefficients)
         importance = pd.Series(
             np.abs(model.coef_), index=X_train.columns,
         ).sort_values(ascending=False)
@@ -136,21 +135,21 @@ class BaselineModels:
     def _select_ridge_alpha(
         self, X: pd.DataFrame, y: pd.Series
     ) -> float:
-        """Selectionne le meilleur alpha par cross-validation temporelle.
+        """Select the best alpha via temporal cross-validation.
 
         Args:
-            X: Features d'entrainement.
-            y: Cible.
+            X: Training features.
+            y: Target.
 
         Returns:
-            Meilleur alpha.
+            Best alpha.
         """
         from sklearn.metrics import mean_squared_error
 
         alphas = [0.01, 0.1, 0.5, 1.0, 5.0, 10.0, 50.0, 100.0]
         n_splits = min(3, len(X) // 20)
         if n_splits < 2:
-            return 1.0  # Defaut si pas assez de donnees
+            return 1.0  # Default if not enough data
 
         tscv = TimeSeriesSplit(n_splits=n_splits)
         best_alpha = 1.0
@@ -180,26 +179,26 @@ class BaselineModels:
         X_test: pd.DataFrame,
         y_test: pd.Series,
     ) -> Dict[str, Any]:
-        """Entraine un modele LightGBM regularise.
+        """Train a regularized LightGBM model.
 
-        Les hyperparametres sont contraints pour un petit dataset :
-        - max_depth=4, num_leaves=15 (evite les arbres trop profonds)
-        - min_child_samples=20 (force des feuilles suffisamment peuplees)
-        - reg_alpha=0.1, reg_lambda=0.1 (regularisation L1 + L2)
-        - subsample=0.8 (bagging pour reduire la variance)
+        Hyperparameters are constrained for a small dataset:
+        - max_depth=4, num_leaves=15 (prevents overly deep trees)
+        - min_child_samples=20 (enforces sufficiently populated leaves)
+        - reg_alpha=0.1, reg_lambda=0.1 (L1 + L2 regularization)
+        - subsample=0.8 (bagging to reduce variance)
 
-        Early stopping sur le set de validation.
+        Early stopping on the validation set.
 
         Args:
-            X_train: Features d'entrainement (imputees, PAS scalees).
-            y_train: Cible d'entrainement.
-            X_val: Features de validation.
-            y_val: Cible de validation.
-            X_test: Features de test.
-            y_test: Cible de test.
+            X_train: Training features (imputed, NOT scaled).
+            y_train: Training target.
+            X_val: Validation features.
+            y_val: Validation target.
+            X_test: Test features.
+            y_test: Test target.
 
         Returns:
-            Dictionnaire avec modele, metriques et predictions.
+            Dictionary with model, metrics, and predictions.
         """
         import lightgbm as lgb
 
@@ -207,14 +206,14 @@ class BaselineModels:
 
         evaluator = ModelEvaluator(self.config)
 
-        # Parametres depuis la config (regularises pour petit dataset)
+        # Parameters from config (regularized for small dataset)
         params = dict(self.config.model.lightgbm_params)
         params["verbose"] = -1
         params["random_state"] = 42
 
         model = lgb.LGBMRegressor(**params)
 
-        # Entrainement avec early stopping
+        # Training with early stopping
         model.fit(
             X_train, y_train,
             eval_set=[(X_val, y_val)],
@@ -230,7 +229,7 @@ class BaselineModels:
         y_pred_val = np.clip(y_pred_val, 0, None)
         y_pred_test = np.clip(y_pred_test, 0, None)
 
-        # Metriques
+        # Metrics
         metrics_val = evaluator.compute_metrics(y_val.values, y_pred_val)
         metrics_test = evaluator.compute_metrics(y_test.values, y_pred_test)
 
@@ -266,27 +265,27 @@ class BaselineModels:
         df_val: pd.DataFrame,
         df_test: pd.DataFrame,
     ) -> Dict[str, Any]:
-        """Entraine un modele Prophet par departement.
+        """Train a Prophet model per department.
 
-        Prophet est un modele de series temporelles additif :
-            y(t) = tendance(t) + saisonnalite(t) + regresseurs(t) + bruit
+        Prophet is an additive time series model:
+            y(t) = trend(t) + seasonality(t) + regressors(t) + noise
 
-        On entraine un modele par departement, puis on agrege les metriques.
-        Des regresseurs externes (meteo, confiance) sont ajoutes si disponibles.
+        We train one model per department, then aggregate the metrics.
+        External regressors (weather, confidence) are added if available.
 
         Args:
-            df_train: DataFrame d'entrainement complet (avec date_id, dept).
-            df_val: DataFrame de validation.
-            df_test: DataFrame de test.
+            df_train: Full training DataFrame (with date_id, dept).
+            df_val: Validation DataFrame.
+            df_test: Test DataFrame.
 
         Returns:
-            Dictionnaire avec metriques agregees et predictions par dept.
+            Dictionary with aggregated metrics and predictions per department.
         """
         from src.models.evaluate import ModelEvaluator
 
         evaluator = ModelEvaluator(self.config)
 
-        # Regresseurs a utiliser (si disponibles)
+        # Regressors to use (if available)
         regressors = [
             "temp_mean", "hdd_sum", "cdd_sum",
             "confiance_menages", "ipi_hvac_c28",
@@ -311,9 +310,9 @@ class BaselineModels:
                     all_preds_test.extend(result["preds_test"])
                     all_actual_test.extend(result["actual_test"])
             except Exception as e:
-                self.logger.warning("  Prophet dept %s echoue : %s", dept, e)
+                self.logger.warning("  Prophet dept %s failed: %s", dept, e)
 
-        # Metriques agregees
+        # Aggregated metrics
         if all_actual_val:
             metrics_val = evaluator.compute_metrics(
                 np.array(all_actual_val), np.array(all_preds_val),
@@ -322,7 +321,7 @@ class BaselineModels:
                 np.array(all_actual_test), np.array(all_preds_test),
             )
         else:
-            self.logger.error("Prophet : aucun departement entraine avec succes")
+            self.logger.error("Prophet: no department trained successfully")
             metrics_val = {"rmse": float("nan"), "mae": float("nan"),
                            "mape": float("nan"), "r2": float("nan")}
             metrics_test = metrics_val.copy()
@@ -350,30 +349,30 @@ class BaselineModels:
         df_test: pd.DataFrame,
         regressors: list,
     ) -> Optional[Dict[str, Any]]:
-        """Entraine Prophet pour un departement.
+        """Train Prophet for a single department.
 
         Args:
-            dept: Code departement.
-            df_train: Donnees d'entrainement.
-            df_val: Donnees de validation.
-            df_test: Donnees de test.
-            regressors: Liste des colonnes regresseurs.
+            dept: Department code.
+            df_train: Training data.
+            df_val: Validation data.
+            df_test: Test data.
+            regressors: List of regressor columns.
 
         Returns:
-            Dictionnaire avec modele et predictions, ou None si echec.
+            Dictionary with model and predictions, or None on failure.
         """
         from prophet import Prophet
 
-        # Filtrer le departement
+        # Filter by department
         train = df_train[df_train["dept"] == dept].copy()
         val = df_val[df_val["dept"] == dept].copy()
         test = df_test[df_test["dept"] == dept].copy()
 
         if len(train) < 12:
-            self.logger.warning("  Dept %s : trop peu de donnees (%d)", dept, len(train))
+            self.logger.warning("  Dept %s: too few data points (%d)", dept, len(train))
             return None
 
-        # Construire le DataFrame Prophet (ds, y + regresseurs)
+        # Build the Prophet DataFrame (ds, y + regressors)
         def to_prophet_df(df: pd.DataFrame) -> pd.DataFrame:
             date_id = df["date_id"].astype(str)
             ds = pd.to_datetime(date_id.str[:4] + "-" + date_id.str[4:6] + "-01")
@@ -387,7 +386,7 @@ class BaselineModels:
         pdf_val = to_prophet_df(val)
         pdf_test = to_prophet_df(test)
 
-        # Imputer les NaN dans les regresseurs (forward fill puis median)
+        # Impute NaN values in regressors (forward fill then median)
         available_regs = [r for r in regressors if r in pdf_train.columns]
         for reg in available_regs:
             for pdf in [pdf_train, pdf_val, pdf_test]:
@@ -395,26 +394,26 @@ class BaselineModels:
                 if pdf[reg].isna().any():
                     pdf[reg] = pdf[reg].fillna(pdf_train[reg].median())
 
-        # Configurer Prophet
+        # Configure Prophet
         model = Prophet(
             yearly_seasonality=True,
             weekly_seasonality=False,
             daily_seasonality=False,
-            changepoint_prior_scale=0.05,  # Regularise les changements de tendance
+            changepoint_prior_scale=0.05,  # Regularizes trend changepoints
             seasonality_prior_scale=5.0,
         )
         for reg in available_regs:
             model.add_regressor(reg)
 
-        # Supprimer les logs Prophet
+        # Suppress Prophet logs
         import logging as _logging
         _logging.getLogger("prophet").setLevel(_logging.WARNING)
         _logging.getLogger("cmdstanpy").setLevel(_logging.WARNING)
 
-        # Entrainer
+        # Train
         model.fit(pdf_train)
 
-        # Predire
+        # Predict
         forecast_val = model.predict(pdf_val)
         forecast_test = model.predict(pdf_test)
 

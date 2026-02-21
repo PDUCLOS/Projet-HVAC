@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Page d'accueil du dashboard HVAC."""
+"""HVAC dashboard home page."""
 
 import streamlit as st
 from pathlib import Path
@@ -16,12 +16,12 @@ def render():
         """
     )
 
-    # --- Metriques cles ---
+    # --- Key metrics ---
     st.header("Vue d'ensemble")
 
     col1, col2, col3, col4 = st.columns(4)
 
-    # Compter les donnees disponibles
+    # Count available data
     raw_dir = Path("data/raw")
     features_path = Path("data/features/hvac_features_dataset.csv")
 
@@ -35,7 +35,7 @@ def render():
     col3.metric("Permis SITADEL", f"{n_sitadel:,}" if n_sitadel else "Non collecte")
     col4.metric("Dataset ML", f"{n_features:,}" if n_features else "Non genere")
 
-    # --- Architecture du pipeline ---
+    # --- Pipeline architecture ---
     st.header("Architecture du pipeline")
     st.markdown(
         """
@@ -59,7 +59,7 @@ def render():
         """
     )
 
-    # --- Sources de donnees ---
+    # --- Data sources ---
     st.header("Sources de donnees")
     sources = pd.DataFrame({
         "Source": ["Open-Meteo", "ADEME DPE", "INSEE BDM", "Eurostat", "SITADEL"],
@@ -82,7 +82,7 @@ def render():
     })
     st.dataframe(sources, use_container_width=True, hide_index=True)
 
-    # --- Commandes CLI ---
+    # --- CLI commands ---
     st.header("Commandes CLI")
     st.code(
         """
@@ -112,12 +112,12 @@ streamlit run app/app.py
 
 
 def _count_rows(filepath: Path) -> int:
-    """Compte les lignes d'un CSV sans tout charger en memoire."""
+    """Count the rows of a CSV without loading it all into memory."""
     if not filepath.exists():
         return 0
     try:
-        # Compter les lignes sans lire le contenu
+        # Count lines without reading the content
         with open(filepath) as f:
-            return sum(1 for _ in f) - 1  # -1 pour le header
+            return sum(1 for _ in f) - 1  # -1 for the header
     except Exception:
         return 0

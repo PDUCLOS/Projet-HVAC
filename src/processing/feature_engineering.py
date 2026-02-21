@@ -1,50 +1,50 @@
 # -*- coding: utf-8 -*-
 """
-Feature Engineering — Construction des features avancées pour le ML (Phase 3.3).
-================================================================================
+Feature Engineering — Building advanced features for ML (Phase 3.3).
+=====================================================================
 
-Ce module transforme le dataset ML-ready (fusion Phase 2.4) en ajoutant
-des features avancées conçues pour améliorer les modèles prédictifs.
+This module transforms the ML-ready dataset (Phase 2.4 merge) by adding
+advanced features designed to improve predictive models.
 
-Catégories de features :
+Feature categories:
 
-    1. **Lags temporels** : valeurs décalées dans le temps
-       - lag_1m, lag_3m, lag_6m pour la variable cible et les features clés
-       - Permettent de capturer l'auto-corrélation et la tendance
+    1. **Temporal lags**: time-shifted values
+       - lag_1m, lag_3m, lag_6m for the target variable and key features
+       - Capture auto-correlation and trend
 
-    2. **Rolling windows** : moyennes et écarts-types glissants
+    2. **Rolling windows**: rolling means and standard deviations
        - rolling_mean_3m, rolling_mean_6m, rolling_std_3m
-       - Lissent le bruit et capturent la dynamique de moyen terme
+       - Smooth noise and capture medium-term dynamics
 
-    3. **Variations** : différences et taux de croissance
-       - diff_1m (différence absolue mois à mois)
-       - pct_change_1m (variation relative en %)
-       - Capturent l'accélération/décélération du marché
+    3. **Variations**: differences and growth rates
+       - diff_1m (absolute month-to-month difference)
+       - pct_change_1m (relative variation in %)
+       - Capture market acceleration/deceleration
 
-    4. **Features d'interaction** : produits et ratios entre variables
-       - hdd × confiance_menages (météo froide + contexte favorable)
-       - cdd × ipi_hvac (canicule + activité industrielle)
+    4. **Interaction features**: products and ratios between variables
+       - hdd x confiance_menages (cold weather + favorable context)
+       - cdd x ipi_hvac (heatwave + industrial activity)
 
-    5. **Encoding cyclique** : transformations sin/cos
-       - Déjà ajouté dans merge_datasets (month_sin, month_cos)
+    5. **Cyclic encoding**: sin/cos transformations
+       - Already added in merge_datasets (month_sin, month_cos)
 
-IMPORTANT — Gestion des NaN :
-    Les lags et rolling créent des NaN en début de série. On ne les supprime
-    PAS ici (le modèle gèrera via imputation ou split temporel). La colonne
-    `n_valid_features` permet de filtrer a posteriori si besoin.
+IMPORTANT — NaN handling:
+    Lags and rolling create NaN at the beginning of each series. We do NOT
+    remove them here (the model will handle them via imputation or temporal
+    split). The `n_valid_features` column allows filtering afterwards if needed.
 
-Usage :
+Usage:
     >>> from src.processing.feature_engineering import FeatureEngineer
     >>> fe = FeatureEngineer(config)
     >>> df_features = fe.engineer(df_ml)
-    >>> # Ou directement depuis le fichier :
+    >>> # Or directly from file:
     >>> df_features = fe.engineer_from_file()
 
-Extensibilité :
-    Pour ajouter de nouvelles features :
-    1. Créer une méthode _add_xxx_features(df) dans FeatureEngineer
-    2. L'appeler dans engineer()
-    3. Documenter la feature dans le docstring et le data dictionary
+Extensibility:
+    To add new features:
+    1. Create a _add_xxx_features(df) method in FeatureEngineer
+    2. Call it in engineer()
+    3. Document the feature in the docstring and the data dictionary
 """
 
 from __future__ import annotations
@@ -60,43 +60,43 @@ from config.settings import ProjectConfig
 
 
 class FeatureEngineer:
-    """Génère les features avancées pour la modélisation ML.
+    """Generate advanced features for ML modeling.
 
-    Travaille sur le dataset ML-ready (grain = mois × département)
-    et ajoute des features temporelles, statistiques et d'interaction.
+    Works on the ML-ready dataset (granularity = month x department)
+    and adds temporal, statistical, and interaction features.
 
     Attributes:
-        config: Configuration du projet (lags, rolling windows, etc.).
-        logger: Logger structuré.
+        config: Project configuration (lags, rolling windows, etc.).
+        logger: Structured logger.
     """
 
     def __init__(self, config: ProjectConfig) -> None:
-        """Initialise le feature engineer.
+        """Initialize the feature engineer.
 
         Args:
-            config: Configuration centralisée du projet.
+            config: Centralized project configuration.
         """
         self.config = config
         self.logger = logging.getLogger("processing.features")
 
-        # Paramètres depuis la config ML
-        self.max_lag = config.model.max_lag_months        # 6 mois max
+        # Parameters from the ML config
+        self.max_lag = config.model.max_lag_months        # 6 months max
         self.rolling_windows = config.model.rolling_windows  # [3, 6]
 
     def engineer(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Applique toutes les transformations de features.
+        """Apply all feature transformations.
 
-        Le DataFrame DOIT contenir au minimum :
+        The DataFrame MUST contain at minimum:
         - date_id (int YYYYMM)
-        - dept (str, code département)
-        - nb_dpe_total, nb_installations_pac (variables cibles)
-        - temp_mean, hdd_sum, cdd_sum (features météo)
+        - dept (str, department code)
+        - nb_dpe_total, nb_installations_pac (target variables)
+        - temp_mean, hdd_sum, cdd_sum (weather features)
 
         Args:
-            df: Dataset ML-ready (sortie de DatasetMerger.build_ml_dataset).
+            df: ML-ready dataset (output of DatasetMerger.build_ml_dataset).
 
         Returns:
-            DataFrame enrichi avec toutes les features engineerées.
+            Enriched DataFrame with all engineered features.
         """
         self.logger.info("=" * 60)
         self.logger.info("  FEATURE ENGINEERING")
@@ -105,10 +105,10 @@ class FeatureEngineer:
 
         n_cols_start = len(df.columns)
 
-        # S'assurer du tri (critique pour les opérations temporelles)
+        # Ensure sorting (critical for temporal operations)
         df = df.sort_values(["dept", "date_id"]).reset_index(drop=True)
 
-        # 1. Lags temporels
+        # 1. Temporal lags
         df = self._add_lag_features(df)
 
         # 2. Rolling windows
@@ -117,13 +117,13 @@ class FeatureEngineer:
         # 3. Variations (diff + pct_change)
         df = self._add_variation_features(df)
 
-        # 4. Features d'interaction
+        # 4. Interaction features
         df = self._add_interaction_features(df)
 
-        # 5. Features de tendance
+        # 5. Trend features
         df = self._add_trend_features(df)
 
-        # 6. Feature de complétude
+        # 6. Completeness feature
         df = self._add_completeness_flag(df)
 
         n_cols_end = len(df.columns)
@@ -132,7 +132,7 @@ class FeatureEngineer:
             n_cols_end - n_cols_start, n_cols_start, n_cols_end,
         )
 
-        # Sauvegarder le dataset enrichi
+        # Save the enriched dataset
         output_path = self._save_features(df)
         self.logger.info("  ✓ Features sauvegardées → %s", output_path)
         self.logger.info("=" * 60)
@@ -140,16 +140,16 @@ class FeatureEngineer:
         return df
 
     def engineer_from_file(self) -> pd.DataFrame:
-        """Charge le dataset ML et applique le feature engineering.
+        """Load the ML dataset and apply feature engineering.
 
-        Méthode de convenance qui lit le fichier hvac_ml_dataset.csv
-        puis appelle engineer().
+        Convenience method that reads the hvac_ml_dataset.csv file
+        then calls engineer().
 
         Returns:
-            DataFrame avec features engineerées.
+            DataFrame with engineered features.
 
         Raises:
-            FileNotFoundError: Si le dataset ML n'existe pas.
+            FileNotFoundError: If the ML dataset does not exist.
         """
         ml_path = self.config.features_data_dir / "hvac_ml_dataset.csv"
         if not ml_path.exists():
@@ -163,28 +163,28 @@ class FeatureEngineer:
         return self.engineer(df)
 
     # ==================================================================
-    # 1. Lags temporels
+    # 1. Temporal lags
     # ==================================================================
 
     def _add_lag_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les features de lag (valeurs décalées dans le temps).
+        """Add lag features (time-shifted values).
 
-        Pour chaque variable cible et feature clé, crée des colonnes
-        lag_Xm contenant la valeur de X mois avant.
+        For each target variable and key feature, creates lag_Xm
+        columns containing the value from X months before.
 
-        Lags générés : 1, 3, 6 mois (configurable via max_lag_months).
+        Lags generated: 1, 3, 6 months (configurable via max_lag_months).
 
-        IMPORTANT : les lags créent des NaN en début de série pour
-        chaque département. Ces NaN seront gérés par le modèle ou
-        supprimés au moment du split train/test.
+        IMPORTANT: lags create NaN at the beginning of the series for
+        each department. These NaN will be handled by the model or
+        removed at train/test split time.
 
         Args:
-            df: DataFrame trié par dept + date_id.
+            df: DataFrame sorted by dept + date_id.
 
         Returns:
-            DataFrame avec colonnes lag_Xm ajoutées.
+            DataFrame with lag_Xm columns added.
         """
-        # Colonnes sur lesquelles créer des lags
+        # Columns on which to create lags
         target_cols = [
             "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
         ]
@@ -194,7 +194,7 @@ class FeatureEngineer:
         ]
         lag_cols = [c for c in target_cols + feature_cols if c in df.columns]
 
-        # Lags à générer
+        # Lags to generate
         lags = [1, 3, 6]
         lags = [l for l in lags if l <= self.max_lag]
 
@@ -212,25 +212,25 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # 2. Rolling windows (moyennes et écarts-types glissants)
+    # 2. Rolling windows (rolling means and standard deviations)
     # ==================================================================
 
     def _add_rolling_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les features de fenêtre glissante.
+        """Add rolling window features.
 
-        Pour chaque variable cible et feature clé, calcule la moyenne
-        glissante et l'écart-type glissant sur des fenêtres de 3 et 6 mois.
+        For each target variable and key feature, computes the rolling
+        mean and rolling standard deviation over 3 and 6-month windows.
 
-        Le rolling est calculé PAR DÉPARTEMENT (groupby dept).
+        Rolling is computed PER DEPARTMENT (groupby dept).
 
-        NOTE : min_periods=1 pour ne pas créer de NaN inutiles
-        en début de série (la fenêtre est simplement réduite).
+        NOTE: min_periods=1 to avoid creating unnecessary NaN
+        at the beginning of the series (the window is simply reduced).
 
         Args:
-            df: DataFrame trié par dept + date_id.
+            df: DataFrame sorted by dept + date_id.
 
         Returns:
-            DataFrame avec colonnes rolling ajoutées.
+            DataFrame with rolling columns added.
         """
         roll_cols = [
             "nb_dpe_total", "nb_installations_pac",
@@ -241,14 +241,14 @@ class FeatureEngineer:
         n_features = 0
         for col in roll_cols:
             for window in self.rolling_windows:
-                # Moyenne glissante
+                # Rolling mean
                 mean_name = f"{col}_rmean_{window}m"
                 df[mean_name] = df.groupby("dept")[col].transform(
                     lambda s: s.rolling(window, min_periods=1).mean()
                 ).round(2)
                 n_features += 1
 
-                # Écart-type glissant (mesure de volatilité)
+                # Rolling standard deviation (volatility measure)
                 std_name = f"{col}_rstd_{window}m"
                 df[std_name] = df.groupby("dept")[col].transform(
                     lambda s: s.rolling(window, min_periods=2).std()
@@ -266,19 +266,19 @@ class FeatureEngineer:
     # ==================================================================
 
     def _add_variation_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les features de variation temporelle.
+        """Add temporal variation features.
 
-        Pour les variables cibles :
-        - diff_1m : différence absolue avec le mois précédent
-        - pct_change_1m : variation relative en % avec le mois précédent
+        For target variables:
+        - diff_1m: absolute difference from the previous month
+        - pct_change_1m: relative variation in % from the previous month
 
-        Capturent la dynamique du marché (accélération/décélération).
+        Capture market dynamics (acceleration/deceleration).
 
         Args:
-            df: DataFrame trié par dept + date_id.
+            df: DataFrame sorted by dept + date_id.
 
         Returns:
-            DataFrame avec colonnes de variation ajoutées.
+            DataFrame with variation columns added.
         """
         var_cols = [
             "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
@@ -287,17 +287,17 @@ class FeatureEngineer:
 
         n_features = 0
         for col in var_cols:
-            # Différence absolue
+            # Absolute difference
             diff_name = f"{col}_diff_1m"
             df[diff_name] = df.groupby("dept")[col].diff(1)
             n_features += 1
 
-            # Variation relative (%)
+            # Relative variation (%)
             pct_name = f"{col}_pct_1m"
             df[pct_name] = (
                 df.groupby("dept")[col].pct_change(1) * 100
             ).round(2)
-            # Clipper les variations extrêmes (divisions par ~0)
+            # Clip extreme variations (divisions by ~0)
             if pct_name in df.columns:
                 df[pct_name] = df[pct_name].clip(-200, 500)
             n_features += 1
@@ -308,53 +308,53 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # 4. Features d'interaction
+    # 4. Interaction features
     # ==================================================================
 
     def _add_interaction_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les features d'interaction entre variables.
+        """Add interaction features between variables.
 
-        Hypothèses métier :
-        - Un hiver froid (HDD élevé) + confiance des ménages élevée
-          → plus de remplacement de chauffage (PAC)
-        - Un été chaud (CDD élevé) + activité industrielle HVAC forte
-          → plus d'installations de climatisation
-        - Confiance des ménages × climat du bâtiment
-          → proxy de l'intention d'investissement des ménages
+        Business hypotheses:
+        - A cold winter (high HDD) + high household confidence
+          -> more heating replacements (heat pumps)
+        - A hot summer (high CDD) + strong HVAC industrial activity
+          -> more air conditioning installations
+        - Household confidence x building business climate
+          -> proxy of household investment intent
 
         Args:
-            df: DataFrame avec features météo et économiques.
+            df: DataFrame with weather and economic features.
 
         Returns:
-            DataFrame avec features d'interaction ajoutées.
+            DataFrame with interaction features added.
         """
         n_features = 0
 
-        # HDD × confiance ménages (hiver froid + confiance → investissement chauffage)
+        # HDD x household confidence (cold winter + confidence -> heating investment)
         if "hdd_sum" in df.columns and "confiance_menages" in df.columns:
-            # Normaliser avant de multiplier pour éviter les échelles disparates
+            # Normalize before multiplying to avoid disparate scales
             hdd_max = max(df["hdd_sum"].max(), 1)
             hdd_norm = df["hdd_sum"] / hdd_max
             conf_norm = df["confiance_menages"] / 100  # Base 100
             df["interact_hdd_confiance"] = (hdd_norm * conf_norm).round(4)
             n_features += 1
 
-        # CDD × IPI HVAC (chaleur + production industrielle → installations clim)
+        # CDD x IPI HVAC (heat + industrial production -> AC installations)
         if "cdd_sum" in df.columns and "ipi_hvac_c28" in df.columns:
             cdd_max = max(df["cdd_sum"].max(), 1)
             cdd_norm = df["cdd_sum"] / cdd_max
-            ipi_norm = df["ipi_hvac_c28"] / 100  # Indice base ~100
+            ipi_norm = df["ipi_hvac_c28"] / 100  # Index base ~100
             df["interact_cdd_ipi"] = (cdd_norm * ipi_norm).round(4)
             n_features += 1
 
-        # Confiance × climat bâtiment (double proxy d'investissement)
+        # Confidence x building climate (dual investment proxy)
         if "confiance_menages" in df.columns and "climat_affaires_bat" in df.columns:
             df["interact_confiance_bat"] = (
                 (df["confiance_menages"] / 100) * (df["climat_affaires_bat"] / 100)
             ).round(4)
             n_features += 1
 
-        # Température extrême flag composite
+        # Composite extreme temperature flag
         if "nb_jours_canicule" in df.columns and "nb_jours_gel" in df.columns:
             df["jours_extremes"] = df["nb_jours_canicule"] + df["nb_jours_gel"]
             n_features += 1
@@ -363,36 +363,36 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # 5. Features de tendance
+    # 5. Trend features
     # ==================================================================
 
     def _add_trend_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute des features de tendance à plus long terme.
+        """Add longer-term trend features.
 
-        Features ajoutées :
-        - year_trend : année normalisée (2021=0, 2022=1, ...)
-          Capture la tendance séculaire (croissance du marché PAC)
-        - delta_temp_vs_mean : écart de température par rapport
-          à la moyenne historique du département
-          Capture les anomalies météo qui déclenchent des achats
+        Features added:
+        - year_trend: normalized year (2021=0, 2022=1, ...)
+          Captures the secular trend (heat pump market growth)
+        - delta_temp_vs_mean: temperature deviation from the
+          department's historical average
+          Captures weather anomalies that trigger purchases
 
         Args:
-            df: DataFrame avec colonnes year et temp_mean.
+            df: DataFrame with year and temp_mean columns.
 
         Returns:
-            DataFrame enrichi.
+            Enriched DataFrame.
         """
         n_features = 0
 
-        # Tendance annuelle (linéaire)
+        # Annual trend (linear)
         if "year" in df.columns:
             year_min = df["year"].min()
             df["year_trend"] = df["year"] - year_min
             n_features += 1
 
-        # Écart de température vs moyenne du département
+        # Temperature deviation vs department average
         if "temp_mean" in df.columns and "dept" in df.columns and "month" in df.columns:
-            # Calculer la moyenne historique par dept × mois
+            # Compute the historical average per dept x month
             temp_avg = df.groupby(["dept", "month"])["temp_mean"].transform("mean")
             df["delta_temp_vs_mean"] = (df["temp_mean"] - temp_avg).round(2)
             n_features += 1
@@ -401,24 +401,23 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # 6. Flag de complétude
+    # 6. Completeness flag
     # ==================================================================
 
     def _add_completeness_flag(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute un indicateur de complétude des features.
+        """Add a feature completeness indicator.
 
-        La colonne `n_valid_features` compte le nombre de features
-        non-NaN pour chaque ligne. Utile pour filtrer les lignes
-        avec trop peu de données (début de série où les lags créent
-        des NaN).
+        The `n_valid_features` column counts the number of non-NaN
+        features for each row. Useful for filtering rows with too
+        few data points (beginning of series where lags create NaN).
 
         Args:
-            df: DataFrame avec toutes les features.
+            df: DataFrame with all features.
 
         Returns:
-            DataFrame avec colonne n_valid_features.
+            DataFrame with n_valid_features column.
         """
-        # Exclure les colonnes non-feature (identifiants, métadonnées)
+        # Exclude non-feature columns (identifiers, metadata)
         exclude_cols = {
             "date_id", "dept", "dept_name", "city_ref",
             "latitude", "longitude", "year", "month", "quarter",
@@ -439,17 +438,17 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # Sauvegarde
+    # Save
     # ==================================================================
 
     def _save_features(self, df: pd.DataFrame) -> Path:
-        """Sauvegarde le dataset avec features engineerées.
+        """Save the dataset with engineered features.
 
         Args:
-            df: Dataset enrichi.
+            df: Enriched dataset.
 
         Returns:
-            Chemin du fichier sauvegardé.
+            Path of the saved file.
         """
         output_dir = self.config.features_data_dir
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -464,19 +463,19 @@ class FeatureEngineer:
         return output_path
 
     # ==================================================================
-    # Utilitaires
+    # Utilities
     # ==================================================================
 
     def get_feature_summary(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Retourne un résumé statistique de toutes les features.
+        """Return a statistical summary of all features.
 
-        Utile pour le diagnostic et l'exploration rapide.
+        Useful for diagnostics and quick exploration.
 
         Args:
-            df: Dataset avec features.
+            df: Dataset with features.
 
         Returns:
-            DataFrame avec count, mean, std, min, max, %NaN par feature.
+            DataFrame with count, mean, std, min, max, %NaN per feature.
         """
         summary = df.describe().T
         summary["pct_nan"] = (df.isna().mean() * 100).round(1)

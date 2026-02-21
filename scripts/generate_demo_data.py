@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Generateur de donnees de demonstration pour le projet HVAC.
-============================================================
+Demo data generator for the HVAC project.
+===========================================
 
-Genere des donnees realistes pour les 96 departements francais
-afin de tester le pipeline complet sans acces reseau.
+Generates realistic data for the 96 French departments
+to test the full pipeline without network access.
 
-Usage :
+Usage:
     python scripts/generate_demo_data.py
 """
 
@@ -26,7 +26,7 @@ RAW_DIR = PROJECT_ROOT / "data" / "raw"
 
 
 def generate_weather():
-    """Genere les donnees meteo pour 96 prefectures, 2019-2025."""
+    """Generate weather data for 96 prefectures, 2019-2025."""
     print("Generating weather data...")
     dates = pd.date_range("2019-01-01", "2025-12-31", freq="D")
     rows = []
@@ -36,7 +36,7 @@ def generate_weather():
         lat = info["lat"]
         for date in dates:
             day_of_year = date.day_of_year
-            # Temperature saisonniere realiste (basee sur la latitude)
+            # Realistic seasonal temperature (based on latitude)
             base_temp = 15 - (lat - 43) * 1.2
             seasonal = 12 * np.sin(2 * np.pi * (day_of_year - 80) / 365)
             noise = np.random.normal(0, 3)
@@ -66,7 +66,7 @@ def generate_weather():
 
 
 def generate_dpe():
-    """Genere des DPE realistes pour 96 departements."""
+    """Generate realistic DPE data for 96 departments."""
     print("Generating DPE data...")
     rows = []
     dpe_id = 1000000
@@ -86,11 +86,11 @@ def generate_dpe():
     for city_name, info in FRANCE_DEPARTMENTS.items():
         dept_code = info["dept"]
         lat = info["lat"]
-        # Nombre de DPE par jour (proportionnel a la population estimee)
-        # Plus de DPE dans les grands departements
+        # Number of DPE per day (proportional to estimated population)
+        # More DPE in large departments
         daily_rate = np.random.uniform(2, 8)
 
-        # Echantillonner 1 jour sur 3 pour accelerer
+        # Sample 1 out of every 3 days to speed up
         sampled_dates = dates[::3]
         for date in sampled_dates:
             n_dpe = max(1, int(np.random.poisson(daily_rate)))
@@ -122,7 +122,7 @@ def generate_dpe():
                     "cout_total_5_usages": round(np.random.uniform(500, 4000), 0),
                 })
 
-            # Limiter pour ne pas exploser la memoire
+            # Limit to avoid running out of memory
             if len(rows) > 500000:
                 break
         if len(rows) > 500000:
@@ -137,7 +137,7 @@ def generate_dpe():
 
 
 def generate_insee():
-    """Genere des indicateurs economiques INSEE."""
+    """Generate INSEE economic indicators."""
     print("Generating INSEE data...")
     periods = pd.date_range("2019-01", "2025-12", freq="MS")
     rows = []
@@ -164,7 +164,7 @@ def generate_insee():
 
 
 def generate_eurostat():
-    """Genere des IPI Eurostat."""
+    """Generate Eurostat IPI data."""
     print("Generating Eurostat data...")
     periods = pd.date_range("2019-01", "2025-12", freq="MS")
     nace_codes = ["C25", "C28", "C2825"]
@@ -191,7 +191,7 @@ def generate_eurostat():
 
 
 def generate_sitadel():
-    """Genere des permis de construire SITADEL."""
+    """Generate SITADEL building permits data."""
     print("Generating SITADEL data...")
     periods = pd.date_range("2019-01", "2025-12", freq="MS")
     rows = []
@@ -200,7 +200,7 @@ def generate_sitadel():
         dept_code = dept_info["dept"]
         base_rate = np.random.uniform(50, 500)
         for period in periods:
-            # Saisonnalite
+            # Seasonality
             month_factor = 1 + 0.3 * np.sin(2 * np.pi * (period.month - 3) / 12)
             n_permis = max(1, int(np.random.poisson(base_rate * month_factor)))
 

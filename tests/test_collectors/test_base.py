@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le module collectors.base (BaseCollector, Registry, Config)."""
+"""Tests for the collectors.base module (BaseCollector, Registry, Config)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from src.collectors.base import (
 
 
 class TestCollectorStatus:
-    """Tests pour l'énumération CollectorStatus."""
+    """Tests for the CollectorStatus enumeration."""
 
     def test_status_values(self):
         assert CollectorStatus.SUCCESS.value == "success"
@@ -29,7 +29,7 @@ class TestCollectorStatus:
 
 
 class TestCollectorConfig:
-    """Tests pour CollectorConfig."""
+    """Tests for CollectorConfig."""
 
     def test_default_values(self):
         config = CollectorConfig()
@@ -63,7 +63,7 @@ class TestCollectorConfig:
 
 
 class TestCollectorResult:
-    """Tests pour CollectorResult."""
+    """Tests for CollectorResult."""
 
     def test_basic_result(self):
         result = CollectorResult(
@@ -101,7 +101,7 @@ class TestCollectorResult:
 
 
 class TestCollectorRegistry:
-    """Tests pour le système de registry (plugins)."""
+    """Tests for the registry system (plugins)."""
 
     def test_available_returns_sorted_list(self):
         names = CollectorRegistry.available()
@@ -109,7 +109,7 @@ class TestCollectorRegistry:
         assert names == sorted(names)
 
     def test_known_collectors_registered(self):
-        # Les imports dans src/collectors/__init__.py enregistrent les collecteurs
+        # Imports in src/collectors/__init__.py register the collectors
         import src.collectors  # noqa: F401
 
         available = CollectorRegistry.available()

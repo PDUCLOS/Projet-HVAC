@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Pipeline d'entrainement — Phase 4 : Modelisation ML.
-=====================================================
+Training pipeline — Phase 4: ML Modeling.
+==========================================
 
-Orchestre l'entrainement de tous les modeles (baseline + DL) en respectant
-le split temporel defini dans la configuration :
+Orchestrates the training of all models (baseline + DL) respecting
+the temporal split defined in the configuration:
 
-    Train  : 2021-07 -> 2024-06 (36 mois × 8 depts = ~288 lignes)
-    Val    : 2024-07 -> 2024-12 (6 mois × 8 depts = ~48 lignes)
-    Test   : 2025-01 -> 2025-12 (12 mois × 8 depts = ~96 lignes)
+    Train  : 2021-07 -> 2024-06 (36 months x 8 depts = ~288 rows)
+    Val    : 2024-07 -> 2024-12 (6 months x 8 depts = ~48 rows)
+    Test   : 2025-01 -> 2025-12 (12 months x 8 depts = ~96 rows)
 
-Le grain est mois × departement. Les NaN en debut de serie (lags, rolling)
-sont supprimes a l'entrainement.
+The granularity is month x department. NaN at the beginning of the series
+(lags, rolling) are removed during training.
 
-Usage :
+Usage:
     >>> from src.models.train import ModelTrainer
     >>> trainer = ModelTrainer(config)
     >>> results = trainer.train_all()
 
-    # Ou via CLI
+    # Or via CLI
     python -m src.pipeline train
     python -m src.pipeline train --target nb_installations_pac
 """
@@ -39,36 +39,36 @@ from config.settings import ProjectConfig
 
 
 class ModelTrainer:
-    """Orchestre l'entrainement et la validation de tous les modeles.
+    """Orchestrates training and validation of all models.
 
-    Responsabilites :
-    - Charger le dataset features
-    - Appliquer le split temporel (train / val / test)
-    - Selectionner les features pertinentes (supprimer identifiants, NaN)
-    - Entrainer chaque modele avec cross-validation temporelle
-    - Sauvegarder les modeles entraines et les metriques
+    Responsibilities:
+    - Load the features dataset
+    - Apply the temporal split (train / val / test)
+    - Select relevant features (remove identifiers, NaN)
+    - Train each model with temporal cross-validation
+    - Save trained models and metrics
 
     Attributes:
-        config: Configuration du projet.
-        target: Variable cible a predire.
-        models_dir: Repertoire de sauvegarde des modeles.
+        config: Project configuration.
+        target: Target variable to predict.
+        models_dir: Directory for saving models.
     """
 
-    # Features exclues de l'entrainement (identifiants, metadata, cibles)
+    # Features excluded from training (identifiers, metadata, targets)
     EXCLUDE_COLS = {
         "date_id", "dept", "dept_name", "city_ref",
         "latitude", "longitude",
         "n_valid_features", "pct_valid_features",
     }
 
-    # Variables cibles disponibles
+    # Available target variables
     TARGET_COLS = {
         "nb_installations_pac", "nb_installations_clim",
         "nb_dpe_total", "nb_dpe_classe_ab",
     }
 
-    # Features auto-regressives de la cible (lags, rolling, diff de la cible)
-    # Exclues en mode "no_target_leakage" pour evaluer les features exogenes
+    # Auto-regressive features of the target (lags, rolling, diff of the target)
+    # Excluded in "no_target_leakage" mode to evaluate exogenous features
     TARGET_LAG_PATTERNS = [
         "_lag_", "_rmean_", "_rstd_", "_diff_", "_pct_",
     ]
@@ -95,13 +95,13 @@ class ModelTrainer:
         )
 
     def load_dataset(self) -> pd.DataFrame:
-        """Charge le dataset features depuis le CSV.
+        """Load the features dataset from CSV.
 
         Returns:
-            DataFrame avec toutes les features engineerees.
+            DataFrame with all engineered features.
 
         Raises:
-            FileNotFoundError: Si le dataset n'existe pas.
+            FileNotFoundError: If the dataset does not exist.
         """
         path = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not path.exists():
@@ -116,12 +116,12 @@ class ModelTrainer:
     def temporal_split(
         self, df: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        """Applique le split temporel train / val / test.
+        """Apply the temporal train / val / test split.
 
-        Le split respecte la chronologie (pas de fuite temporelle).
+        The split respects chronological order (no temporal leakage).
 
         Args:
-            df: Dataset complet avec colonne date_id.
+            df: Complete dataset with date_id column.
 
         Returns:
             Tuple (df_train, df_val, df_test).
@@ -142,20 +142,20 @@ class ModelTrainer:
     def prepare_features(
         self, df: pd.DataFrame
     ) -> Tuple[pd.DataFrame, pd.Series]:
-        """Separe features (X) et cible (y), supprime les colonnes non pertinentes.
+        """Separate features (X) and target (y), remove irrelevant columns.
 
-        Si exclude_target_lags=True, exclut aussi les features derivees de la
-        variable cible (lags, rolling, diff, pct_change). Cela permet d'evaluer
-        la contribution des features exogenes (meteo, economie) sans
-        l'auto-correlation de la cible qui domine sinon les predictions.
+        If exclude_target_lags=True, also excludes features derived from the
+        target variable (lags, rolling, diff, pct_change). This allows evaluating
+        the contribution of exogenous features (weather, economics) without
+        the target's auto-correlation which otherwise dominates predictions.
 
         Args:
-            df: DataFrame avec toutes les colonnes.
+            df: DataFrame with all columns.
 
         Returns:
-            Tuple (X, y) prets pour l'entrainement.
+            Tuple (X, y) ready for training.
         """
-        # Colonnes a exclure
+        # Columns to exclude
         drop_cols = self.EXCLUDE_COLS | (self.TARGET_COLS - {self.target})
 
         feature_cols = [
@@ -163,7 +163,7 @@ class ModelTrainer:
             if c not in drop_cols and c != self.target
         ]
 
-        # Exclure les features auto-regressives de la cible si demande
+        # Exclude auto-regressive features of the target if requested
         if self.exclude_target_lags:
             target_prefix = self.target
             feature_cols = [
@@ -174,20 +174,20 @@ class ModelTrainer:
                 )
             ]
 
-        # Ne garder que les colonnes numeriques
+        # Keep only numeric columns
         X = df[feature_cols].select_dtypes(include=[np.number]).copy()
         y = df[self.target].copy()
 
         return X, y
 
     def get_feature_names(self, df: pd.DataFrame) -> List[str]:
-        """Retourne la liste des noms de features utilisees.
+        """Return the list of feature names used.
 
         Args:
-            df: DataFrame source.
+            df: Source DataFrame.
 
         Returns:
-            Liste des noms de colonnes features.
+            List of feature column names.
         """
         X, _ = self.prepare_features(df)
         return list(X.columns)
@@ -196,22 +196,22 @@ class ModelTrainer:
         self,
         target: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Entraine tous les modeles et retourne les resultats.
+        """Train all models and return results.
 
-        Pipeline complet :
-        1. Charger le dataset
-        2. Split temporel
-        3. Supprimer les lignes avec NaN dans la cible
-        4. Entrainer Ridge, LightGBM, Prophet
-        5. Entrainer LSTM (si disponible)
-        6. Evaluer sur validation et test
-        7. Sauvegarder modeles et metriques
+        Complete pipeline:
+        1. Load the dataset
+        2. Temporal split
+        3. Remove rows with NaN in the target
+        4. Train Ridge, LightGBM, Prophet
+        5. Train LSTM (if available)
+        6. Evaluate on validation and test
+        7. Save models and metrics
 
         Args:
-            target: Variable cible (override de self.target).
+            target: Target variable (overrides self.target).
 
         Returns:
-            Dictionnaire avec resultats par modele.
+            Dictionary with results per model.
         """
         if target:
             self.target = target
@@ -221,18 +221,18 @@ class ModelTrainer:
         self.logger.info("  Cible : %s", self.target)
         self.logger.info("=" * 60)
 
-        # 1. Charger
+        # 1. Load
         df = self.load_dataset()
 
-        # 2. Split temporel
+        # 2. Temporal split
         df_train, df_val, df_test = self.temporal_split(df)
 
-        # 3. Preparer features
+        # 3. Prepare features
         X_train, y_train = self.prepare_features(df_train)
         X_val, y_val = self.prepare_features(df_val)
         X_test, y_test = self.prepare_features(df_test)
 
-        # 4. Supprimer les lignes avec NaN dans la cible
+        # 4. Remove rows with NaN in the target
         mask_train = y_train.notna()
         X_train, y_train = X_train[mask_train], y_train[mask_train]
         mask_val = y_val.notna()
@@ -245,7 +245,7 @@ class ModelTrainer:
             len(X_train), len(X_val), len(X_test),
         )
 
-        # 5. Imputer les NaN dans les features (median)
+        # 5. Impute NaN in features (median)
         from sklearn.impute import SimpleImputer
         imputer = SimpleImputer(strategy="median")
         X_train_imp = pd.DataFrame(
@@ -261,9 +261,9 @@ class ModelTrainer:
             columns=X_test.columns, index=X_test.index,
         )
 
-        # 6. Scaler (pour Ridge et LSTM)
-        # RobustScaler utilise la mediane et l'IQR au lieu de mean/std,
-        # le rendant resistant aux outliers (contrairement a StandardScaler)
+        # 6. Scaler (for Ridge and LSTM)
+        # RobustScaler uses median and IQR instead of mean/std,
+        # making it resistant to outliers (unlike StandardScaler)
         scaler = RobustScaler()
         X_train_scaled = pd.DataFrame(
             scaler.fit_transform(X_train_imp),
@@ -278,19 +278,19 @@ class ModelTrainer:
             columns=X_test_imp.columns, index=X_test_imp.index,
         )
 
-        # Sauvegarder imputer et scaler
+        # Save imputer and scaler
         self._save_artifact(imputer, "imputer.pkl")
         self._save_artifact(scaler, "scaler.pkl")
 
-        # 7. Entrainer les modeles
+        # 7. Train models
         results = {}
 
-        # --- Modeles baseline ---
+        # --- Baseline models ---
         from src.models.baseline import BaselineModels
 
         baseline = BaselineModels(self.config, self.target)
 
-        # Ridge Regression (utilise donnees scalees)
+        # Ridge Regression (uses scaled data)
         self.logger.info("-" * 40)
         self.logger.info("Entrainement Ridge Regression...")
         ridge_result = baseline.train_ridge(
@@ -301,9 +301,9 @@ class ModelTrainer:
         results["ridge"] = ridge_result
         self._save_artifact(ridge_result["model"], "ridge_model.pkl")
 
-        # Ridge "exogenes" — sans lags/rolling/diff de la cible
-        # Permet d'evaluer la vraie contribution des features exogenes
-        # (meteo, economie) sans l'auto-correlation qui domine le R²
+        # Ridge "exogenous" — without target lags/rolling/diff
+        # Allows evaluating the true contribution of exogenous features
+        # (weather, economics) without the auto-correlation that dominates R²
         self.logger.info("-" * 40)
         self.logger.info("Entrainement Ridge (exogenes, sans lags cible)...")
         exo_trainer = ModelTrainer(
@@ -313,12 +313,12 @@ class ModelTrainer:
         X_val_exo, _ = exo_trainer.prepare_features(df_val)
         X_test_exo, _ = exo_trainer.prepare_features(df_test)
 
-        # Memes masques NaN cible
+        # Same target NaN masks
         X_train_exo = X_train_exo[mask_train]
         X_val_exo = X_val_exo[mask_val]
         X_test_exo = X_test_exo[mask_test]
 
-        # Imputer + scaler pour les features exogenes
+        # Imputer + scaler for exogenous features
         imputer_exo = SimpleImputer(strategy="median")
         X_train_exo_imp = pd.DataFrame(
             imputer_exo.fit_transform(X_train_exo),
@@ -360,7 +360,7 @@ class ModelTrainer:
             n_exo, n_all,
         )
 
-        # LightGBM (utilise donnees imputees, pas scalees)
+        # LightGBM (uses imputed data, not scaled)
         self.logger.info("-" * 40)
         self.logger.info("Entrainement LightGBM...")
         lgbm_result = baseline.train_lightgbm(
@@ -379,7 +379,7 @@ class ModelTrainer:
         )
         results["prophet"] = prophet_result
 
-        # --- LSTM (exploratoire) ---
+        # --- LSTM (exploratory) ---
         try:
             from src.models.deep_learning import LSTMModel
 
@@ -400,7 +400,7 @@ class ModelTrainer:
         except Exception as e:
             self.logger.warning("LSTM echoue : %s", e)
 
-        # 8. Cross-validation temporelle (sur Ridge et LightGBM)
+        # 8. Temporal cross-validation (on Ridge and LightGBM)
         self.logger.info("-" * 40)
         self.logger.info("Cross-validation temporelle...")
         cv_results = self._cross_validate(
@@ -409,7 +409,7 @@ class ModelTrainer:
         for model_name, cv_scores in cv_results.items():
             results[model_name]["cv_scores"] = cv_scores
 
-        # 9. Sauvegarder le resume
+        # 9. Save summary
         self._save_results_summary(results)
 
         self.logger.info("=" * 60)
@@ -433,17 +433,17 @@ class ModelTrainer:
         y_train_scaled: pd.Series,
         baseline: Any,
     ) -> Dict[str, Dict[str, Any]]:
-        """Cross-validation temporelle avec TimeSeriesSplit.
+        """Temporal cross-validation with TimeSeriesSplit.
 
         Args:
-            X_train_imp: Features imputees (pour LightGBM).
-            y_train: Cible.
-            X_train_scaled: Features scalees (pour Ridge).
-            y_train_scaled: Cible (identique).
-            baseline: Instance de BaselineModels.
+            X_train_imp: Imputed features (for LightGBM).
+            y_train: Target.
+            X_train_scaled: Scaled features (for Ridge).
+            y_train_scaled: Target (identical).
+            baseline: BaselineModels instance.
 
         Returns:
-            Scores de CV par modele.
+            CV scores per model.
         """
         from src.models.evaluate import ModelEvaluator
 
@@ -488,7 +488,7 @@ class ModelTrainer:
             )
             cv_results["lightgbm"].append(metrics_lgb)
 
-        # Agreger les scores
+        # Aggregate scores
         aggregated = {}
         for model_name, folds in cv_results.items():
             if folds:
@@ -502,14 +502,14 @@ class ModelTrainer:
         return aggregated
 
     def _save_artifact(self, obj: Any, filename: str) -> Path:
-        """Sauvegarde un artefact (modele, scaler) en pickle.
+        """Save an artifact (model, scaler) as pickle.
 
         Args:
-            obj: Objet a serialiser.
-            filename: Nom du fichier.
+            obj: Object to serialize.
+            filename: Filename.
 
         Returns:
-            Chemin du fichier sauvegarde.
+            Path of the saved file.
         """
         path = self.models_dir / filename
         with open(path, "wb") as f:
@@ -518,13 +518,13 @@ class ModelTrainer:
         return path
 
     def _save_results_summary(self, results: Dict[str, Any]) -> Path:
-        """Sauvegarde un resume des resultats en CSV.
+        """Save a results summary as CSV.
 
         Args:
-            results: Dictionnaire des resultats par modele.
+            results: Dictionary of results per model.
 
         Returns:
-            Chemin du fichier CSV.
+            Path of the CSV file.
         """
         rows = []
         for model_name, res in results.items():

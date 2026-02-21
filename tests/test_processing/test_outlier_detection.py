@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le module de detection des outliers."""
+"""Tests for the outlier detection module."""
 
 from __future__ import annotations
 
@@ -16,13 +16,13 @@ from src.processing.outlier_detection import OutlierDetector
 
 @pytest.fixture
 def detector(test_config: ProjectConfig) -> OutlierDetector:
-    """Instance OutlierDetector pour les tests."""
+    """OutlierDetector instance for tests."""
     return OutlierDetector(test_config)
 
 
 @pytest.fixture
 def df_with_outliers() -> pd.DataFrame:
-    """DataFrame avec des outliers connus pour tester la detection."""
+    """DataFrame with known outliers for testing detection."""
     np.random.seed(42)
     n = 100
     df = pd.DataFrame({
@@ -30,11 +30,11 @@ def df_with_outliers() -> pd.DataFrame:
         "dept": ["69"] * n,
         "nb_installations_pac": np.concatenate([
             np.random.normal(50, 10, n - 3),
-            [200, 250, -10],  # 3 outliers evidents
+            [200, 250, -10],  # 3 obvious outliers
         ]),
         "temp_mean": np.concatenate([
             np.random.normal(15, 5, n - 2),
-            [60, -40],  # 2 outliers temperature
+            [60, -40],  # 2 temperature outliers
         ]),
         "hdd_sum": np.random.uniform(0, 300, n),
         "confiance_menages": np.concatenate([
@@ -47,7 +47,7 @@ def df_with_outliers() -> pd.DataFrame:
 
 @pytest.fixture
 def df_clean() -> pd.DataFrame:
-    """DataFrame sans outliers."""
+    """DataFrame without outliers."""
     np.random.seed(42)
     n = 50
     return pd.DataFrame({
@@ -63,24 +63,24 @@ def df_clean() -> pd.DataFrame:
 # ==================================================================
 
 class TestDetectIQR:
-    """Tests pour la methode IQR."""
+    """Tests for the IQR method."""
 
     def test_detects_known_outliers(self, detector, df_with_outliers):
-        """L'IQR doit detecter les outliers evidents."""
+        """IQR should detect obvious outliers."""
         results = detector.detect_iqr(df_with_outliers)
-        # La colonne nb_installations_pac a des outliers (200, 250, -10)
+        # The nb_installations_pac column has outliers (200, 250, -10)
         assert "nb_installations_pac" in results
         assert results["nb_installations_pac"]["n_outliers"] >= 2
 
     def test_no_outliers_on_clean_data(self, detector, df_clean):
-        """Pas d'outlier sur des donnees propres (distribution normale centree)."""
+        """No outlier on clean data (centered normal distribution)."""
         results = detector.detect_iqr(df_clean, columns=["value_a", "value_b"])
         total = sum(info["n_outliers"] for info in results.values())
-        # Distribution normale a tres peu d'outliers IQR (< 5%)
+        # Normal distribution has very few IQR outliers (< 5%)
         assert total < 5
 
     def test_returns_bounds(self, detector, df_with_outliers):
-        """Les bornes IQR doivent etre retournees."""
+        """IQR bounds should be returned."""
         results = detector.detect_iqr(df_with_outliers, columns=["nb_installations_pac"])
         if "nb_installations_pac" in results:
             info = results["nb_installations_pac"]
@@ -89,20 +89,20 @@ class TestDetectIQR:
             assert info["lower_bound"] < info["upper_bound"]
 
     def test_returns_indices(self, detector, df_with_outliers):
-        """Les indices des outliers doivent etre retournes."""
+        """Outlier indices should be returned."""
         results = detector.detect_iqr(df_with_outliers)
         for col, info in results.items():
             assert "indices" in info
             assert isinstance(info["indices"], list)
 
     def test_empty_dataframe(self, detector):
-        """Ne plante pas sur un DataFrame vide."""
+        """Does not crash on an empty DataFrame."""
         df = pd.DataFrame({"val": []})
         results = detector.detect_iqr(df)
         assert results == {}
 
     def test_ignores_nan(self, detector):
-        """Les NaN ne doivent pas etre comptes comme outliers."""
+        """NaN values should not be counted as outliers."""
         df = pd.DataFrame({
             "val": [1, 2, 3, 4, 5, np.nan, np.nan, np.nan, 100]
         })
@@ -112,7 +112,7 @@ class TestDetectIQR:
                 assert not pd.isna(df.loc[idx, "val"])
 
     def test_custom_factor(self, test_config):
-        """Un facteur IQR plus strict (1.0) detecte plus d'outliers."""
+        """A stricter IQR factor (1.0) detects more outliers."""
         strict = OutlierDetector(test_config, iqr_factor=1.0)
         normal = OutlierDetector(test_config, iqr_factor=1.5)
         df = pd.DataFrame({"val": np.random.normal(0, 1, 200)})
@@ -124,34 +124,34 @@ class TestDetectIQR:
 
 
 # ==================================================================
-# Tests Z-score modifie
+# Modified Z-score tests
 # ==================================================================
 
 class TestDetectZscoreModified:
-    """Tests pour le Z-score modifie (MAD)."""
+    """Tests for the modified Z-score (MAD)."""
 
     def test_detects_extreme_values(self, detector, df_with_outliers):
-        """Le Z-score modifie doit detecter les valeurs extremes."""
+        """The modified Z-score should detect extreme values."""
         results = detector.detect_zscore_modified(df_with_outliers)
         assert len(results) > 0
 
     def test_returns_z_scores(self, detector, df_with_outliers):
-        """Les Z-scores doivent etre retournes."""
+        """Z-scores should be returned."""
         results = detector.detect_zscore_modified(df_with_outliers)
         for col, info in results.items():
             assert "z_scores" in info
-            # Tous les Z-scores doivent etre au-dessus du seuil
+            # All Z-scores should be above the threshold
             for z in info["z_scores"]:
                 assert abs(z) > detector.zscore_threshold
 
     def test_mad_zero_skipped(self, detector):
-        """Si MAD=0 (>50% identiques), la colonne est ignoree."""
+        """If MAD=0 (>50% identical), the column is skipped."""
         df = pd.DataFrame({"val": [1, 1, 1, 1, 1, 1, 1, 1, 100]})
         results = detector.detect_zscore_modified(df, columns=["val"])
         assert "val" not in results
 
     def test_no_false_positives_normal(self, detector):
-        """Distribution normale standard : < 1% d'outliers Z-score."""
+        """Standard normal distribution: < 1% Z-score outliers."""
         np.random.seed(42)
         df = pd.DataFrame({"val": np.random.normal(0, 1, 1000)})
         results = detector.detect_zscore_modified(df, columns=["val"])
@@ -164,41 +164,41 @@ class TestDetectZscoreModified:
 # ==================================================================
 
 class TestDetectIsolationForest:
-    """Tests pour l'Isolation Forest."""
+    """Tests for Isolation Forest."""
 
     def test_detects_multivariate_outliers(self, detector, df_with_outliers):
-        """L'IF doit detecter des outliers multivaries."""
+        """IF should detect multivariate outliers."""
         results = detector.detect_isolation_forest(df_with_outliers)
         assert results["n_outliers"] > 0
         assert len(results["indices"]) == results["n_outliers"]
 
     def test_returns_scores(self, detector, df_with_outliers):
-        """Les scores d'anomalie doivent etre retournes."""
+        """Anomaly scores should be returned."""
         results = detector.detect_isolation_forest(df_with_outliers)
         assert "scores" in results
 
     def test_not_enough_data(self, detector):
-        """Avec trop peu de donnees, retourne 0 outliers."""
+        """With too few data points, returns 0 outliers."""
         df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
         results = detector.detect_isolation_forest(df)
         assert results["n_outliers"] == 0
 
     def test_single_column(self, detector):
-        """Avec une seule colonne numerique, retourne 0 outliers."""
+        """With a single numeric column, returns 0 outliers."""
         df = pd.DataFrame({"a": range(50)})
         results = detector.detect_isolation_forest(df, columns=["a"])
         assert results["n_outliers"] == 0
 
 
 # ==================================================================
-# Tests detection combinee + flagging
+# Combined detection + flagging tests
 # ==================================================================
 
 class TestDetectAndFlag:
-    """Tests pour la detection combinee."""
+    """Tests for combined detection."""
 
     def test_adds_flag_columns(self, detector, df_with_outliers):
-        """Les colonnes de flag doivent etre ajoutees."""
+        """Flag columns should be added."""
         df_flagged, report = detector.detect_and_flag(df_with_outliers)
         assert "_outlier_iqr" in df_flagged.columns
         assert "_outlier_zscore" in df_flagged.columns
@@ -207,9 +207,9 @@ class TestDetectAndFlag:
         assert "_outlier_score" in df_flagged.columns
 
     def test_consensus_requires_two_methods(self, detector, df_with_outliers):
-        """Le consensus necessite au moins 2 methodes d'accord."""
+        """Consensus requires at least 2 methods in agreement."""
         df_flagged, _ = detector.detect_and_flag(df_with_outliers)
-        # Verifier que consensus => au moins 2 methodes
+        # Verify that consensus => at least 2 methods
         consensus_rows = df_flagged[df_flagged["_outlier_consensus"]]
         for _, row in consensus_rows.iterrows():
             n_methods = (
@@ -220,7 +220,7 @@ class TestDetectAndFlag:
             assert n_methods >= 2
 
     def test_report_structure(self, detector, df_with_outliers):
-        """Le rapport doit avoir la bonne structure."""
+        """The report should have the correct structure."""
         _, report = detector.detect_and_flag(df_with_outliers)
         assert "n_rows" in report
         assert "iqr" in report
@@ -229,7 +229,7 @@ class TestDetectAndFlag:
         assert "consensus" in report
 
     def test_does_not_modify_data(self, detector, df_with_outliers):
-        """La detection ne doit pas modifier les donnees originales."""
+        """Detection should not modify the original data."""
         original = df_with_outliers["nb_installations_pac"].copy()
         df_flagged, _ = detector.detect_and_flag(df_with_outliers)
         pd.testing.assert_series_equal(
@@ -238,14 +238,14 @@ class TestDetectAndFlag:
 
 
 # ==================================================================
-# Tests traitement
+# Treatment tests
 # ==================================================================
 
 class TestDetectAndTreat:
-    """Tests pour le traitement des outliers."""
+    """Tests for outlier treatment."""
 
     def test_strategy_flag(self, detector, df_with_outliers):
-        """La strategie 'flag' ne modifie pas les valeurs."""
+        """The 'flag' strategy does not modify values."""
         original_sum = df_with_outliers["nb_installations_pac"].sum()
         df_treated, _ = detector.detect_and_treat(
             df_with_outliers, strategy="flag",
@@ -253,16 +253,16 @@ class TestDetectAndTreat:
         assert df_treated["nb_installations_pac"].sum() == original_sum
 
     def test_strategy_clip(self, detector, df_with_outliers):
-        """La strategie 'clip' ramene les outliers aux bornes IQR."""
+        """The 'clip' strategy brings outliers back to IQR bounds."""
         df_treated, report = detector.detect_and_treat(
             df_with_outliers, strategy="clip",
         )
         assert report["strategy"] == "clip"
-        # Les valeurs extremes doivent avoir ete attenuees
+        # Extreme values should have been attenuated
         assert df_treated["nb_installations_pac"].max() < 250
 
     def test_strategy_remove(self, detector, df_with_outliers):
-        """La strategie 'remove' supprime des lignes."""
+        """The 'remove' strategy deletes rows."""
         original_len = len(df_with_outliers)
         df_treated, report = detector.detect_and_treat(
             df_with_outliers, strategy="remove",
@@ -270,7 +270,7 @@ class TestDetectAndTreat:
         assert len(df_treated) <= original_len
 
     def test_preserves_row_count_flag(self, detector, df_with_outliers):
-        """Flag et clip preservent toutes les lignes."""
+        """Flag and clip preserve all rows."""
         for strategy in ["flag", "clip"]:
             df_treated, _ = detector.detect_and_treat(
                 df_with_outliers, strategy=strategy,
@@ -279,18 +279,18 @@ class TestDetectAndTreat:
 
 
 # ==================================================================
-# Tests anomalies temporelles
+# Temporal anomaly tests
 # ==================================================================
 
 class TestTemporalAnomalies:
-    """Tests pour la detection d'anomalies temporelles."""
+    """Tests for temporal anomaly detection."""
 
     def test_detects_spike(self, detector):
-        """Detecte un pic soudain (doublement du mois precedent)."""
+        """Detects a sudden spike (doubling from the previous month)."""
         df = pd.DataFrame({
             "date_id": [202301, 202302, 202303, 202304],
             "dept": ["69"] * 4,
-            "nb_installations_pac": [100, 100, 100, 300],  # +200% au mois 4
+            "nb_installations_pac": [100, 100, 100, 300],  # +200% in month 4
         })
         result = detector.detect_temporal_anomalies(df, threshold_pct=50.0)
         anomalies = result["anomalies"]
@@ -298,11 +298,11 @@ class TestTemporalAnomalies:
         assert any(a["type"] == "spike" for a in anomalies)
 
     def test_detects_drop(self, detector):
-        """Detecte une chute soudaine."""
+        """Detects a sudden drop."""
         df = pd.DataFrame({
             "date_id": [202301, 202302, 202303],
             "dept": ["69"] * 3,
-            "nb_installations_pac": [100, 100, 20],  # -80% au mois 3
+            "nb_installations_pac": [100, 100, 20],  # -80% in month 3
         })
         result = detector.detect_temporal_anomalies(df, threshold_pct=50.0)
         anomalies = result["anomalies"]
@@ -310,7 +310,7 @@ class TestTemporalAnomalies:
         assert any(a["type"] == "drop" for a in anomalies)
 
     def test_no_anomaly_stable(self, detector):
-        """Pas d'anomalie sur des donnees stables."""
+        """No anomaly on stable data."""
         df = pd.DataFrame({
             "date_id": [202301, 202302, 202303, 202304],
             "dept": ["69"] * 4,
@@ -321,14 +321,14 @@ class TestTemporalAnomalies:
 
 
 # ==================================================================
-# Tests rapport
+# Report tests
 # ==================================================================
 
 class TestReport:
-    """Tests pour la generation du rapport."""
+    """Tests for report generation."""
 
     def test_generates_report_file(self, detector, df_with_outliers, tmp_path):
-        """Le rapport doit etre genere en fichier texte."""
+        """The report should be generated as a text file."""
         detector.report_dir = tmp_path
         df_flagged, report = detector.detect_and_flag(df_with_outliers)
         path = detector.generate_report(df_flagged, report)
@@ -340,7 +340,7 @@ class TestReport:
         assert "Isolation Forest" in content
 
     def test_report_includes_temporal(self, detector, df_with_outliers, tmp_path):
-        """Le rapport inclut les anomalies temporelles si fournies."""
+        """The report includes temporal anomalies if provided."""
         detector.report_dir = tmp_path
         df_flagged, report = detector.detect_and_flag(df_with_outliers)
         temporal = {"anomalies": [{"dept": "69", "date_id": 202301,
@@ -353,14 +353,14 @@ class TestReport:
 
 
 # ==================================================================
-# Tests run_full_analysis
+# run_full_analysis tests
 # ==================================================================
 
 class TestRunFullAnalysis:
-    """Tests pour l'analyse complete."""
+    """Tests for full analysis."""
 
     def test_returns_treated_df_and_report(self, detector, df_with_outliers, tmp_path):
-        """L'analyse complete retourne le DataFrame traite et le rapport."""
+        """Full analysis returns the treated DataFrame and the report."""
         detector.report_dir = tmp_path
         df_treated, report_path = detector.run_full_analysis(
             df_with_outliers, strategy="clip",
@@ -371,14 +371,14 @@ class TestRunFullAnalysis:
 
 
 # ==================================================================
-# Tests utilitaires
+# Utility tests
 # ==================================================================
 
 class TestUtilities:
-    """Tests pour les methodes utilitaires."""
+    """Tests for utility methods."""
 
     def test_get_numeric_columns(self, detector):
-        """Retourne uniquement les colonnes numeriques pertinentes."""
+        """Returns only the relevant numeric columns."""
         df = pd.DataFrame({
             "date_id": [1, 2, 3],
             "dept": ["69", "38", "69"],
@@ -387,6 +387,6 @@ class TestUtilities:
         })
         cols = detector._get_numeric_columns(df)
         assert "value" in cols
-        assert "date_id" not in cols  # exclu
-        assert "dept" not in cols      # non-numerique
-        assert "_flag" not in cols     # prefixe _
+        assert "date_id" not in cols  # excluded
+        assert "dept" not in cols      # non-numeric
+        assert "_flag" not in cols     # _ prefix

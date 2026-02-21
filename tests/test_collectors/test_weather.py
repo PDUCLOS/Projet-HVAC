@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le collecteur météo (WeatherCollector)."""
+"""Tests for the weather collector (WeatherCollector)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from src.collectors.weather import WeatherCollector
 
 
 class TestWeatherCollector:
-    """Tests pour WeatherCollector."""
+    """Tests for WeatherCollector."""
 
     def test_source_name(self):
         assert WeatherCollector.source_name == "weather"
@@ -32,7 +32,7 @@ class TestWeatherCollector:
 
     def test_validate_warns_on_nulls(self, collector_config, sample_weather_df, caplog):
         collector = WeatherCollector(collector_config)
-        # Injecter 10% de NaN dans température
+        # Inject 10% NaN into temperature
         sample_weather_df.loc[:5, "temperature_2m_mean"] = None
         import logging
         with caplog.at_level(logging.WARNING):
@@ -40,8 +40,8 @@ class TestWeatherCollector:
 
     @patch.object(WeatherCollector, "fetch_json")
     def test_collect_success(self, mock_fetch, collector_config):
-        """Test que collect retourne un DataFrame valide avec des données mockées."""
-        # Simuler la réponse API Open-Meteo
+        """Test that collect returns a valid DataFrame with mocked data."""
+        # Simulate the Open-Meteo API response
         mock_fetch.return_value = {
             "daily": {
                 "time": ["2023-01-01", "2023-01-02", "2023-01-03"],
@@ -59,14 +59,14 @@ class TestWeatherCollector:
         assert "temperature_2m_mean" in df.columns
         assert "hdd" in df.columns
         assert "cdd" in df.columns
-        # HDD doit être > 0 quand temp < 18
+        # HDD must be > 0 when temp < 18
         assert (df["hdd"] >= 0).all()
         assert (df["cdd"] >= 0).all()
 
     @patch.object(WeatherCollector, "fetch_json")
     def test_collect_partial_failure(self, mock_fetch, collector_config):
-        """Test la résilience quand une ville échoue."""
-        # Première ville OK, deuxième échoue
+        """Test resilience when a city fails."""
+        # First city OK, second one fails
         mock_fetch.side_effect = [
             {
                 "daily": {
@@ -83,6 +83,6 @@ class TestWeatherCollector:
         collector = WeatherCollector(collector_config)
         df = collector.collect()
 
-        # On doit quand même avoir les données de la première ville
+        # We should still have the data from the first city
         assert not df.empty
         assert len(df) >= 1

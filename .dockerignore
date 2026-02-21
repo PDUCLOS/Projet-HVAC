@@ -12,7 +12,7 @@ __pycache__
 htmlcov
 *.egg-info
 
-# Environnements virtuels
+# Virtual environments
 venv/
 env/
 .venv/
@@ -30,10 +30,10 @@ notebooks/
 *.md
 !README.md
 
-# Donnees (montees en volume)
+# Data (mounted as volume)
 data/
 
-# Fichiers temporaires
+# Temporary files
 *.log
 .DS_Store
 Thumbs.db

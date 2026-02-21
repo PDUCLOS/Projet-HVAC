@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Page carte de France interactive."""
+"""Interactive France map page."""
 
 import streamlit as st
 import pandas as pd
@@ -10,14 +10,14 @@ from pathlib import Path
 def render():
     st.title("Carte de France - HVAC")
 
-    # Charger les coordonnees des departements depuis settings
+    # Load department coordinates from settings
     try:
         from config.settings import FRANCE_DEPARTMENTS, REGION_NAMES
     except ImportError:
         st.error("Impossible de charger la configuration des departements.")
         return
 
-    # --- Construire le DataFrame des departements ---
+    # --- Build the departments DataFrame ---
     dept_data = []
     for code, info in FRANCE_DEPARTMENTS.items():
         dept_data.append({
@@ -29,7 +29,7 @@ def render():
         })
     df_depts = pd.DataFrame(dept_data)
 
-    # --- Charger les donnees si disponibles ---
+    # --- Load data if available ---
     features_path = Path("data/features/hvac_features_dataset.csv")
     ml_path = Path("data/features/hvac_ml_dataset.csv")
 
@@ -40,14 +40,14 @@ def render():
         df_data = pd.read_csv(ml_path, low_memory=False)
 
     if df_data is not None and "dept" in df_data.columns:
-        # Agreger par departement
+        # Aggregate by department
         agg = df_data.groupby("dept").agg(
             nb_dpe_total=("nb_dpe_total", "sum") if "nb_dpe_total" in df_data.columns else ("dept", "count"),
         ).reset_index()
         agg.columns = ["dept_code", "nb_dpe_total"]
         agg["dept_code"] = agg["dept_code"].astype(str).str.zfill(2)
 
-        # Enrichir si d'autres colonnes existent
+        # Enrich if other columns exist
         numeric_aggs = {}
         for col in ["nb_installations_pac", "nb_installations_clim", "nb_dpe_classe_ab"]:
             if col in df_data.columns:
@@ -58,7 +58,7 @@ def render():
 
         df_depts = df_depts.merge(agg, on="dept_code", how="left")
 
-        # Carte avec donnees
+        # Map with data
         metric_cols = [c for c in ["nb_dpe_total", "nb_installations_pac", "nb_installations_clim"] if c in df_depts.columns]
         if metric_cols:
             selected_metric = st.selectbox("Metrique a afficher", metric_cols)
@@ -81,7 +81,7 @@ def render():
             fig.update_layout(height=700)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Tableau detaille
+            # Detailed table
             st.subheader("Donnees par departement")
             display_cols = ["dept_code", "prefecture", "region"] + metric_cols
             st.dataframe(
@@ -95,7 +95,7 @@ def render():
         st.info("Pas de donnees ML disponibles. Affichage des 96 departements.")
         _render_base_map(df_depts)
 
-    # --- Stats par region ---
+    # --- Stats by region ---
     st.subheader("Repartition par region")
     region_counts = df_depts.groupby("region")["dept_code"].count().reset_index()
     region_counts.columns = ["Region", "Departements"]
@@ -109,7 +109,7 @@ def render():
 
 
 def _render_base_map(df_depts: pd.DataFrame):
-    """Affiche la carte de base sans donnees ML."""
+    """Display the base map without ML data."""
     fig = px.scatter_mapbox(
         df_depts,
         lat="lat",

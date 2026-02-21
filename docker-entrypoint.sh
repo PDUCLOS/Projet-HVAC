@@ -1,13 +1,13 @@
 #!/bin/bash
 # =============================================================================
-# HVAC Market Analysis — Point d'entree Docker
+# HVAC Market Analysis — Docker Entrypoint
 # =============================================================================
-# Modes disponibles :
-#   all        — API + Dashboard (defaut)
-#   api        — API FastAPI uniquement
-#   dashboard  — Dashboard Streamlit uniquement
-#   pipeline   — Executer le pipeline puis quitter
-#   demo       — Generer donnees demo + pipeline + lancer all
+# Available modes :
+#   all        — API + Dashboard (default)
+#   api        — FastAPI API only
+#   dashboard  — Streamlit Dashboard only
+#   pipeline   — Run the pipeline then exit
+#   demo       — Generate demo data + pipeline + launch all
 # =============================================================================
 
 set -e
@@ -21,44 +21,44 @@ echo "============================================="
 
 case "$MODE" in
     api)
-        echo "  Lancement de l'API FastAPI sur :8000..."
+        echo "  Launching FastAPI API on :8000..."
         exec uvicorn api.main:app --host 0.0.0.0 --port 8000
         ;;
 
     dashboard)
-        echo "  Lancement du Dashboard Streamlit sur :8501..."
+        echo "  Launching Streamlit Dashboard on :8501..."
         exec streamlit run app/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
         ;;
 
     all)
-        echo "  Lancement API (8000) + Dashboard (8501)..."
+        echo "  Launching API (8000) + Dashboard (8501)..."
         uvicorn api.main:app --host 0.0.0.0 --port 8000 &
         exec streamlit run app/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
         ;;
 
     pipeline)
-        echo "  Execution du pipeline complet..."
+        echo "  Running the full pipeline..."
         python -m src.pipeline process
         python -m src.pipeline train
         python -m src.pipeline evaluate
-        echo "  Pipeline termine."
+        echo "  Pipeline completed."
         ;;
 
     demo)
-        echo "  Generation des donnees de demo..."
+        echo "  Generating demo data..."
         python scripts/generate_demo_data.py
-        echo "  Execution du pipeline..."
+        echo "  Running the pipeline..."
         python -m src.pipeline process
         python -m src.pipeline train
         python -m src.pipeline evaluate
-        echo "  Lancement API (8000) + Dashboard (8501)..."
+        echo "  Launching API (8000) + Dashboard (8501)..."
         uvicorn api.main:app --host 0.0.0.0 --port 8000 &
         exec streamlit run app/app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true
         ;;
 
     *)
-        echo "  Mode inconnu : $MODE"
-        echo "  Modes disponibles : all, api, dashboard, pipeline, demo"
+        echo "  Unknown mode : $MODE"
+        echo "  Available modes : all, api, dashboard, pipeline, demo"
         exit 1
         ;;
 esac

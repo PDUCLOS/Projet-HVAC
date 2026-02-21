@@ -1,11 +1,11 @@
 # =============================================================================
-# HVAC Market Analysis — Dependances API
+# HVAC Market Analysis — API Dependencies
 # =============================================================================
 # Installation : pip install -r requirements-api.txt
-# Necessite aussi : pip install -r requirements.txt (pour pandas, scikit-learn, etc.)
-# Lancement   : uvicorn api.main:app --reload
+# Also requires : pip install -r requirements.txt (for pandas, scikit-learn, etc.)
+# Launch   : uvicorn api.main:app --reload
 # =============================================================================
 
-fastapi>=0.104.0,<1.0.0         # Framework API async
-uvicorn[standard]>=0.24.0,<1.0.0  # Serveur ASGI (avec watchfiles pour --reload)
-pydantic>=2.5.0,<3.0.0          # Validation de donnees et serialisation
+fastapi>=0.104.0,<1.0.0         # Async API framework
+uvicorn[standard]>=0.24.0,<1.0.0  # ASGI server (with watchfiles for --reload)
+pydantic>=2.5.0,<3.0.0          # Data validation and serialization

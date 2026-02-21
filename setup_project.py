@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Script de setup du projet HVAC Market Analysis.
-=================================================
+HVAC Market Analysis project setup script.
+============================================
 
-Script tout-en-un pour initialiser le projet sur une nouvelle machine.
-Verifie les prerequis, cree les repertoires, copie le .env si absent,
-initialise la BDD SQLite et affiche l'etat du projet.
+All-in-one script to initialize the project on a new machine.
+Checks prerequisites, creates directories, copies .env if missing,
+initializes the SQLite database, and displays the project status.
 
 Usage:
     python setup_project.py
 
-Ce script est idempotent : il peut etre relance sans risque.
+This script is idempotent: it can be rerun safely.
 """
 
 import os
@@ -20,19 +20,19 @@ import sys
 from pathlib import Path
 
 
-# Repertoire racine du projet (ou se trouve ce script)
+# Project root directory (where this script is located)
 PROJECT_ROOT = Path(__file__).parent.resolve()
 
 
 def print_header(title: str) -> None:
-    """Affiche un titre formate."""
+    """Display a formatted title."""
     print(f"\n{'=' * 60}")
     print(f"  {title}")
     print(f"{'=' * 60}")
 
 
 def check_python_version() -> bool:
-    """Verifie que Python 3.10+ est installe."""
+    """Check that Python 3.10+ is installed."""
     v = sys.version_info
     print(f"  Python : {v.major}.{v.minor}.{v.micro}", end="")
     if v.major >= 3 and v.minor >= 10:
@@ -43,7 +43,7 @@ def check_python_version() -> bool:
 
 
 def check_pip_packages() -> dict:
-    """Verifie les packages Python requis."""
+    """Check required Python packages."""
     required = [
         "pandas", "numpy", "requests", "sqlalchemy",
         "lxml", "dotenv", "tqdm",
@@ -72,7 +72,7 @@ def check_pip_packages() -> dict:
 
 
 def create_directories() -> None:
-    """Cree les repertoires de donnees s'ils n'existent pas."""
+    """Create data directories if they do not exist."""
     dirs = [
         PROJECT_ROOT / "data" / "raw" / "weather",
         PROJECT_ROOT / "data" / "raw" / "insee",
@@ -89,7 +89,7 @@ def create_directories() -> None:
 
 
 def setup_env_file() -> None:
-    """Copie .env.example vers .env si .env n'existe pas."""
+    """Copy .env.example to .env if .env does not exist."""
     env_file = PROJECT_ROOT / ".env"
     env_example = PROJECT_ROOT / ".env.example"
 
@@ -103,7 +103,7 @@ def setup_env_file() -> None:
 
 
 def init_database() -> bool:
-    """Initialise la BDD SQLite via le pipeline."""
+    """Initialize the SQLite database via the pipeline."""
     db_path = PROJECT_ROOT / "data" / "hvac_market.db"
     print(f"  Chemin BDD : {db_path}")
 
@@ -126,7 +126,7 @@ def init_database() -> bool:
 
 
 def check_collected_data() -> dict:
-    """Verifie quelles donnees ont deja ete collectees."""
+    """Check which data has already been collected."""
     raw_dir = PROJECT_ROOT / "data" / "raw"
     files = {
         "weather": raw_dir / "weather" / "weather_france.csv",
@@ -146,15 +146,15 @@ def check_collected_data() -> dict:
 
 
 def main() -> None:
-    """Point d'entree principal du setup."""
+    """Main entry point for the setup."""
     print_header("HVAC Market Analysis - Setup du projet")
 
-    # 1. Verifier Python
+    # 1. Check Python
     print_header("1. Verification Python")
     if not check_python_version():
         sys.exit(1)
 
-    # 2. Verifier les packages
+    # 2. Check packages
     print_header("2. Verification des packages")
     pkg_status = check_pip_packages()
     missing = []
@@ -168,28 +168,28 @@ def main() -> None:
         print(f"\n  ATTENTION: Packages manquants : {', '.join(missing)}")
         print(f"  Installer avec : pip install -r requirements.txt")
 
-    # 3. Creer les repertoires
+    # 3. Create directories
     print_header("3. Creation des repertoires")
     create_directories()
 
-    # 4. Configurer .env
+    # 4. Configure .env
     print_header("4. Configuration .env")
     setup_env_file()
 
-    # 5. Initialiser la BDD
+    # 5. Initialize the database
     print_header("5. Initialisation de la base de donnees")
     if not missing:
         init_database()
     else:
         print("  Passe (packages manquants)")
 
-    # 6. Verifier les donnees collectees
+    # 6. Check collected data
     print_header("6. Etat des donnees collectees")
     data_status = check_collected_data()
     for source, status in data_status.items():
         print(f"  {source:<15} : {status}")
 
-    # 7. Resume
+    # 7. Summary
     print_header("Setup termine !")
     print("""
   Prochaines etapes :

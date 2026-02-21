@@ -1,22 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-Pipeline Orchestrator — Point d'entrée pour exécuter le projet.
-================================================================
+Pipeline Orchestrator — Entry point for running the project.
+==============================================================
 
-Orchestre les différentes étapes du projet HVAC Market Analysis :
-    1. collect     — Collecte des données depuis les sources externes
-    2. init_db     — Initialisation de la base de données
-    3. import_data — Import des CSV collectés dans la BDD
-    4. clean       — Nettoyage et normalisation des données brutes
-    5. merge       — Fusion multi-sources → dataset ML-ready
+Orchestrates the different stages of the HVAC Market Analysis project:
+    1. collect     — Collect data from external sources
+    2. init_db     — Initialize the database
+    3. import_data — Import collected CSVs into the database
+    4. clean       — Clean and normalize raw data
+    5. merge       — Multi-source merge → ML-ready dataset
     6. features    — Feature engineering (lags, rolling, interactions)
-    7. process     — Exécute clean + merge + features en séquence
-    8. eda         — Analyse exploratoire + corrélations (Phase 3)
-    9. train       — Entraînement des modèles (Phase 4)
-   10. evaluate    — Évaluation et comparaison (Phase 4)
+    7. process     — Execute clean + merge + features in sequence
+    8. eda         — Exploratory analysis + correlations (Phase 3)
+    9. train       — Model training (Phase 4)
+   10. evaluate    — Evaluation and comparison (Phase 4)
 
-Usage CLI :
-    # Exécuter une étape spécifique
+CLI usage:
+    # Run a specific stage
     python -m src.pipeline collect
     python -m src.pipeline collect --sources weather,insee
     python -m src.pipeline init_db
@@ -25,18 +25,18 @@ Usage CLI :
     python -m src.pipeline merge
     python -m src.pipeline features
     python -m src.pipeline process          # clean + merge + features
-    python -m src.pipeline eda              # EDA + corrélations
+    python -m src.pipeline eda              # EDA + correlations
 
-    # Exécuter toutes les étapes
+    # Run all stages
     python -m src.pipeline all
 
-    # Lister les collecteurs disponibles
+    # List available collectors
     python -m src.pipeline list
 
-Extensibilité :
-    Pour ajouter une nouvelle étape au pipeline :
-    1. Créer une fonction dans le module approprié
-    2. L'enregistrer dans le dictionnaire STAGES ci-dessous
+Extensibility:
+    To add a new stage to the pipeline:
+    1. Create a function in the appropriate module
+    2. Register it in the STAGES dictionary below
 """
 
 from __future__ import annotations
@@ -51,10 +51,10 @@ from src.collectors.base import CollectorConfig, CollectorRegistry
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure le logging global du pipeline.
+    """Configure global logging for the pipeline.
 
     Args:
-        level: Niveau de logging (DEBUG, INFO, WARNING, ERROR).
+        level: Logging level (DEBUG, INFO, WARNING, ERROR).
     """
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
@@ -64,22 +64,22 @@ def setup_logging(level: str = "INFO") -> None:
 
 
 def run_collect(sources: Optional[List[str]] = None) -> None:
-    """Exécute la collecte de données.
+    """Execute data collection.
 
     Args:
-        sources: Liste des sources à collecter. Si None, collecte tout.
-                 Noms valides : weather, insee, eurostat, sitadel, dpe.
+        sources: List of sources to collect. If None, collect all.
+                 Valid names: weather, insee, eurostat, sitadel, dpe.
     """
     logger = logging.getLogger("pipeline")
 
-    # Importer tous les collecteurs pour déclencher l'auto-enregistrement
+    # Import all collectors to trigger auto-registration
     import src.collectors  # noqa: F401
 
-    # Construire la configuration des collecteurs depuis l'environnement
+    # Build collector configuration from the environment
     collector_config = CollectorConfig.from_env()
 
     if sources:
-        # Collecter uniquement les sources demandées
+        # Collect only the requested sources
         logger.info("Collecte ciblée : %s", sources)
         for source in sources:
             try:
@@ -91,7 +91,7 @@ def run_collect(sources: Optional[List[str]] = None) -> None:
                     source, CollectorRegistry.available(),
                 )
     else:
-        # Collecter toutes les sources dans l'ordre recommandé
+        # Collect all sources in the recommended order
         order = ["weather", "insee", "eurostat", "sitadel", "dpe"]
         logger.info("Collecte complète dans l'ordre : %s", order)
         results = CollectorRegistry.run_all(collector_config, order=order)
@@ -100,7 +100,7 @@ def run_collect(sources: Optional[List[str]] = None) -> None:
 
 
 def run_init_db() -> None:
-    """Initialise la base de données (tables, index, données de référence)."""
+    """Initialize the database (tables, indexes, reference data)."""
     from src.database.db_manager import DatabaseManager
 
     logger = logging.getLogger("pipeline")
@@ -109,17 +109,17 @@ def run_init_db() -> None:
     db = DatabaseManager(config.database.connection_string)
     db.init_database()
 
-    # Afficher le résumé des tables
+    # Display table summary
     table_info = db.get_table_info()
     logger.info("Tables créées :\n%s", table_info.to_string(index=False))
 
 
 def run_import_data() -> None:
-    """Importe les CSV collectés dans la base de données.
+    """Import collected CSVs into the database.
 
-    Lit les fichiers CSV depuis data/raw/ et les charge dans les tables
-    appropriées de la BDD (fact_hvac_installations, fact_economic_context).
-    La BDD doit avoir été initialisée au préalable (init_db).
+    Reads CSV files from data/raw/ and loads them into the appropriate
+    database tables (fact_hvac_installations, fact_economic_context).
+    The database must have been initialized beforehand (init_db).
     """
     from src.database.db_manager import DatabaseManager
 
@@ -129,19 +129,19 @@ def run_import_data() -> None:
     db = DatabaseManager(config.database.connection_string)
     results = db.import_collected_data(raw_data_dir=config.raw_data_dir)
 
-    # Afficher le résumé des tables après import
+    # Display table summary after import
     table_info = db.get_table_info()
     logger.info("Etat des tables apres import :\n%s", table_info.to_string(index=False))
 
 
 def run_clean() -> None:
-    """Nettoie les données brutes de toutes les sources.
+    """Clean raw data from all sources.
 
-    Lit les fichiers depuis data/raw/, applique les règles de nettoyage
-    (doublons, valeurs aberrantes, types, NaN) et sauvegarde dans
+    Reads files from data/raw/, applies cleaning rules
+    (duplicates, outliers, types, NaN) and saves to
     data/processed/.
 
-    Peut être relancé sans risque (idempotent).
+    Can be rerun safely (idempotent).
     """
     from src.processing.clean_data import DataCleaner
 
@@ -155,14 +155,14 @@ def run_clean() -> None:
 
 
 def run_merge() -> None:
-    """Fusionne les données nettoyées en dataset ML-ready.
+    """Merge cleaned data into an ML-ready dataset.
 
-    Agrège les DPE par mois × département, joint la météo et les
-    indicateurs économiques, et sauvegarde le résultat dans
+    Aggregates DPEs by month x department, joins weather and
+    economic indicators, and saves the result to
     data/features/hvac_ml_dataset.csv.
 
-    Prérequis : avoir exécuté 'clean' (ou au minimum avoir des données
-    dans data/raw/).
+    Prerequisite: having run 'clean' (or at minimum having data
+    in data/raw/).
     """
     from src.processing.merge_datasets import DatasetMerger
 
@@ -182,12 +182,12 @@ def run_merge() -> None:
 
 
 def run_features() -> None:
-    """Applique le feature engineering sur le dataset ML.
+    """Apply feature engineering on the ML dataset.
 
-    Ajoute les features avancées (lags, rolling windows, interactions,
-    tendances) et sauvegarde dans data/features/hvac_features_dataset.csv.
+    Adds advanced features (lags, rolling windows, interactions,
+    trends) and saves to data/features/hvac_features_dataset.csv.
 
-    Prérequis : avoir exécuté 'merge' (dataset ML dans data/features/).
+    Prerequisite: having run 'merge' (ML dataset in data/features/).
     """
     from src.processing.feature_engineering import FeatureEngineer
 
@@ -204,15 +204,15 @@ def run_features() -> None:
 
 
 def run_outliers(strategy: str = "clip") -> None:
-    """Detecte et traite les outliers dans le dataset features.
+    """Detect and handle outliers in the features dataset.
 
-    Execute l'analyse multi-methode (IQR + Z-score modifie + Isolation Forest)
-    et applique la strategie choisie. Genere un rapport detaille.
+    Runs multi-method analysis (IQR + modified Z-score + Isolation Forest)
+    and applies the chosen strategy. Generates a detailed report.
 
-    Prerequis : avoir execute 'features' (dataset dans data/features/).
+    Prerequisite: having run 'features' (dataset in data/features/).
 
     Args:
-        strategy: Strategie de traitement ("flag", "clip", "remove").
+        strategy: Treatment strategy ("flag", "clip", "remove").
     """
     from src.processing.outlier_detection import OutlierDetector
 
@@ -224,7 +224,7 @@ def run_outliers(strategy: str = "clip") -> None:
 
     detector = OutlierDetector(config)
 
-    # Charger le dataset features
+    # Load the features dataset
     features_path = config.features_data_dir / "hvac_features_dataset.csv"
     if not features_path.exists():
         logger.error("Dataset features introuvable : %s", features_path)
@@ -235,10 +235,10 @@ def run_outliers(strategy: str = "clip") -> None:
     df = pd.read_csv(features_path)
     logger.info("Dataset charge : %d lignes x %d colonnes", len(df), len(df.columns))
 
-    # Analyse et traitement
+    # Analysis and treatment
     df_treated, report_path = detector.run_full_analysis(df, strategy=strategy)
 
-    # Sauvegarder le dataset traite
+    # Save the treated dataset
     output_path = config.features_data_dir / "hvac_features_dataset.csv"
     df_treated.to_csv(output_path, index=False)
     logger.info("Dataset traite sauvegarde → %s", output_path)
@@ -246,10 +246,10 @@ def run_outliers(strategy: str = "clip") -> None:
 
 
 def run_process() -> None:
-    """Exécute le pipeline de traitement complet (clean → merge → features → outliers).
+    """Execute the full processing pipeline (clean → merge → features → outliers).
 
-    Enchaîne les quatre étapes de traitement en séquence.
-    C'est la commande recommandée pour traiter les données en une fois.
+    Chains the four processing stages in sequence.
+    This is the recommended command for processing data in one go.
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
@@ -266,12 +266,12 @@ def run_process() -> None:
 
 
 def run_eda() -> None:
-    """Exécute l'analyse exploratoire complète (EDA + corrélations).
+    """Execute the full exploratory analysis (EDA + correlations).
 
-    Génère les graphiques dans data/analysis/figures/ et les rapports
-    textuels dans data/analysis/.
+    Generates charts in data/analysis/figures/ and text reports
+    in data/analysis/.
 
-    Prérequis : avoir exécuté 'features' (dataset dans data/features/).
+    Prerequisite: having run 'features' (dataset in data/features/).
     """
     from src.analysis.eda import EDAAnalyzer
     from src.analysis.correlation import CorrelationAnalyzer
@@ -282,11 +282,11 @@ def run_eda() -> None:
     logger.info("  EDA + Corrélations")
     logger.info("=" * 60)
 
-    # 1. EDA
+    # 1. EDA (Exploratory Data Analysis)
     eda = EDAAnalyzer(config)
     eda_results = eda.run_full_eda()
 
-    # 2. Corrélations
+    # 2. Correlations
     corr = CorrelationAnalyzer(config)
     corr_results = corr.run_full_correlation()
 
@@ -297,20 +297,20 @@ def run_eda() -> None:
 
 
 def run_train(target: str = "nb_installations_pac") -> None:
-    """Entraîne tous les modèles ML sur le dataset features (Phase 4).
+    """Train all ML models on the features dataset (Phase 4).
 
-    Modèles entraînés :
-    - Ridge Regression (baseline robuste)
-    - LightGBM (gradient boosting régularisé)
-    - Prophet (séries temporelles avec régresseurs)
-    - LSTM (exploratoire, si PyTorch disponible)
+    Trained models:
+    - Ridge Regression (robust baseline)
+    - LightGBM (regularized gradient boosting)
+    - Prophet (time series with regressors)
+    - LSTM (exploratory, if PyTorch is available)
 
-    Les modèles et métriques sont sauvegardés dans data/models/.
+    Models and metrics are saved in data/models/.
 
-    Prérequis : avoir exécuté 'features' (dataset dans data/features/).
+    Prerequisite: having run 'features' (dataset in data/features/).
 
     Args:
-        target: Variable cible à prédire.
+        target: Target variable to predict.
     """
     from src.models.train import ModelTrainer
 
@@ -329,21 +329,21 @@ def run_train(target: str = "nb_installations_pac") -> None:
 
 
 def run_evaluate(target: str = "nb_installations_pac") -> None:
-    """Évalue et compare les modèles entraînés (Phase 4.3-4.4).
+    """Evaluate and compare trained models (Phase 4.3-4.4).
 
-    Génère :
-    - Tableau comparatif des métriques
-    - Graphiques predictions vs réel
-    - Graphique comparaison des modèles
-    - Analyse des résidus
+    Generates:
+    - Comparative metrics table
+    - Predictions vs actual charts
+    - Model comparison chart
+    - Residual analysis
     - Feature importance
-    - Analyse SHAP (si shap installé)
-    - Rapport textuel complet
+    - SHAP analysis (if shap is installed)
+    - Full text report
 
-    Prérequis : avoir exécuté 'train'.
+    Prerequisite: having run 'train'.
 
     Args:
-        target: Variable cible utilisée à l'entraînement.
+        target: Target variable used during training.
     """
     from src.models.train import ModelTrainer
     from src.models.evaluate import ModelEvaluator
@@ -353,19 +353,19 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
     logger.info("  Phase 4 — Évaluation et comparaison")
     logger.info("=" * 60)
 
-    # Re-entraîner pour obtenir les résultats en mémoire
+    # Re-train to get results in memory
     trainer = ModelTrainer(config, target=target)
     results = trainer.train_all()
 
     evaluator = ModelEvaluator(config)
 
-    # Préparer les données pour les plots
+    # Prepare data for plots
     df = trainer.load_dataset()
     _, df_val, df_test = trainer.temporal_split(df)
     _, y_val = trainer.prepare_features(df_val)
     _, y_test = trainer.prepare_features(df_test)
 
-    # Générer les visualisations
+    # Generate visualizations
     evaluator.plot_predictions_vs_actual(
         results, y_val.values, y_test.values, target,
     )
@@ -373,7 +373,7 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
     evaluator.plot_residuals(results, y_val.values, y_test.values)
     evaluator.plot_feature_importance(results)
 
-    # SHAP sur LightGBM
+    # SHAP on LightGBM
     if "lightgbm" in results:
         import pandas as pd
         from sklearn.impute import SimpleImputer
@@ -392,7 +392,7 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
             results["lightgbm"]["model"], X_val_imp, "lightgbm",
         )
 
-    # Rapport
+    # Report
     evaluator.generate_full_report(results, target)
 
     logger.info("Phase 4 (evaluate) terminée.")
@@ -401,16 +401,16 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
 
 
 def run_sync_pcloud(force: bool = False) -> None:
-    """Synchronise les donnees depuis pCloud et met a jour la base.
+    """Synchronize data from pCloud and update the database.
 
-    Verifie les mises a jour sur le lien public pCloud, telecharge
-    les fichiers nouveaux/modifies, puis declenche le pipeline
-    d'import complet (import → clean → merge → features → outliers).
+    Checks for updates on the pCloud public link, downloads
+    new/modified files, then triggers the full import pipeline
+    (import → clean → merge → features → outliers).
 
-    Prerequis : variable PCLOUD_PUBLIC_CODE dans .env (ou valeur par defaut).
+    Prerequisite: PCLOUD_PUBLIC_CODE variable in .env (or default value).
 
     Args:
-        force: Si True, re-telecharge tout meme si rien n'a change.
+        force: If True, re-download everything even if nothing has changed.
     """
     from src.collectors.pcloud_sync import PCloudSync
 
@@ -429,13 +429,13 @@ def run_sync_pcloud(force: bool = False) -> None:
 
 
 def run_upload_pcloud(folder_id: int = 0) -> None:
-    """Upload les donnees collectees vers pCloud.
+    """Upload collected data to pCloud.
 
-    Parcourt les fichiers dans data/raw/ et les uploade vers le
-    dossier pCloud specifie. Necessite PCLOUD_ACCESS_TOKEN dans .env.
+    Traverses files in data/raw/ and uploads them to the
+    specified pCloud folder. Requires PCLOUD_ACCESS_TOKEN in .env.
 
     Args:
-        folder_id: ID du dossier pCloud de destination (0 = racine).
+        folder_id: ID of the destination pCloud folder (0 = root).
     """
     from src.collectors.pcloud_sync import PCloudSync
 
@@ -454,22 +454,22 @@ def run_upload_pcloud(folder_id: int = 0) -> None:
 
 
 def run_update_all(target: str = "nb_installations_pac") -> None:
-    """Mise a jour complete : collect → process → train → upload pCloud.
+    """Full update: collect → process → train → upload pCloud.
 
-    Enchaine toutes les etapes du pipeline de bout en bout :
-    1. Collecte des donnees depuis les APIs (96 departements)
-    2. Initialisation de la base de donnees
-    3. Import des CSV collectes
-    4. Nettoyage + Fusion + Features + Outliers
-    5. Analyse exploratoire
-    6. Entrainement et evaluation ML
-    7. Upload des resultats vers pCloud
+    Chains all pipeline stages end to end:
+    1. Collect data from APIs (96 departments)
+    2. Initialize the database
+    3. Import collected CSVs
+    4. Cleaning + Merging + Features + Outliers
+    5. Exploratory analysis
+    6. ML training and evaluation
+    7. Upload results to pCloud
 
-    C'est la commande a utiliser pour une mise a jour complete
-    de la base de donnees et des modeles.
+    This is the command to use for a complete update
+    of the database and models.
 
     Args:
-        target: Variable cible ML.
+        target: ML target variable.
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
@@ -477,13 +477,13 @@ def run_update_all(target: str = "nb_installations_pac") -> None:
     logger.info("  collect → process → train → upload")
     logger.info("=" * 60)
 
-    # 1. Collecte depuis les APIs
+    # 1. Collect from APIs
     logger.info("-" * 40)
     logger.info("  ETAPE 1/7 — Collecte des donnees")
     logger.info("-" * 40)
     run_collect()
 
-    # 2. Initialisation BDD
+    # 2. Database initialization
     logger.info("-" * 40)
     logger.info("  ETAPE 2/7 — Initialisation BDD")
     logger.info("-" * 40)
@@ -514,7 +514,7 @@ def run_update_all(target: str = "nb_installations_pac") -> None:
     run_train(target=target)
     run_evaluate(target=target)
 
-    # 7. Upload vers pCloud
+    # 7. Upload to pCloud
     logger.info("-" * 40)
     logger.info("  ETAPE 7/7 — Upload vers pCloud")
     logger.info("-" * 40)
@@ -526,8 +526,8 @@ def run_update_all(target: str = "nb_installations_pac") -> None:
 
 
 def run_list() -> None:
-    """Liste les collecteurs disponibles."""
-    # Importer pour déclencher l'enregistrement
+    """List available collectors."""
+    # Import to trigger registration
     import src.collectors  # noqa: F401
 
     print("\nCollecteurs disponibles :")
@@ -539,27 +539,27 @@ def run_list() -> None:
 
 
 def main() -> None:
-    """Point d'entrée CLI du pipeline."""
+    """CLI entry point for the pipeline."""
     parser = argparse.ArgumentParser(
         description="HVAC Market Analysis — Pipeline orchestrator",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Exemples :
-  python -m src.pipeline collect                  # Collecter toutes les sources
-  python -m src.pipeline collect --sources weather,insee  # Sources specifiques
-  python -m src.pipeline init_db                  # Initialiser la BDD
-  python -m src.pipeline import_data              # Importer les CSV dans la BDD
-  python -m src.pipeline clean                    # Nettoyer les donnees brutes
-  python -m src.pipeline merge                    # Fusionner en dataset ML
+Examples:
+  python -m src.pipeline collect                  # Collect all sources
+  python -m src.pipeline collect --sources weather,insee  # Specific sources
+  python -m src.pipeline init_db                  # Initialize the database
+  python -m src.pipeline import_data              # Import CSVs into the database
+  python -m src.pipeline clean                    # Clean raw data
+  python -m src.pipeline merge                    # Merge into ML dataset
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
   python -m src.pipeline eda                      # EDA + correlations
-  python -m src.pipeline train                    # Entrainer les modeles ML
-  python -m src.pipeline train --target nb_dpe_total  # Autre cible
-  python -m src.pipeline evaluate                 # Evaluer et comparer
-  python -m src.pipeline upload_pcloud            # Upload donnees vers pCloud
+  python -m src.pipeline train                    # Train ML models
+  python -m src.pipeline train --target nb_dpe_total  # Different target
+  python -m src.pipeline evaluate                 # Evaluate and compare
+  python -m src.pipeline upload_pcloud            # Upload data to pCloud
   python -m src.pipeline update_all               # Collect + process + train + upload
-  python -m src.pipeline list                     # Lister les collecteurs
+  python -m src.pipeline list                     # List collectors
         """,
     )
 
@@ -572,20 +572,20 @@ Exemples :
             "sync_pcloud", "upload_pcloud", "update_all",
             "list", "all",
         ],
-        help="Étape du pipeline à exécuter",
+        help="Pipeline stage to execute",
     )
     parser.add_argument(
         "--sources",
         type=str,
         default=None,
-        help="Sources à collecter (séparées par des virgules). "
+        help="Sources to collect (comma-separated). "
              "Ex: weather,insee,eurostat",
     )
     parser.add_argument(
         "--target",
         type=str,
         default="nb_installations_pac",
-        help="Variable cible pour l'entrainement ML. "
+        help="Target variable for ML training. "
              "Ex: nb_installations_pac, nb_dpe_total",
     )
     parser.add_argument(
@@ -593,12 +593,12 @@ Exemples :
         type=str,
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Niveau de logging (défaut: INFO)",
+        help="Logging level (default: INFO)",
     )
 
     args = parser.parse_args()
 
-    # Configurer le logging
+    # Configure logging
     setup_logging(args.log_level)
     logger = logging.getLogger("pipeline")
 
@@ -607,7 +607,7 @@ Exemples :
     logger.info("  Étape : %s", args.stage)
     logger.info("=" * 60)
 
-    # Dispatcher vers l'étape demandée
+    # Dispatch to the requested stage
     if args.stage == "collect":
         sources = args.sources.split(",") if args.sources else None
         run_collect(sources)
@@ -655,7 +655,7 @@ Exemples :
         run_list()
 
     elif args.stage == "all":
-        # Executer toutes les etapes du pipeline de bout en bout
+        # Execute all pipeline stages end to end
         run_init_db()
         run_collect()
         run_import_data()

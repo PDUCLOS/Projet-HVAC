@@ -1,32 +1,31 @@
 # -*- coding: utf-8 -*-
 """
-Apprentissage par Renforcement — Optimisation de la maintenance HVAC (Phase 5).
+Reinforcement Learning — HVAC Maintenance Optimization (Phase 5).
 ================================================================================
 
-Demonstration pedagogique du Reinforcement Learning (RL) applique a
-l'optimisation de la planification de maintenance HVAC sur 96 departements
-francais.
+Pedagogical demonstration of Reinforcement Learning (RL) applied to
+optimizing HVAC maintenance scheduling across 96 French departments.
 
-Concepts RL :
-    - **Agent** : Systeme de decision qui observe l'etat et choisit une action.
-    - **Environnement** : Simulateur HVAC retournant etat + recompense.
-    - **Etat** : Vecteur [temperature, humidite, age, demande, saison, budget].
-    - **Action** : {ne rien faire, preventive, corrective, remplacement}.
-    - **Recompense** : Signal de qualite (+preventif avant panne, -panne, -cout).
-    - **Politique** : Mapping etat -> action maximisant la recompense cumulee.
+RL Concepts:
+    - **Agent**: Decision-making system that observes the state and chooses an action.
+    - **Environment**: HVAC simulator returning state + reward.
+    - **State**: Vector [temperature, humidity, age, demand, season, budget].
+    - **Action**: {do nothing, preventive, corrective, replacement}.
+    - **Reward**: Quality signal (+preventive before failure, -failure, -cost).
+    - **Policy**: State -> action mapping maximizing cumulative reward.
 
-Algorithme Q-Learning :
+Q-Learning Algorithm:
     Q(s,a) <- Q(s,a) + alpha * [r + gamma * max_a' Q(s',a') - Q(s,a)]
-    Algorithme model-free, off-policy. Table Q discretisee, exploration
-    epsilon-greedy avec decroissance exponentielle.
+    Model-free, off-policy algorithm. Discretized Q-table, epsilon-greedy
+    exploration with exponential decay.
 
-Passage a l'echelle :
-    - Stable-Baselines3 (PPO/SAC) pour du Deep RL avec PyTorch
-    - Ray RLlib pour l'entrainement distribue multi-agent
+Scaling Up:
+    - Stable-Baselines3 (PPO/SAC) for Deep RL with PyTorch
+    - Ray RLlib for distributed multi-agent training
 
-Dependances : numpy, matplotlib, gymnasium (optionnel)
+Dependencies: numpy, matplotlib, gymnasium (optional)
 
-Usage :
+Usage:
     python src/models/reinforcement_learning_demo.py
 """
 
@@ -38,7 +37,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-# --- Gestion optionnelle de Gymnasium ---
+# --- Optional Gymnasium management ---
 try:
     import gymnasium as gym
     from gymnasium import spaces
@@ -50,7 +49,7 @@ except ImportError:
         "Installez-le via : pip install gymnasium"
     )
 
-# --- Matplotlib (mode non-interactif pour serveurs sans affichage) ---
+# --- Matplotlib (non-interactive mode for headless servers) ---
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -58,10 +57,10 @@ import matplotlib.pyplot as plt
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# 1. Environnement personnalise — HVACMaintenanceEnv
+# 1. Custom Environment — HVACMaintenanceEnv
 # =============================================================================
 
-# Constantes du domaine HVAC
+# HVAC domain constants
 ACTIONS = {0: "aucune_maintenance", 1: "maintenance_preventive",
            2: "reparation_corrective", 3: "remplacement_equipement"}
 COUTS_ACTIONS = {0: 0.0, 1: 0.15, 2: 0.40, 3: 0.70}
@@ -70,17 +69,17 @@ MOIS = ["Janvier", "Fevrier", "Mars", "Avril", "Mai", "Juin",
 
 
 class HVACMaintenanceEnv:
-    """Environnement Gymnasium simulant la maintenance HVAC sur 12 mois.
+    """Gymnasium environment simulating HVAC maintenance over 12 months.
 
-    Observation (Box, 6 dim) : [temp, humidite, age, demande, saison, budget]
-    Actions (Discrete 4) : aucune / preventive / corrective / remplacement
-    Episode : 12 pas (1 an), recompense selon qualite des decisions.
+    Observation (Box, 6 dims): [temp, humidity, age, demand, season, budget]
+    Actions (Discrete 4): none / preventive / corrective / replacement
+    Episode: 12 steps (1 year), reward based on decision quality.
     """
 
     metadata = {"render_modes": ["human"]}
 
     def __init__(self, render_mode: Optional[str] = None):
-        """Initialise l'environnement HVAC."""
+        """Initialize the HVAC environment."""
         super().__init__()
         self.render_mode = render_mode
         self.observation_space_low = np.array([0.0] * 6, dtype=np.float32)
@@ -93,44 +92,43 @@ class HVACMaintenanceEnv:
                 high=self.observation_space_high, dtype=np.float32)
             self.action_space = spaces.Discrete(self.n_actions)
 
-        # Variables internes
+        # Internal variables
         self.mois_courant: int = 0
         self.budget_restant: float = 1.0
         self.age_equipement: float = 0.0
-        self.etat_equipement: float = 1.0  # 1.0 = neuf, 0.0 = hors service
-        self.np_random = np.random.default_rng()
+        self.etat_equipement: float = 1.0  # 1.0 = new, 0.0 = out of service
 
     def _generer_meteo(self, mois: int) -> Tuple[float, float]:
-        """Genere temperature et humidite realistes (climat francais tempere)."""
-        # Temperature sinusoidale : ~3 C en janvier, ~22 C en juillet
+        """Generate realistic temperature and humidity (French temperate climate)."""
+        # Sinusoidal temperature: ~3 C in January, ~22 C in July
         temp = 12.5 + 10.0 * np.sin(2 * np.pi * (mois - 3) / 12)
         temp += self.np_random.normal(0, 2.0)
         temperature = float(np.clip((temp + 10) / 50, 0.0, 1.0))
-        # Humidite : plus elevee en hiver
+        # Humidity: higher in winter
         hum = 0.7 - 0.15 * np.sin(2 * np.pi * (mois - 3) / 12)
         humidite = float(np.clip(hum + self.np_random.normal(0, 0.05), 0.0, 1.0))
         return temperature, humidite
 
     def _calculer_demande(self, temperature: float, mois: int) -> float:
-        """Demande HVAC en U : forte en hiver (chauffage) et ete (clim)."""
+        """HVAC demand in normalized units: high in winter (heating) and summer (AC)."""
         temp_reelle = temperature * 50 - 10
         demande = abs(temp_reelle - 20) / 30 + self.np_random.normal(0, 0.05)
         return float(np.clip(demande, 0.0, 1.0))
 
     def _probabilite_panne(self) -> float:
-        """Probabilite de panne croissante avec l'age, decroissante avec l'etat."""
+        """Failure probability increasing with age, decreasing with equipment condition."""
         prob = 0.05 + 0.4 * (self.age_equipement ** 2) * (1 - self.etat_equipement * 0.5)
         return float(np.clip(prob, 0.0, 0.95))
 
     def _construire_observation(self, temp: float, hum: float, dem: float) -> np.ndarray:
-        """Construit le vecteur d'observation [temp, hum, age, dem, saison, budget]."""
+        """Build the observation vector [temp, hum, age, dem, season, budget]."""
         saison = (np.sin(2 * np.pi * self.mois_courant / 12) + 1) / 2
         return np.array([temp, hum, self.age_equipement, dem,
                          saison, self.budget_restant], dtype=np.float32)
 
     def reset(self, seed: Optional[int] = None,
               options: Optional[Dict[str, Any]] = None) -> Tuple[np.ndarray, Dict]:
-        """Reinitialise l'episode avec conditions initiales aleatoires."""
+        """Reset the episode with random initial conditions."""
         if seed is not None:
             self.np_random = np.random.default_rng(seed)
 
@@ -145,65 +143,65 @@ class HVACMaintenanceEnv:
         return obs, {"mois": MOIS[0], "age_initial": self.age_equipement}
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict]:
-        """Execute une action et avance d'un mois. Retourne (obs, rew, done, trunc, info)."""
+        """Execute an action and advance by one month. Returns (obs, rew, done, trunc, info)."""
         assert 0 <= action < self.n_actions, f"Action invalide : {action}"
         recompense = 0.0
         info: Dict[str, Any] = {"mois": MOIS[self.mois_courant], "action": ACTIONS[action]}
 
-        # 1. Cout de l'action
+        # 1. Action cost
         cout = COUTS_ACTIONS[action]
         self.budget_restant = max(0.0, self.budget_restant - cout)
         recompense -= cout
 
-        # 2. Effet de l'action + pannes
+        # 2. Action effect + failures
         panne_survenue = False
         prob_panne = self._probabilite_panne()
         info["probabilite_panne"] = round(prob_panne, 3)
 
         if action == 0:
-            # Aucune maintenance — risque de panne
+            # No maintenance — failure risk
             if self.np_random.random() < prob_panne:
                 panne_survenue = True
                 recompense -= 5.0
                 self.etat_equipement = max(0.1, self.etat_equipement - 0.4)
         elif action == 1:
-            # Maintenance preventive
+            # Preventive maintenance
             if self.age_equipement > 0.3:
-                recompense += 2.0  # Bonne decision sur equipement vieillissant
+                recompense += 2.0  # Good decision on aging equipment
                 self.etat_equipement = min(1.0, self.etat_equipement + 0.2)
                 if self.np_random.random() < prob_panne:
-                    recompense += 3.0  # Bonus : panne evitee
+                    recompense += 3.0  # Bonus: failure avoided
             else:
-                recompense -= 0.5  # Maintenance inutile, equipement neuf
+                recompense -= 0.5  # Unnecessary maintenance, equipment is new
         elif action == 2:
-            # Reparation corrective
+            # Corrective repair
             if self.etat_equipement < 0.6:
                 self.etat_equipement = min(1.0, self.etat_equipement + 0.35)
                 recompense += 1.0
             else:
-                recompense -= 0.3  # Reparation inutile
+                recompense -= 0.3  # Unnecessary repair
         elif action == 3:
-            # Remplacement complet
+            # Full replacement
             if self.age_equipement > 0.7:
                 self.age_equipement, self.etat_equipement = 0.0, 1.0
                 recompense += 2.5
             else:
                 self.age_equipement, self.etat_equipement = 0.0, 1.0
-                recompense -= 1.0  # Remplacement premature
+                recompense -= 1.0  # Premature replacement
 
-        # 3. Vieillissement naturel
+        # 3. Natural aging
         self.age_equipement = min(1.0, self.age_equipement + 1.0 / 15)
         self.etat_equipement = max(0.1, self.etat_equipement - 0.03)
 
-        # 4. Avancement temporel
+        # 4. Time advancement
         self.mois_courant += 1
         termine = self.mois_courant >= 12
 
-        # Bonus fin d'episode : bonne gestion budgetaire
+        # End-of-episode bonus: good budget management
         if termine:
             recompense += self.budget_restant * 2.0
 
-        # 5. Nouvel etat
+        # 5. New state
         mois_obs = min(self.mois_courant, 11)
         temp, hum = self._generer_meteo(mois_obs)
         obs = self._construire_observation(temp, hum, self._calculer_demande(temp, mois_obs))
@@ -213,50 +211,50 @@ class HVACMaintenanceEnv:
 
 
 # =============================================================================
-# 2. Agent Q-Learning (implementation de zero, sans librairie RL externe)
+# 2. Q-Learning Agent (implemented from scratch, no external RL library)
 # =============================================================================
 
 class AgentQLearning:
-    """Agent Q-Learning tabular avec discretisation d'etat et epsilon-greedy.
+    """Tabular Q-Learning agent with state discretization and epsilon-greedy policy.
 
-    Exploration vs exploitation : epsilon commence a 1.0 (exploration totale)
-    et decroit exponentiellement vers epsilon_min (exploitation dominante).
+    Exploration vs exploitation: epsilon starts at 1.0 (full exploration)
+    and decays exponentially toward epsilon_min (dominant exploitation).
     """
 
     def __init__(self, n_bins: int = 6, alpha: float = 0.1, gamma: float = 0.95,
                  epsilon: float = 1.0, epsilon_min: float = 0.05,
                  epsilon_decay: float = 0.995):
-        """Configure les hyperparametres du Q-Learning."""
+        """Configure Q-Learning hyperparameters."""
         self.n_bins = n_bins
-        self.alpha = alpha      # Taux d'apprentissage
-        self.gamma = gamma      # Facteur d'actualisation
-        self.epsilon = epsilon   # Probabilite d'exploration
+        self.alpha = alpha      # Learning rate
+        self.gamma = gamma      # Discount factor
+        self.epsilon = epsilon   # Exploration probability
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.n_actions = 4
         self.q_table: Dict[Tuple[int, ...], np.ndarray] = {}
 
     def _discretiser_etat(self, observation: np.ndarray) -> Tuple[int, ...]:
-        """Discretise l'observation continue en n_bins par dimension."""
+        """Discretize the continuous observation into n_bins per dimension."""
         indices = np.clip((observation * self.n_bins).astype(int), 0, self.n_bins - 1)
         return tuple(indices.tolist())
 
     def _obtenir_valeurs_q(self, etat: Tuple[int, ...]) -> np.ndarray:
-        """Retourne les valeurs Q pour un etat (initialise a 0 si inconnu)."""
+        """Return Q-values for a state (initialized to 0 if unknown)."""
         if etat not in self.q_table:
             self.q_table[etat] = np.zeros(self.n_actions, dtype=np.float64)
         return self.q_table[etat]
 
     def obtenir_q_plus_proche(self, observation: np.ndarray) -> Tuple[np.ndarray, bool]:
-        """Retourne les Q du bin exact ou du voisin le plus proche si inexploite.
+        """Return Q-values from the exact bin or the nearest neighbor if unexplored.
 
-        Utile pour l'affichage de la politique sur des etats non visites.
-        Retourne (q_values, exact_match).
+        Useful for displaying the policy on unvisited states.
+        Returns (q_values, exact_match).
         """
         etat = self._discretiser_etat(observation)
         if etat in self.q_table:
             return self.q_table[etat].copy(), True
-        # Recherche du voisin le plus proche (distance de Manhattan)
+        # Search for the nearest neighbor (Manhattan distance)
         if not self.q_table:
             return np.zeros(self.n_actions), False
         etat_arr = np.array(etat)
@@ -268,7 +266,7 @@ class AgentQLearning:
         return self.q_table[meilleur].copy(), False
 
     def choisir_action(self, observation: np.ndarray) -> int:
-        """Epsilon-greedy : exploration aleatoire ou exploitation de Q max."""
+        """Epsilon-greedy: random exploration or exploitation of max Q."""
         if np.random.random() < self.epsilon:
             return np.random.randint(self.n_actions)
         etat = self._discretiser_etat(observation)
@@ -276,7 +274,7 @@ class AgentQLearning:
 
     def mettre_a_jour(self, obs: np.ndarray, action: int, recompense: float,
                       obs_suiv: np.ndarray, termine: bool) -> None:
-        """Mise a jour Q-Learning : Q(s,a) += alpha * [cible - Q(s,a)]."""
+        """Q-Learning update: Q(s,a) += alpha * [target - Q(s,a)]."""
         etat = self._discretiser_etat(obs)
         q_vals = self._obtenir_valeurs_q(etat)
         q_suiv = self._obtenir_valeurs_q(self._discretiser_etat(obs_suiv))
@@ -284,17 +282,17 @@ class AgentQLearning:
         q_vals[action] += self.alpha * (cible - q_vals[action])
 
     def decroitre_epsilon(self) -> None:
-        """Decroissance exponentielle d'epsilon apres chaque episode."""
+        """Exponential epsilon decay after each episode."""
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
 # =============================================================================
-# 3. Boucles d'entrainement et comparaison avec politique aleatoire
+# 3. Training loops and comparison with random policy
 # =============================================================================
 
 def entrainer_agent(env: HVACMaintenanceEnv, agent: AgentQLearning,
                     n_episodes: int = 1000) -> List[float]:
-    """Entraine l'agent Q-Learning. Retourne l'historique des recompenses."""
+    """Train the Q-Learning agent. Returns the reward history."""
     historique: List[float] = []
     for episode in range(n_episodes):
         obs, _ = env.reset()
@@ -318,7 +316,7 @@ def entrainer_agent(env: HVACMaintenanceEnv, agent: AgentQLearning,
 
 def evaluer_politique_aleatoire(env: HVACMaintenanceEnv,
                                 n_episodes: int = 1000) -> List[float]:
-    """Baseline : politique purement aleatoire pour comparaison."""
+    """Baseline: purely random policy for comparison."""
     historique: List[float] = []
     for _ in range(n_episodes):
         obs, _ = env.reset()
@@ -333,14 +331,14 @@ def evaluer_politique_aleatoire(env: HVACMaintenanceEnv,
 
 
 # =============================================================================
-# 4. Visualisations
+# 4. Visualizations
 # =============================================================================
 
 def tracer_courbes_apprentissage(recompenses_ql: List[float],
                                  recompenses_aleatoire: List[float],
                                  fenetre: int = 50,
                                  chemin: str = "reports/figures/rl_courbe_apprentissage.png") -> None:
-    """Courbe d'apprentissage : moyenne glissante Q-Learning vs aleatoire."""
+    """Learning curve: rolling average Q-Learning vs random."""
     fig, ax = plt.subplots(figsize=(12, 6))
     moy_ql = np.convolve(recompenses_ql, np.ones(fenetre) / fenetre, mode="valid")
     moy_rand = np.convolve(recompenses_aleatoire, np.ones(fenetre) / fenetre, mode="valid")
@@ -360,8 +358,8 @@ def tracer_courbes_apprentissage(recompenses_ql: List[float],
 
 def tracer_heatmap_q_values(agent: AgentQLearning,
                             chemin: str = "reports/figures/rl_heatmap_q_values.png") -> None:
-    """Heatmap des valeurs Q pour des etats representatifs du parc HVAC."""
-    # Etats representatifs : [temp, hum, age, demande, saison, budget]
+    """Heatmap of Q-values for representative HVAC fleet states."""
+    # Representative states: [temp, hum, age, demand, season, budget]
     etats_cles = {
         "Ete/Neuf/Budget+":          np.array([0.7, 0.5, 0.1, 0.8, 0.8, 0.9]),
         "Ete/Vieux/Budget+":         np.array([0.7, 0.5, 0.7, 0.8, 0.8, 0.7]),
@@ -385,7 +383,7 @@ def tracer_heatmap_q_values(agent: AgentQLearning,
     ax.set_xticklabels(noms_actions, fontsize=10)
     ax.set_yticks(range(len(noms)))
     ax.set_yticklabels(noms, fontsize=9)
-    # Annoter les cellules
+    # Annotate cells
     plage = matrice.max() - matrice.min() if matrice.max() != matrice.min() else 1.0
     for i in range(len(noms)):
         for j in range(4):
@@ -402,7 +400,7 @@ def tracer_heatmap_q_values(agent: AgentQLearning,
 
 
 def afficher_resume_politique(agent: AgentQLearning) -> None:
-    """Affiche la politique apprise pour des scenarios representatifs."""
+    """Display the learned policy for representative scenarios."""
     print("\n" + "=" * 70)
     print("RESUME DE LA POLITIQUE APPRISE")
     print("=" * 70)
@@ -427,11 +425,11 @@ def afficher_resume_politique(agent: AgentQLearning) -> None:
 
 
 # =============================================================================
-# 5. Point d'entree principal
+# 5. Main entry point
 # =============================================================================
 
 def main() -> None:
-    """Entraine l'agent Q-Learning, compare a la politique aleatoire, visualise."""
+    """Train the Q-Learning agent, compare to random policy, and visualize."""
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s")
     N_EPISODES = 1000
@@ -442,11 +440,11 @@ def main() -> None:
     print("Optimisation de la planification sur 96 departements francais")
     print("=" * 70)
 
-    # --- Creation de l'environnement ---
+    # --- Environment creation ---
     env = HVACMaintenanceEnv()
     print(f"\nEnvironnement : {env.n_actions} actions, 6 variables d'etat, 12 mois/episode")
 
-    # --- Entrainement Q-Learning ---
+    # --- Q-Learning training ---
     print(f"\n--- Entrainement Q-Learning ({N_EPISODES} episodes) ---")
     agent = AgentQLearning(n_bins=6, alpha=0.1, gamma=0.95,
                            epsilon=1.0, epsilon_min=0.05, epsilon_decay=0.995)
@@ -455,18 +453,18 @@ def main() -> None:
     print(f"\nQ-Learning — Moy. (100 derniers) : {moy_ql:.2f}")
     print(f"Table Q : {len(agent.q_table)} etats | Epsilon final : {agent.epsilon:.4f}")
 
-    # --- Politique aleatoire (baseline) ---
+    # --- Random policy (baseline) ---
     print(f"\n--- Politique aleatoire ({N_EPISODES} episodes) ---")
     recompenses_rand = evaluer_politique_aleatoire(env, n_episodes=N_EPISODES)
     moy_rand = np.mean(recompenses_rand)
     print(f"Aleatoire — Moy. : {moy_rand:.2f}")
 
-    # --- Comparaison ---
+    # --- Comparison ---
     amelioration = ((moy_ql - moy_rand) / abs(moy_rand)) * 100 if moy_rand != 0 else 0
     print(f"\n--- Comparaison ---")
     print(f"  Q-Learning : {moy_ql:.2f}  |  Aleatoire : {moy_rand:.2f}  |  {amelioration:+.1f}%")
 
-    # --- Visualisations ---
+    # --- Visualizations ---
     print("\n--- Generation des visualisations ---")
     try:
         import os
@@ -477,10 +475,10 @@ def main() -> None:
     except Exception as e:
         logger.warning(f"Impossible de sauvegarder les figures : {e}")
 
-    # --- Resume de la politique ---
+    # --- Policy summary ---
     afficher_resume_politique(agent)
 
-    # --- Note methodologique ---
+    # --- Methodological note ---
     print("\n" + "-" * 70)
     print("NOTE METHODOLOGIQUE :")
     print("-" * 70)

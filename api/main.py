@@ -1,12 +1,12 @@
 """
-API de prediction pour le marche HVAC en France.
+Prediction API for the HVAC market in France.
 
-Expose les modeles de Machine Learning entraines (Ridge, LightGBM) via une
-API REST FastAPI. Permet de generer des predictions de nombre d'installations
-de pompes a chaleur par departement et par mois.
+Exposes trained Machine Learning models (Ridge, LightGBM) via a
+FastAPI REST API. Allows generating predictions of heat pump
+installation counts by department and month.
 
-Lancement : uvicorn api.main:app --reload
-Documentation : http://localhost:8000/docs
+Launch: uvicorn api.main:app --reload
+Documentation: http://localhost:8000/docs
 """
 
 from __future__ import annotations
@@ -47,18 +47,18 @@ from api.models import (
 
 
 # ---------------------------------------------------------------------------
-# Lifespan : chargement des modeles au demarrage
+# Lifespan: load models at startup
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Charge les artefacts ML une seule fois au demarrage."""
+    """Load ML artifacts once at startup."""
     state.load()
     yield
 
 
 # ---------------------------------------------------------------------------
-# Application FastAPI
+# FastAPI Application
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
@@ -72,12 +72,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — restrict origins in production via CORS_ORIGINS env var
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501,http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -87,7 +89,7 @@ app.add_middleware(
 
 @app.get("/health", response_model=HealthResponse, tags=["Systeme"])
 async def health() -> HealthResponse:
-    """Verifie l'etat de l'API et renvoie les informations de version."""
+    """Check the API status and return version information."""
     return HealthResponse(
         status="ok",
         version=API_VERSION,
@@ -119,11 +121,11 @@ async def get_predictions(
     ),
 ) -> PredictionResponse:
     """
-    Genere des predictions de nombre d'installations PAC pour un departement.
+    Generate predictions of heat pump installation counts for a department.
 
-    Utilise le modele Ridge entraine, le scaler et l'imputer charges au
-    demarrage. Les predictions sont generees iterativement a partir de la
-    derniere observation connue du departement.
+    Uses the trained Ridge model, scaler, and imputer loaded at
+    startup. Predictions are generated iteratively from the
+    last known observation for the department.
     """
     dept = departement.upper().zfill(2)
     _validate_department_in_data(dept)
@@ -151,10 +153,10 @@ async def get_predictions(
 @app.post("/predict", response_model=CustomPredictResponse, tags=["Predictions"])
 async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
     """
-    Prediction personnalisee avec parametres libres.
+    Custom prediction with free parameters.
 
-    Accepte un code departement, un horizon et un dictionnaire de features
-    supplementaires a injecter dans le vecteur d'entree du modele.
+    Accepts a department code, a horizon, and a dictionary of additional
+    features to inject into the model input vector.
     """
     dept = body.departement
     _validate_department_in_data(dept)
@@ -170,7 +172,7 @@ async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
             detail=f"Aucune donnee trouvee pour le departement {dept}",
         )
 
-    # R2 test du modele
+    # Model test R2
     r2 = 0.0
     if state.training_results is not None:
         ridge_row = state.training_results[
@@ -195,15 +197,15 @@ async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
 @app.get("/data/summary", response_model=DataSummaryResponse, tags=["Donnees"])
 async def data_summary() -> DataSummaryResponse:
     """
-    Resume des donnees disponibles.
+    Summary of available data.
 
-    Nombre de departements, plage de dates, nombre de lignes par source
-    et dates de derniere modification des fichiers bruts.
+    Number of departments, date range, row counts per source,
+    and last modification dates of raw files.
     """
     df = state.features_df
     nb_depts = df["dept"].nunique() if df is not None else 0
 
-    # Plage de dates
+    # Date range
     plage: dict[str, str] = {"debut": "", "fin": ""}
     if df is not None and "date_id" in df.columns:
         dates = df["date_id"].dropna().astype(str)
@@ -211,7 +213,7 @@ async def data_summary() -> DataSummaryResponse:
 
     nb_lignes = len(df) if df is not None else 0
 
-    # Sources brutes
+    # Raw sources
     sources: list[SourceSummary] = []
     if RAW_DIR.exists():
         for sub in sorted(RAW_DIR.iterdir()):
@@ -219,7 +221,7 @@ async def data_summary() -> DataSummaryResponse:
                 continue
             for csv_file in sorted(sub.glob("*.csv")):
                 stat = csv_file.stat()
-                # Compter les lignes (moins l'en-tete)
+                # Count lines (minus the header)
                 with open(csv_file, "r", encoding="utf-8", errors="replace") as f:
                     n_lines = sum(1 for _ in f) - 1
                 sources.append(
@@ -247,10 +249,10 @@ async def data_summary() -> DataSummaryResponse:
 @app.get("/model/metrics", response_model=ModelMetricsResponse, tags=["Modeles"])
 async def model_metrics() -> ModelMetricsResponse:
     """
-    Metriques d'evaluation de tous les modeles entraines.
+    Evaluation metrics for all trained models.
 
-    Lit les resultats depuis training_results.csv et retourne RMSE, MAE,
-    R2 et MAPE pour les jeux de validation et de test.
+    Reads results from training_results.csv and returns RMSE, MAE,
+    R2, and MAPE for the validation and test sets.
     """
     tr = state.training_results
     if tr is None or tr.empty:
@@ -278,7 +280,7 @@ async def model_metrics() -> ModelMetricsResponse:
             )
         )
 
-    # Meilleur modele = RMSE test le plus bas (hors NaN)
+    # Best model = lowest test RMSE (excluding NaN)
     valid = [m for m in modeles if m.test_rmse is not None]
     best = min(valid, key=lambda m: m.test_rmse).modele if valid else "inconnu"
 
@@ -296,10 +298,10 @@ async def model_metrics() -> ModelMetricsResponse:
 @app.get("/departments", response_model=DepartmentsResponse, tags=["Reference"])
 async def list_departments() -> DepartmentsResponse:
     """
-    Liste des 96 departements metropolitains avec codes et noms.
+    List of 96 metropolitan departments with codes and names.
 
-    Inclut la Corse (2A, 2B). Les departements presents dans le dataset
-    sont marques dans la liste complete.
+    Includes Corsica (2A, 2B). Departments present in the dataset
+    are marked in the full list.
     """
     dept_list = [
         DepartmentInfo(code=code, nom=nom)
@@ -312,11 +314,11 @@ async def list_departments() -> DepartmentsResponse:
 
 
 # ---------------------------------------------------------------------------
-# Utilitaires internes
+# Internal utilities
 # ---------------------------------------------------------------------------
 
 def _validate_department_in_data(dept: str) -> None:
-    """Verifie que le departement existe dans le dataset de features."""
+    """Verify that the department exists in the features dataset."""
     if state.features_df is None:
         raise HTTPException(
             status_code=503,
@@ -334,7 +336,7 @@ def _validate_department_in_data(dept: str) -> None:
 
 
 def _safe_float(val: object) -> float | None:
-    """Convertit une valeur en float, retourne None si NaN ou absent."""
+    """Convert a value to float, return None if NaN or missing."""
     if val is None:
         return None
     try:

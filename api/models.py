@@ -1,8 +1,8 @@
 """
-Modeles Pydantic pour l'API de prediction HVAC.
+Pydantic models for the HVAC prediction API.
 
-Definit les schemas de requete et de reponse pour tous les endpoints,
-avec validation stricte via Pydantic v2.
+Defines request and response schemas for all endpoints,
+with strict validation via Pydantic v2.
 """
 
 from __future__ import annotations
@@ -14,11 +14,11 @@ from pydantic import BaseModel, Field, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Reponses generiques
+# Generic responses
 # ---------------------------------------------------------------------------
 
 class HealthResponse(BaseModel):
-    """Reponse du endpoint /health."""
+    """Response for the /health endpoint."""
 
     status: str = Field(..., examples=["ok"])
     version: str = Field(..., examples=["1.0.0"])
@@ -35,7 +35,7 @@ class HealthResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class PredictionPoint(BaseModel):
-    """Un point de prediction mensuel."""
+    """A single monthly prediction point."""
 
     date: str = Field(..., examples=["2026-01"])
     valeur_predite: float = Field(..., examples=[25.4])
@@ -44,7 +44,7 @@ class PredictionPoint(BaseModel):
 
 
 class PredictionResponse(BaseModel):
-    """Reponse du endpoint GET /predictions."""
+    """Response for the GET /predictions endpoint."""
 
     departement: str = Field(..., examples=["69"])
     horizon_mois: int = Field(..., ge=1, le=24, examples=[6])
@@ -57,35 +57,35 @@ class PredictionResponse(BaseModel):
 
 
 class CustomPredictRequest(BaseModel):
-    """Corps de la requete POST /predict."""
+    """Request body for the POST /predict endpoint."""
 
     departement: str = Field(
         ...,
         min_length=1,
         max_length=3,
         examples=["69"],
-        description="Code departement (01-95, 2A, 2B)",
+        description="Department code (01-95, 2A, 2B)",
     )
     features: dict[str, float] = Field(
         default_factory=dict,
-        description="Dictionnaire de features supplementaires a injecter",
+        description="Dictionary of additional features to inject",
     )
     horizon: int = Field(
         default=1,
         ge=1,
         le=24,
-        description="Nombre de mois a predire",
+        description="Number of months to predict",
     )
 
     @model_validator(mode="after")
     def _normaliser_dept(self) -> "CustomPredictRequest":
-        """Normalise le code departement en majuscules."""
+        """Normalize the department code to uppercase."""
         self.departement = self.departement.upper().zfill(2)
         return self
 
 
 class CustomPredictResponse(BaseModel):
-    """Reponse du endpoint POST /predict."""
+    """Response for the POST /predict endpoint."""
 
     departement: str
     modele_utilise: str
@@ -95,11 +95,11 @@ class CustomPredictResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Donnees et metriques
+# Data and metrics
 # ---------------------------------------------------------------------------
 
 class SourceSummary(BaseModel):
-    """Resume d'une source de donnees brutes."""
+    """Summary of a raw data source."""
 
     nom: str
     nb_lignes: int
@@ -107,7 +107,7 @@ class SourceSummary(BaseModel):
 
 
 class DataSummaryResponse(BaseModel):
-    """Reponse du endpoint GET /data/summary."""
+    """Response for the GET /data/summary endpoint."""
 
     nb_departements: int
     plage_dates: dict[str, str] = Field(
@@ -118,7 +118,7 @@ class DataSummaryResponse(BaseModel):
 
 
 class ModelMetric(BaseModel):
-    """Metriques d'un modele entraine."""
+    """Metrics for a trained model."""
 
     modele: str
     cible: str
@@ -135,7 +135,7 @@ class ModelMetric(BaseModel):
 
 
 class ModelMetricsResponse(BaseModel):
-    """Reponse du endpoint GET /model/metrics."""
+    """Response for the GET /model/metrics endpoint."""
 
     meilleur_modele: str
     nb_modeles: int
@@ -143,18 +143,18 @@ class ModelMetricsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Departements
+# Departments
 # ---------------------------------------------------------------------------
 
 class DepartmentInfo(BaseModel):
-    """Information sur un departement."""
+    """Information about a department."""
 
     code: str = Field(..., examples=["69"])
     nom: str = Field(..., examples=["Rhone"])
 
 
 class DepartmentsResponse(BaseModel):
-    """Reponse du endpoint GET /departments."""
+    """Response for the GET /departments endpoint."""
 
     nb_departements: int
     departements: list[DepartmentInfo]
