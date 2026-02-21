@@ -106,11 +106,11 @@ class ModelTrainer:
         path = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not path.exists():
             raise FileNotFoundError(
-                f"Dataset features introuvable : {path}. "
-                f"Lancer 'python -m src.pipeline features' d'abord."
+                f"Features dataset not found: {path}. "
+                f"Run 'python -m src.pipeline features' first."
             )
         df = pd.read_csv(path)
-        self.logger.info("Dataset charge : %d lignes x %d colonnes", len(df), len(df.columns))
+        self.logger.info("Dataset loaded: %d rows x %d columns", len(df), len(df.columns))
         return df
 
     def temporal_split(
@@ -134,7 +134,7 @@ class ModelTrainer:
         df_test = df[df["date_id"] > self.val_end].copy()
 
         self.logger.info(
-            "Split temporel : train=%d, val=%d, test=%d",
+            "Temporal split: train=%d, val=%d, test=%d",
             len(df_train), len(df_val), len(df_test),
         )
         return df_train, df_val, df_test
@@ -217,8 +217,8 @@ class ModelTrainer:
             self.target = target
 
         self.logger.info("=" * 60)
-        self.logger.info("  PHASE 4 — Entrainement des modeles")
-        self.logger.info("  Cible : %s", self.target)
+        self.logger.info("  PHASE 4 — Model Training")
+        self.logger.info("  Target: %s", self.target)
         self.logger.info("=" * 60)
 
         # 1. Load
@@ -241,7 +241,7 @@ class ModelTrainer:
         X_test, y_test = X_test[mask_test], y_test[mask_test]
 
         self.logger.info(
-            "Apres suppression NaN cible : train=%d, val=%d, test=%d",
+            "After removing target NaN: train=%d, val=%d, test=%d",
             len(X_train), len(X_val), len(X_test),
         )
 
@@ -292,7 +292,7 @@ class ModelTrainer:
 
         # Ridge Regression (uses scaled data)
         self.logger.info("-" * 40)
-        self.logger.info("Entrainement Ridge Regression...")
+        self.logger.info("Training Ridge Regression...")
         ridge_result = baseline.train_ridge(
             X_train_scaled, y_train,
             X_val_scaled, y_val,
@@ -305,7 +305,7 @@ class ModelTrainer:
         # Allows evaluating the true contribution of exogenous features
         # (weather, economics) without the auto-correlation that dominates R²
         self.logger.info("-" * 40)
-        self.logger.info("Entrainement Ridge (exogenes, sans lags cible)...")
+        self.logger.info("Training Ridge (exogenous, without target lags)...")
         exo_trainer = ModelTrainer(
             self.config, target=self.target, exclude_target_lags=True,
         )
@@ -356,13 +356,13 @@ class ModelTrainer:
         n_exo = len(X_train_exo.columns)
         n_all = len(X_train.columns)
         self.logger.info(
-            "  Ridge exogenes : %d features (vs %d avec lags cible)",
+            "  Ridge exogenous: %d features (vs %d with target lags)",
             n_exo, n_all,
         )
 
         # LightGBM (uses imputed data, not scaled)
         self.logger.info("-" * 40)
-        self.logger.info("Entrainement LightGBM...")
+        self.logger.info("Training LightGBM...")
         lgbm_result = baseline.train_lightgbm(
             X_train_imp, y_train,
             X_val_imp, y_val,
@@ -373,7 +373,7 @@ class ModelTrainer:
 
         # Prophet
         self.logger.info("-" * 40)
-        self.logger.info("Entrainement Prophet...")
+        self.logger.info("Training Prophet...")
         prophet_result = baseline.train_prophet(
             df_train, df_val, df_test,
         )
@@ -384,7 +384,7 @@ class ModelTrainer:
             from src.models.deep_learning import LSTMModel
 
             self.logger.info("-" * 40)
-            self.logger.info("Entrainement LSTM (exploratoire)...")
+            self.logger.info("Training LSTM (exploratory)...")
             lstm_model = LSTMModel(self.config, self.target)
             lstm_result = lstm_model.train_and_evaluate(
                 X_train_scaled, y_train,
@@ -394,15 +394,15 @@ class ModelTrainer:
             results["lstm"] = lstm_result
         except ImportError:
             self.logger.warning(
-                "PyTorch non disponible — LSTM ignore. "
-                "Installer via : pip install -r requirements-dl.txt"
+                "PyTorch not available — LSTM skipped. "
+                "Install via: pip install -r requirements-dl.txt"
             )
         except Exception as e:
-            self.logger.warning("LSTM echoue : %s", e)
+            self.logger.warning("LSTM failed: %s", e)
 
         # 8. Temporal cross-validation (on Ridge and LightGBM)
         self.logger.info("-" * 40)
-        self.logger.info("Cross-validation temporelle...")
+        self.logger.info("Temporal cross-validation...")
         cv_results = self._cross_validate(
             X_train_imp, y_train, X_train_scaled, y_train, baseline,
         )
@@ -413,7 +413,7 @@ class ModelTrainer:
         self._save_results_summary(results)
 
         self.logger.info("=" * 60)
-        self.logger.info("  Entrainement termine — %d modeles", len(results))
+        self.logger.info("  Training complete — %d models", len(results))
         for name, res in results.items():
             val_rmse = res.get("metrics_val", {}).get("rmse", float("nan"))
             test_rmse = res.get("metrics_test", {}).get("rmse", float("nan"))
@@ -450,7 +450,7 @@ class ModelTrainer:
         evaluator = ModelEvaluator(self.config)
         n_splits = min(3, len(X_train_imp) // 20)
         if n_splits < 2:
-            self.logger.warning("Pas assez de donnees pour la cross-validation")
+            self.logger.warning("Not enough data for cross-validation")
             return {}
 
         tscv = TimeSeriesSplit(n_splits=n_splits)
@@ -514,7 +514,7 @@ class ModelTrainer:
         path = self.models_dir / filename
         with open(path, "wb") as f:
             pickle.dump(obj, f)
-        self.logger.info("  Artefact sauvegarde → %s", path)
+        self.logger.info("  Artifact saved → %s", path)
         return path
 
     def _save_results_summary(self, results: Dict[str, Any]) -> Path:
@@ -542,5 +542,5 @@ class ModelTrainer:
         df_results = pd.DataFrame(rows)
         path = self.models_dir / "training_results.csv"
         df_results.to_csv(path, index=False)
-        self.logger.info("Resume des resultats → %s", path)
+        self.logger.info("Results summary → %s", path)
         return path

@@ -109,7 +109,7 @@ class ModelEvaluator:
         """
         rows = []
         for model_name, res in results.items():
-            row = {"Modele": model_name}
+            row = {"Model": model_name}
             for split, prefix in [("val", "Val"), ("test", "Test")]:
                 metrics = res.get(f"metrics_{split}", {})
                 row[f"{prefix} RMSE"] = metrics.get("rmse", float("nan"))
@@ -152,15 +152,15 @@ class ModelEvaluator:
                 continue
 
             fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-            fig.suptitle(f"{model_name} — Predictions vs Reel ({target_name})")
+            fig.suptitle(f"{model_name} — Predictions vs Actual ({target_name})")
 
             # Validation
             if len(preds_val) > 0:
                 n = min(len(y_val), len(preds_val))
-                axes[0].plot(range(n), y_val[:n], "b-o", label="Reel", markersize=4)
-                axes[0].plot(range(n), preds_val[:n], "r--s", label="Predit", markersize=4)
+                axes[0].plot(range(n), y_val[:n], "b-o", label="Actual", markersize=4)
+                axes[0].plot(range(n), preds_val[:n], "r--s", label="Predicted", markersize=4)
                 axes[0].set_title("Validation")
-                axes[0].set_xlabel("Index temporel")
+                axes[0].set_xlabel("Time index")
                 axes[0].set_ylabel(target_name)
                 axes[0].legend()
                 axes[0].grid(True, alpha=0.3)
@@ -168,10 +168,10 @@ class ModelEvaluator:
             # Test
             if len(preds_test) > 0:
                 n = min(len(y_test), len(preds_test))
-                axes[1].plot(range(n), y_test[:n], "b-o", label="Reel", markersize=4)
-                axes[1].plot(range(n), preds_test[:n], "r--s", label="Predit", markersize=4)
+                axes[1].plot(range(n), y_test[:n], "b-o", label="Actual", markersize=4)
+                axes[1].plot(range(n), preds_test[:n], "r--s", label="Predicted", markersize=4)
                 axes[1].set_title("Test")
-                axes[1].set_xlabel("Index temporel")
+                axes[1].set_xlabel("Time index")
                 axes[1].set_ylabel(target_name)
                 axes[1].legend()
                 axes[1].grid(True, alpha=0.3)
@@ -181,7 +181,7 @@ class ModelEvaluator:
             fig.savefig(path, dpi=150, bbox_inches="tight")
             plt.close(fig)
             figures.append(path)
-            self.logger.info("  Figure sauvegardee → %s", path)
+            self.logger.info("  Figure saved → %s", path)
 
         return figures
 
@@ -199,7 +199,7 @@ class ModelEvaluator:
         df = self.compare_models(results)
 
         fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle("Comparaison des modeles", fontsize=14)
+        fig.suptitle("Model Comparison", fontsize=14)
 
         metrics = [
             ("Val RMSE", "Test RMSE", "RMSE"),
@@ -215,7 +215,7 @@ class ModelEvaluator:
             bars_test = ax.bar(x + width / 2, df[test_col], width, label="Test")
             ax.set_title(title)
             ax.set_xticks(x)
-            ax.set_xticklabels(df["Modele"], rotation=45, ha="right")
+            ax.set_xticklabels(df["Model"], rotation=45, ha="right")
             ax.legend()
             ax.grid(True, alpha=0.3, axis="y")
 
@@ -235,7 +235,7 @@ class ModelEvaluator:
         path = self.figures_dir / "model_comparison.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
-        self.logger.info("  Figure comparaison → %s", path)
+        self.logger.info("  Comparison figure → %s", path)
         return path
 
     def plot_residuals(
@@ -260,7 +260,7 @@ class ModelEvaluator:
         ]
 
         if not model_names:
-            self.logger.warning("Aucune prediction disponible pour les residus")
+            self.logger.warning("No predictions available for residuals")
             return self.figures_dir / "residuals.png"
 
         n_models = len(model_names)
@@ -268,7 +268,7 @@ class ModelEvaluator:
         if n_models == 1:
             axes = axes.reshape(1, -1)
 
-        fig.suptitle("Analyse des residus", fontsize=14)
+        fig.suptitle("Residual Analysis", fontsize=14)
 
         for i, name in enumerate(model_names):
             res = results[name]
@@ -282,22 +282,22 @@ class ModelEvaluator:
             # Residual distribution
             axes[i, 0].hist(residuals, bins=20, edgecolor="black", alpha=0.7)
             axes[i, 0].axvline(0, color="red", linestyle="--")
-            axes[i, 0].set_title(f"{name} — Distribution des residus")
-            axes[i, 0].set_xlabel("Residu (reel - predit)")
+            axes[i, 0].set_title(f"{name} — Residual Distribution")
+            axes[i, 0].set_xlabel("Residual (actual - predicted)")
 
             # Residuals vs predictions
             axes[i, 1].scatter(preds_test[:n], residuals, alpha=0.6, s=30)
             axes[i, 1].axhline(0, color="red", linestyle="--")
-            axes[i, 1].set_title(f"{name} — Residus vs Predictions")
+            axes[i, 1].set_title(f"{name} — Residuals vs Predictions")
             axes[i, 1].set_xlabel("Prediction")
-            axes[i, 1].set_ylabel("Residu")
+            axes[i, 1].set_ylabel("Residual")
             axes[i, 1].grid(True, alpha=0.3)
 
         plt.tight_layout()
         path = self.figures_dir / "residuals.png"
         fig.savefig(path, dpi=150, bbox_inches="tight")
         plt.close(fig)
-        self.logger.info("  Figure residus → %s", path)
+        self.logger.info("  Residuals figure → %s", path)
         return path
 
     def plot_feature_importance(
@@ -361,10 +361,10 @@ class ModelEvaluator:
         try:
             import shap
         except ImportError:
-            self.logger.warning("SHAP non disponible. pip install shap")
+            self.logger.warning("SHAP not available. pip install shap")
             return None
 
-        self.logger.info("  Analyse SHAP pour %s...", model_name)
+        self.logger.info("  SHAP analysis for %s...", model_name)
 
         try:
             if model_name == "lightgbm":
@@ -390,7 +390,7 @@ class ModelEvaluator:
             return path
 
         except Exception as e:
-            self.logger.warning("  SHAP echoue pour %s : %s", model_name, e)
+            self.logger.warning("  SHAP failed for %s: %s", model_name, e)
             return None
 
     def generate_full_report(
@@ -407,15 +407,15 @@ class ModelEvaluator:
         """
         report_lines = [
             "=" * 70,
-            "RAPPORT D'EVALUATION — Phase 4 Modelisation ML",
-            f"Variable cible : {target}",
+            "EVALUATION REPORT — Phase 4 ML Modeling",
+            f"Target variable: {target}",
             "=" * 70,
             "",
         ]
 
         # Comparative table
         df_comp = self.compare_models(results)
-        report_lines.append("COMPARAISON DES MODELES :")
+        report_lines.append("MODEL COMPARISON:")
         report_lines.append("-" * 70)
         report_lines.append(df_comp.to_string(index=False))
         report_lines.append("")
@@ -445,7 +445,7 @@ class ModelEvaluator:
 
         # Recommendation
         report_lines.append("\n" + "=" * 70)
-        report_lines.append("RECOMMANDATION :")
+        report_lines.append("RECOMMENDATION:")
 
         # Find the best model on val
         best_model = min(
@@ -453,7 +453,7 @@ class ModelEvaluator:
             key=lambda x: x[1].get("metrics_val", {}).get("rmse", float("inf")),
         )
         report_lines.append(
-            f"  Meilleur modele (Val RMSE) : {best_model[0]} "
+            f"  Best model (Val RMSE): {best_model[0]} "
             f"(RMSE={best_model[1].get('metrics_val', {}).get('rmse', 0):.2f})"
         )
         report_lines.append("=" * 70)
@@ -462,5 +462,5 @@ class ModelEvaluator:
         report = "\n".join(report_lines)
         path = Path("data/models") / "evaluation_report.txt"
         path.write_text(report, encoding="utf-8")
-        self.logger.info("Rapport d'evaluation → %s", path)
+        self.logger.info("Evaluation report → %s", path)
         return path
