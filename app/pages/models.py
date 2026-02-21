@@ -26,7 +26,7 @@ def render():
         rows = []
         for model_name, metrics in results.items():
             if isinstance(metrics, dict):
-                row = {"Modele": model_name}
+                row = {"Model": model_name}
                 for k, v in metrics.items():
                     if isinstance(v, (int, float)):
                         row[k] = round(v, 4) if isinstance(v, float) else v
@@ -38,7 +38,7 @@ def render():
             st.dataframe(df_compare, use_container_width=True, hide_index=True)
 
             # --- Radar chart ---
-            metric_cols = [c for c in df_compare.columns if c != "Modele"]
+            metric_cols = [c for c in df_compare.columns if c != "Model"]
             if len(metric_cols) >= 3:
                 st.subheader("Radar chart")
                 fig = go.Figure()
@@ -50,7 +50,7 @@ def render():
                     fig.add_trace(go.Scatterpolar(
                         r=normalized + [normalized[0]],
                         theta=metric_cols + [metric_cols[0]],
-                        name=row["Modele"],
+                        name=row["Model"],
                         fill="toself",
                         opacity=0.6,
                     ))
@@ -70,7 +70,7 @@ def render():
 
             st.dataframe(df_ranked, use_container_width=True, hide_index=True)
 
-            best_model = df_ranked.iloc[0]["Modele"]
+            best_model = df_ranked.iloc[0]["Model"]
             best_value = df_ranked.iloc[0][ranking_metric]
             st.success(f"Best model: **{best_model}** ({ranking_metric} = {best_value})")
 
