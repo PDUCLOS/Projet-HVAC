@@ -376,7 +376,7 @@ class CorrelationAnalyzer:
             lag_df, annot=True, fmt=".2f", cmap="RdBu_r",
             center=0, linewidths=0.5, ax=ax,
         )
-        ax.set_title(f"Corrélation des lags avec {target}", fontsize=14)
+        ax.set_title(f"Lag correlations with {target}", fontsize=14)
         ax.set_xlabel("Horizon du lag")
         ax.set_ylabel("Variable")
 
@@ -398,7 +398,7 @@ class CorrelationAnalyzer:
 
         lines = []
         lines.append("=" * 70)
-        lines.append("  RAPPORT CORRÉLATIONS — HVAC Market Analysis")
+        lines.append("  CORRELATION REPORT — HVAC Market Analysis")
         lines.append("=" * 70)
 
         # Top 20 correlations with the target
@@ -408,7 +408,7 @@ class CorrelationAnalyzer:
             corr = corr.drop(target, errors="ignore")
             top = corr.abs().sort_values(ascending=False).head(20)
 
-            lines.append(f"\n\n1. TOP 20 CORRÉLATIONS AVEC {target}")
+            lines.append(f"\n\n1. TOP 20 CORRELATIONS WITH {target}")
             lines.append("-" * 50)
             for feat in top.index:
                 val = corr[feat]
@@ -425,25 +425,25 @@ class CorrelationAnalyzer:
                     pairs.append((features[i], features[j], r))
         pairs.sort(key=lambda x: abs(x[2]), reverse=True)
 
-        lines.append(f"\n\n2. PAIRES MULTICOLINÉAIRES (|r| > 0.8) — {len(pairs)} trouvées")
+        lines.append(f"\n\n2. MULTICOLLINEAR PAIRS (|r| > 0.8) — {len(pairs)} found")
         lines.append("-" * 50)
         for a, b, r in pairs:
             lines.append(f"  {r:+.3f}  {a} ↔ {b}")
 
         # Recommendations
-        lines.append("\n\n3. RECOMMANDATIONS POUR LA MODÉLISATION")
+        lines.append("\n\n3. RECOMMENDATIONS FOR MODELING")
         lines.append("-" * 50)
         if pairs:
-            lines.append("  ⚠ Multicolinéarité détectée :")
+            lines.append("  ⚠ Multicollinearity detected:")
             seen = set()
             for a, b, r in pairs:
                 if a not in seen and b not in seen:
-                    lines.append(f"    → Garder {a}, considérer retirer {b} (r={r:.3f})")
+                    lines.append(f"    → Keep {a}, consider removing {b} (r={r:.3f})")
                     seen.add(b)
 
-        lines.append("  ✓ Utiliser Ridge ou Lasso pour gérer la colinéarité")
-        lines.append("  ✓ LightGBM est naturellement robuste à la colinéarité")
-        lines.append("  ✓ Vérifier la stabilité des corrélations par département")
+        lines.append("  ✓ Use Ridge or Lasso to handle collinearity")
+        lines.append("  ✓ LightGBM is naturally robust to collinearity")
+        lines.append("  ✓ Verify correlation stability across departments")
 
         report_text = "\n".join(lines)
         report_path.write_text(report_text, encoding="utf-8")
