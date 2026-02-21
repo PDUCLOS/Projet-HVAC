@@ -150,7 +150,7 @@ class DpeCollector(BaseCollector):
 
         for dept in self.config.departments:
             self.logger.info(
-                "Collecte DPE département %s...", dept,
+                "Collecting DPE for department %s...", dept,
             )
 
             try:
@@ -165,18 +165,18 @@ class DpeCollector(BaseCollector):
                     dept_path.parent.mkdir(parents=True, exist_ok=True)
                     df_dept.to_csv(dept_path, index=False)
                     self.logger.info(
-                        "  ✓ Dept %s : %d DPE sauvegardés → %s",
+                        "  ✓ Dept %s: %d DPEs saved → %s",
                         dept, len(df_dept), dept_path,
                     )
 
             except Exception as exc:
-                error_msg = f"Échec département {dept} : {exc}"
+                error_msg = f"Failed for department {dept}: {exc}"
                 errors.append(error_msg)
                 self.logger.error("  ✗ %s", error_msg)
                 continue
 
         if not all_frames:
-            self.logger.error("Aucun DPE collecté. Erreurs : %s", errors)
+            self.logger.error("No DPEs collected. Errors: %s", errors)
             return pd.DataFrame()
 
         # Concatenate all departments
@@ -184,7 +184,7 @@ class DpeCollector(BaseCollector):
 
         if errors:
             self.logger.warning(
-                "⚠ Collecte partielle : %d/%d départements réussis",
+                "⚠ Partial collection: %d/%d departments succeeded",
                 len(all_frames), len(self.config.departments),
             )
 
@@ -223,7 +223,7 @@ class DpeCollector(BaseCollector):
                 data = self.fetch_json(DPE_API_BASE, params=params)
             except Exception as exc:
                 self.logger.error(
-                    "  Erreur page %d pour dept %s : %s",
+                    "  Error on page %d for dept %s: %s",
                     page + 1, dept_code, exc,
                 )
                 break  # Save what has already been collected
@@ -258,7 +258,7 @@ class DpeCollector(BaseCollector):
             self.rate_limit_pause()
 
         self.logger.debug(
-            "  Dept %s : %d lignes collectées en %d pages",
+            "  Dept %s: %d rows collected in %d pages",
             dept_code, len(all_rows), page + 1,
         )
 
@@ -288,8 +288,8 @@ class DpeCollector(BaseCollector):
         missing = critical_cols - available
         if missing:
             self.logger.warning(
-                "Colonnes attendues manquantes : %s. "
-                "Colonnes disponibles : %s", missing, sorted(available),
+                "Expected columns missing: %s. "
+                "Available columns: %s", missing, sorted(available),
             )
 
         # 2. Date conversion
@@ -299,23 +299,23 @@ class DpeCollector(BaseCollector):
             )
             valid_dates = df["date_etablissement_dpe"].notna().sum()
             self.logger.info(
-                "Dates valides : %d/%d (%.1f%%)",
+                "Valid dates: %d/%d (%.1f%%)",
                 valid_dates, len(df), 100 * valid_dates / max(len(df), 1),
             )
 
         # 3. DPE label distribution
         if "etiquette_dpe" in df.columns:
             distribution = df["etiquette_dpe"].value_counts()
-            self.logger.info("Distribution DPE :\n%s", distribution.to_string())
+            self.logger.info("DPE distribution:\n%s", distribution.to_string())
 
         # 4. Departments
         if "code_departement_ban" in df.columns:
             depts = sorted(df["code_departement_ban"].dropna().unique().tolist())
-            self.logger.info("Départements collectés : %s", depts)
+            self.logger.info("Departments collected: %s", depts)
 
         # Log summary
         self.logger.info(
-            "Validation OK : %d DPE collectés", len(df),
+            "Validation OK: %d DPEs collected", len(df),
         )
 
         return df

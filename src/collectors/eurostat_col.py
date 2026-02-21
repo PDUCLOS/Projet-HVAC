@@ -89,25 +89,25 @@ class EurostatCollector(BaseCollector):
             import eurostat as estat
         except ImportError:
             raise ImportError(
-                "Le package 'eurostat' est requis. "
-                "Installation : pip install eurostat"
+                "The 'eurostat' package is required. "
+                "Install with: pip install eurostat"
             )
 
         self.logger.info(
-            "Téléchargement du dataset Eurostat 'sts_inpr_m'... "
-            "(peut prendre 30-60 secondes)"
+            "Downloading Eurostat dataset 'sts_inpr_m'... "
+            "(may take 30-60 seconds)"
         )
 
         try:
             # Download the full dataset (all dimensions)
             df = estat.get_data_df("sts_inpr_m", flags=False)
             self.logger.info(
-                "Dataset brut téléchargé : %d lignes × %d colonnes",
+                "Raw dataset downloaded: %d rows × %d columns",
                 len(df), len(df.columns),
             )
         except Exception as exc:
             raise RuntimeError(
-                f"Échec du téléchargement Eurostat : {exc}"
+                f"Eurostat download failed: {exc}"
             ) from exc
 
         # Identify the geographic column
@@ -120,12 +120,12 @@ class EurostatCollector(BaseCollector):
 
         if geo_col is None:
             raise ValueError(
-                f"Colonne géographique introuvable. "
-                f"Colonnes disponibles : {list(df.columns[:10])}"
+                f"Geographic column not found. "
+                f"Available columns: {list(df.columns[:10])}"
             )
 
         # Filter on France + HVAC sectors + unit + adjustment
-        self.logger.info("Filtrage : geo=%s, NACE=%s, unit=%s, s_adj=%s",
+        self.logger.info("Filtering: geo=%s, NACE=%s, unit=%s, s_adj=%s",
                          GEO_FILTER, NACE_CODES, UNIT_FILTER, SEASONAL_ADJ_FILTER)
 
         mask = (
@@ -142,14 +142,14 @@ class EurostatCollector(BaseCollector):
         df_filtered = df[mask].copy()
 
         self.logger.info(
-            "Après filtrage : %d lignes (sur %d)",
+            "After filtering: %d rows (out of %d)",
             len(df_filtered), len(df),
         )
 
         if df_filtered.empty:
             self.logger.warning(
-                "⚠ Aucune donnée après filtrage. "
-                "Vérifier les codes NACE et filtres."
+                "⚠ No data after filtering. "
+                "Check the NACE codes and filters."
             )
             return pd.DataFrame()
 
@@ -162,8 +162,8 @@ class EurostatCollector(BaseCollector):
 
         if not time_cols:
             raise ValueError(
-                "Aucune colonne temporelle trouvée. "
-                f"Colonnes : {list(df_filtered.columns)}"
+                "No time columns found. "
+                f"Columns: {list(df_filtered.columns)}"
             )
 
         # Melt: transform time columns into rows
@@ -191,8 +191,8 @@ class EurostatCollector(BaseCollector):
         ).reset_index(drop=True)
 
         self.logger.info(
-            "Résultat final : %d observations, %d codes NACE, "
-            "période %s → %s",
+            "Final result: %d observations, %d NACE codes, "
+            "period %s → %s",
             len(df_melted),
             df_melted["nace_r2"].nunique(),
             df_melted["period"].min(),
@@ -224,19 +224,19 @@ class EurostatCollector(BaseCollector):
         missing = required - set(df.columns)
         if missing:
             raise ValueError(
-                f"Colonnes manquantes dans les données Eurostat : {missing}"
+                f"Missing columns in Eurostat data: {missing}"
             )
 
         # 2. NACE codes present
         nace_present = df["nace_r2"].unique().tolist()
-        self.logger.info("Codes NACE collectés : %s", nace_present)
+        self.logger.info("NACE codes collected: %s", nace_present)
 
         # 3. Value ranges
         ipi_min = df["ipi_value"].min()
         ipi_max = df["ipi_value"].max()
         if ipi_min < 0 or ipi_max > 300:
             self.logger.warning(
-                "⚠ Valeurs IPI suspectes : min=%.1f, max=%.1f",
+                "⚠ Suspicious IPI values: min=%.1f, max=%.1f",
                 ipi_min, ipi_max,
             )
 
@@ -244,7 +244,7 @@ class EurostatCollector(BaseCollector):
         for nace in nace_present:
             subset = df[df["nace_r2"] == nace]
             self.logger.info(
-                "  NACE %s : %d mois, IPI moyen=%.1f [%.1f, %.1f]",
+                "  NACE %s: %d months, mean IPI=%.1f [%.1f, %.1f]",
                 nace, len(subset),
                 subset["ipi_value"].mean(),
                 subset["ipi_value"].min(),

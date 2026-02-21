@@ -222,7 +222,7 @@ class CollectorResult:
         duration = f"{self.duration_seconds:.1f}s" if self.duration_seconds else "N/A"
         return (
             f"[{self.status.value.upper():>7}] {self.name:<15} "
-            f"| {self.rows_collected:>6} lignes | {duration}"
+            f"| {self.rows_collected:>6} rows | {duration}"
         )
 
 
@@ -310,9 +310,9 @@ class BaseCollector(ABC):
 
         self.logger.info(
             "="*60 + "\n"
-            "  COLLECTE : %s\n"
-            "  Période  : %s → %s\n"
-            "  Départements : %s\n"
+            "  COLLECTION : %s\n"
+            "  Period     : %s → %s\n"
+            "  Departments : %s\n"
             + "="*60,
             self.source_name.upper(),
             self.config.start_date,
@@ -322,20 +322,20 @@ class BaseCollector(ABC):
 
         try:
             # Step 1: Collect raw data
-            self.logger.info("Étape 1/3 — Collecte des données...")
+            self.logger.info("Step 1/3 — Collecting data...")
             df = self.collect()
 
             if df.empty:
-                self.logger.warning("⚠ La collecte a retourné un DataFrame vide.")
+                self.logger.warning("⚠ Collection returned an empty DataFrame.")
                 result.status = CollectorStatus.PARTIAL
-                result.errors.append("DataFrame vide retourné par collect().")
+                result.errors.append("Empty DataFrame returned by collect().")
             else:
                 # Step 2: Validation and light cleaning
-                self.logger.info("Étape 2/3 — Validation des données...")
+                self.logger.info("Step 2/3 — Validating data...")
                 df = self.validate(df)
 
                 # Step 3: Save to disk
-                self.logger.info("Étape 3/3 — Sauvegarde...")
+                self.logger.info("Step 3/3 — Saving...")
                 output_path = self._resolve_output_path()
                 self.save(df, output_path)
 
@@ -344,20 +344,20 @@ class BaseCollector(ABC):
                 result.status = CollectorStatus.SUCCESS
 
                 self.logger.info(
-                    "✓ Collecte réussie : %d lignes sauvegardées → %s",
+                    "✓ Collection successful: %d rows saved → %s",
                     len(df), output_path,
                 )
 
         except Exception as exc:
             self.logger.exception(
-                "✗ ÉCHEC de la collecte '%s' : %s", self.source_name, exc
+                "✗ Collection FAILED '%s': %s", self.source_name, exc
             )
             result.status = CollectorStatus.FAILED
             result.errors.append(str(exc))
 
         result.finished_at = datetime.now()
         self.logger.info(
-            "Terminé '%s' en %.1fs — statut : %s",
+            "Finished '%s' in %.1fs — status: %s",
             self.source_name,
             result.duration_seconds or 0,
             result.status.value,
@@ -427,7 +427,7 @@ class BaseCollector(ABC):
             combined.to_csv(structured_path, index=False)
         else:
             df.drop_duplicates(keep="last").to_csv(structured_path, index=False)
-        self.logger.debug("Sauvegardé %d lignes → %s", len(df), path)
+        self.logger.debug("Saved %d rows → %s", len(df), path)
 
     # --- HTTP helpers (shared by all collectors) --------------------------
 
@@ -590,7 +590,7 @@ class CollectorRegistry:
 
         >>> result = CollectorRegistry.run("weather", config)
         >>> print(result)
-        [SUCCESS] weather | 12345 lignes | 5.2s
+        [SUCCESS] weather | 12345 rows | 5.2s
 
         >>> results = CollectorRegistry.run_all(config)
     """
@@ -608,12 +608,12 @@ class CollectorRegistry:
         name = collector_class.source_name
         if name in cls._collectors:
             logging.getLogger("collectors.registry").warning(
-                "Écrasement du collecteur existant '%s' par %s",
+                "Overwriting existing collector '%s' with %s",
                 name, collector_class.__name__,
             )
         cls._collectors[name] = collector_class
         logging.getLogger("collectors.registry").debug(
-            "Collecteur '%s' enregistré (%s)", name, collector_class.__name__
+            "Collector '%s' registered (%s)", name, collector_class.__name__
         )
 
     @classmethod
@@ -640,8 +640,8 @@ class CollectorRegistry:
         """
         if name not in cls._collectors:
             raise KeyError(
-                f"Collecteur inconnu : '{name}'. "
-                f"Disponibles : {cls.available()}"
+                f"Unknown collector: '{name}'. "
+                f"Available: {cls.available()}"
             )
         return cls._collectors[name]
 
@@ -681,14 +681,14 @@ class CollectorRegistry:
         results: List[CollectorResult] = []
 
         logger.info(
-            "Lancement de %d collecteurs : %s", len(names), names
+            "Launching %d collectors: %s", len(names), names
         )
 
         for name in names:
             try:
                 result = cls.run(name, config)
             except KeyError as exc:
-                logger.error("Collecteur '%s' introuvable : %s", name, exc)
+                logger.error("Collector '%s' not found: %s", name, exc)
                 result = CollectorResult(
                     name=name,
                     status=CollectorStatus.FAILED,
@@ -699,14 +699,14 @@ class CollectorRegistry:
             # Log progress if a collector fails
             if result.status == CollectorStatus.FAILED:
                 logger.warning(
-                    "⚠ Collecteur '%s' ÉCHOUÉ — passage au suivant.", name
+                    "⚠ Collector '%s' FAILED — moving to next.", name
                 )
 
         # Final summary
         succeeded = sum(1 for r in results if r.status == CollectorStatus.SUCCESS)
         logger.info(
             "\n" + "="*60 + "\n"
-            "  BILAN COLLECTE : %d/%d réussis\n" +
+            "  COLLECTION SUMMARY: %d/%d succeeded\n" +
             "="*60,
             succeeded, len(results),
         )

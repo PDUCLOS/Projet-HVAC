@@ -106,7 +106,7 @@ class PCloudSync:
             List of dictionaries with file info
             (name, size, hash, modified).
         """
-        self.logger.info("Listing du dossier public pCloud...")
+        self.logger.info("Listing pCloud public folder...")
 
         try:
             resp = self.session.get(
@@ -119,7 +119,7 @@ class PCloudSync:
 
             if data.get("result") != 0:
                 self.logger.error(
-                    "Erreur API pCloud : %s", data.get("error", "inconnue")
+                    "pCloud API error: %s", data.get("error", "unknown")
                 )
                 return []
 
@@ -153,11 +153,11 @@ class PCloudSync:
                                 "folder": folder_name,
                             })
 
-            self.logger.info("  %d fichiers trouves sur pCloud", len(files))
+            self.logger.info("  %d files found on pCloud", len(files))
             return files
 
         except requests.RequestException as e:
-            self.logger.error("Erreur connexion pCloud : %s", e)
+            self.logger.error("pCloud connection error: %s", e)
             return []
 
     def download_public_file(
@@ -175,7 +175,7 @@ class PCloudSync:
             True if the download succeeded.
         """
         filename = file_info["name"]
-        self.logger.info("  Telechargement : %s...", filename)
+        self.logger.info("  Downloading: %s...", filename)
 
         try:
             # Get the download link
@@ -192,8 +192,8 @@ class PCloudSync:
 
             if data.get("result") != 0:
                 self.logger.error(
-                    "Erreur getpublinkdownload : %s",
-                    data.get("error", "inconnue"),
+                    "getpublinkdownload error: %s",
+                    data.get("error", "unknown"),
                 )
                 return False
 
@@ -201,7 +201,7 @@ class PCloudSync:
             hosts = data.get("hosts", [])
             path = data.get("path", "")
             if not hosts or not path:
-                self.logger.error("Pas de lien de telechargement disponible")
+                self.logger.error("No download link available")
                 return False
 
             download_url = f"https://{hosts[0]}{path}"
@@ -216,12 +216,12 @@ class PCloudSync:
 
             size_mb = dest_path.stat().st_size / (1024 * 1024)
             self.logger.info(
-                "  ✓ %s telecharge (%.1f Mo)", filename, size_mb,
+                "  ✓ %s downloaded (%.1f MB)", filename, size_mb,
             )
             return True
 
         except requests.RequestException as e:
-            self.logger.error("Erreur telechargement %s : %s", filename, e)
+            self.logger.error("Download error %s: %s", filename, e)
             return False
 
     # ==================================================================
@@ -242,13 +242,13 @@ class PCloudSync:
         """
         if not self.access_token:
             self.logger.error(
-                "PCLOUD_ACCESS_TOKEN requis pour l'upload. "
-                "Definir la variable dans .env"
+                "PCLOUD_ACCESS_TOKEN required for upload. "
+                "Define the variable in .env"
             )
             return False
 
         if not local_path.exists():
-            self.logger.error("Fichier local introuvable : %s", local_path)
+            self.logger.error("Local file not found: %s", local_path)
             return False
 
         self.logger.info("  Upload : %s...", local_path.name)
@@ -272,7 +272,7 @@ class PCloudSync:
 
             if data.get("result") != 0:
                 self.logger.error(
-                    "Erreur upload pCloud : %s", data.get("error", "inconnue")
+                    "pCloud upload error: %s", data.get("error", "unknown")
                 )
                 return False
 
@@ -281,13 +281,13 @@ class PCloudSync:
             if uploaded:
                 size_mb = uploaded[0].get("size", 0) / (1024 * 1024)
                 self.logger.info(
-                    "  OK %s uploade (%.1f Mo)", local_path.name, size_mb,
+                    "  OK %s uploaded (%.1f MB)", local_path.name, size_mb,
                 )
 
             return True
 
         except requests.RequestException as e:
-            self.logger.error("Erreur upload %s : %s", local_path.name, e)
+            self.logger.error("Upload error %s: %s", local_path.name, e)
             return False
 
     def upload_collected_data(self, remote_folder_id: int = 0) -> Dict[str, Any]:
@@ -303,7 +303,7 @@ class PCloudSync:
             Dictionary summarizing the upload.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  UPLOAD vers pCloud")
+        self.logger.info("  UPLOAD to pCloud")
         self.logger.info("=" * 60)
 
         result = {
@@ -329,7 +329,7 @@ class PCloudSync:
 
         for filename, filepath in upload_targets.items():
             if not filepath.exists():
-                self.logger.warning("  Fichier absent, skip : %s", filename)
+                self.logger.warning("  File missing, skip: %s", filename)
                 result["files_skipped"] += 1
                 continue
 
@@ -340,10 +340,10 @@ class PCloudSync:
                 result["files_failed"] += 1
 
         self.logger.info("=" * 60)
-        self.logger.info("  RESUME UPLOAD")
-        self.logger.info("  Fichiers uploades : %d", result["files_uploaded"])
-        self.logger.info("  Echecs            : %d", result["files_failed"])
-        self.logger.info("  Absents (skip)    : %d", result["files_skipped"])
+        self.logger.info("  UPLOAD SUMMARY")
+        self.logger.info("  Files uploaded    : %d", result["files_uploaded"])
+        self.logger.info("  Failures          : %d", result["files_failed"])
+        self.logger.info("  Missing (skip)    : %d", result["files_skipped"])
         self.logger.info("=" * 60)
 
         return result
@@ -361,7 +361,7 @@ class PCloudSync:
         Returns:
             List of files to update.
         """
-        self.logger.info("Verification des mises a jour pCloud...")
+        self.logger.info("Checking for pCloud updates...")
 
         remote_files = self.list_public_folder()
         if not remote_files:
@@ -385,7 +385,7 @@ class PCloudSync:
 
             if current_hash != prev_hash or current_size != prev_size:
                 file_info["update_reason"] = (
-                    "nouveau" if not prev_state else "modifie"
+                    "new" if not prev_state else "modified"
                 )
                 updates.append(file_info)
                 self.logger.info(
@@ -394,9 +394,9 @@ class PCloudSync:
                 )
 
         if not updates:
-            self.logger.info("  Aucune mise a jour detectee.")
+            self.logger.info("  No updates detected.")
         else:
-            self.logger.info("  %d fichier(s) a mettre a jour.", len(updates))
+            self.logger.info("  %d file(s) to update.", len(updates))
 
         return updates
 
@@ -425,7 +425,7 @@ class PCloudSync:
             Dictionary summarizing the synchronization.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  SYNCHRONISATION pCloud")
+        self.logger.info("  pCloud SYNCHRONIZATION")
         self.logger.info("=" * 60)
 
         result = {
@@ -446,7 +446,7 @@ class PCloudSync:
         result["files_checked"] = len(updates)
 
         if not updates:
-            self.logger.info("Aucun fichier a synchroniser.")
+            self.logger.info("No files to synchronize.")
             return result
 
         # 2. Download each file
@@ -476,20 +476,20 @@ class PCloudSync:
         # 4. Trigger the pipeline if data has changed
         if downloaded and run_pipeline:
             self.logger.info("-" * 40)
-            self.logger.info("Declenchement du pipeline d'import...")
+            self.logger.info("Triggering import pipeline...")
             try:
                 self._trigger_pipeline_update()
                 result["pipeline_triggered"] = True
             except Exception as e:
-                self.logger.error("Erreur pipeline : %s", e)
+                self.logger.error("Pipeline error: %s", e)
 
         # Summary
         self.logger.info("=" * 60)
-        self.logger.info("  RESUME SYNCHRONISATION")
-        self.logger.info("  Fichiers verifies   : %d", result["files_checked"])
-        self.logger.info("  Fichiers telecharges : %d", result["files_downloaded"])
-        self.logger.info("  Echecs              : %d", result["files_failed"])
-        self.logger.info("  Pipeline declenche  : %s", result["pipeline_triggered"])
+        self.logger.info("  SYNCHRONIZATION SUMMARY")
+        self.logger.info("  Files checked       : %d", result["files_checked"])
+        self.logger.info("  Files downloaded    : %d", result["files_downloaded"])
+        self.logger.info("  Failures            : %d", result["files_failed"])
+        self.logger.info("  Pipeline triggered  : %s", result["pipeline_triggered"])
         self.logger.info("=" * 60)
 
         return result
@@ -510,17 +510,17 @@ class PCloudSync:
         from src.processing.outlier_detection import OutlierDetector
 
         # 1. Import into the database
-        self.logger.info("  1/5 Import des donnees dans la BDD...")
+        self.logger.info("  1/5 Importing data into the database...")
         db = DatabaseManager(self.config.database.connection_string)
         db.import_collected_data(raw_data_dir=self.config.raw_data_dir)
 
         # 2. Cleaning
-        self.logger.info("  2/5 Nettoyage des donnees brutes...")
+        self.logger.info("  2/5 Cleaning raw data...")
         cleaner = DataCleaner(self.config)
         cleaner.clean_all()
 
         # 3. Merging
-        self.logger.info("  3/5 Fusion multi-sources...")
+        self.logger.info("  3/5 Multi-source merging...")
         merger = DatasetMerger(self.config)
         merger.build_ml_dataset()
 
@@ -530,7 +530,7 @@ class PCloudSync:
         fe.engineer_from_file()
 
         # 5. Outlier detection
-        self.logger.info("  5/5 Detection des outliers...")
+        self.logger.info("  5/5 Outlier detection...")
         detector = OutlierDetector(self.config)
         import pandas as pd
         features_path = self.config.features_data_dir / "hvac_features_dataset.csv"
@@ -539,7 +539,7 @@ class PCloudSync:
             df_treated, _ = detector.run_full_analysis(df, strategy="clip")
             df_treated.to_csv(features_path, index=False)
 
-        self.logger.info("  Pipeline de mise a jour termine.")
+        self.logger.info("  Update pipeline completed.")
 
     # ==================================================================
     # Utilities
@@ -582,7 +582,7 @@ class PCloudSync:
             json.dumps(self.sync_state, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
-        self.logger.info("  Etat de sync sauvegarde → %s", self.sync_state_file)
+        self.logger.info("  Sync state saved → %s", self.sync_state_file)
 
     def get_sync_status(self) -> Dict[str, Any]:
         """Return a summary of the current synchronization state."""
@@ -590,7 +590,7 @@ class PCloudSync:
         return {
             "n_files_tracked": len(state),
             "files": {
-                name: info.get("last_sync", "jamais")
+                name: info.get("last_sync", "never")
                 for name, info in state.items()
             },
         }

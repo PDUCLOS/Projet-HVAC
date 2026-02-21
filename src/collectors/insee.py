@@ -60,36 +60,36 @@ SDMX_NAMESPACES = {
 INSEE_SERIES: Dict[str, Dict[str, Any]] = {
     "confiance_menages": {
         "idbank": "001759970",
-        "desc": "Indicateur synthétique de confiance des ménages (CVS)",
-        "freq": "mensuel",
+        "desc": "Household confidence synthetic indicator (SA)",
+        "freq": "monthly",
         "base": 100,  # Long-term average = 100
     },
     "climat_affaires_industrie": {
         "idbank": "001565530",
-        "desc": "Indicateur du climat des affaires - Tous secteurs (CVS)",
-        "freq": "mensuel",
+        "desc": "Business climate indicator - All sectors (SA)",
+        "freq": "monthly",
         "base": 100,
     },
     "climat_affaires_batiment": {
         "idbank": "001586808",
-        "desc": "Indicateur climat des affaires dans le bâtiment (CVS)",
-        "freq": "mensuel",
+        "desc": "Business climate indicator in construction (SA)",
+        "freq": "monthly",
         "base": 100,
     },
     "opinion_achats_importants": {
         "idbank": "001759974",
-        "desc": "Opportunité de faire des achats importants (solde CVS)",
-        "freq": "mensuel",
+        "desc": "Major purchase opportunity (SA balance)",
+        "freq": "monthly",
     },
     "situation_financiere_future": {
         "idbank": "001759972",
-        "desc": "Situation financière future des ménages (solde CVS)",
-        "freq": "mensuel",
+        "desc": "Future household financial situation (SA balance)",
+        "freq": "monthly",
     },
     "ipi_industrie_manuf": {
         "idbank": "010768261",
-        "desc": "IPI Industrie manufacturière (CVS-CJO, base 2021)",
-        "freq": "mensuel",
+        "desc": "IPI Manufacturing industry (SA-WDA, base 2021)",
+        "freq": "monthly",
     },
 }
 
@@ -135,7 +135,7 @@ class InseeCollector(BaseCollector):
 
         for name, info in INSEE_SERIES.items():
             self.logger.info(
-                "Collecte série '%s' (idbank=%s) : %s",
+                "Collecting series '%s' (idbank=%s): %s",
                 name, info["idbank"], info["desc"],
             )
 
@@ -162,9 +162,9 @@ class InseeCollector(BaseCollector):
 
                 if not observations:
                     raise ValueError(
-                        f"Aucune observation trouvee pour '{name}' "
+                        f"No observations found for '{name}' "
                         f"(idbank={info['idbank']}). "
-                        f"Verifier que l'idbank est correct sur bdm.insee.fr"
+                        f"Check that the idbank is correct on bdm.insee.fr"
                     )
 
                 # Parse each observation from the XML attributes
@@ -182,7 +182,7 @@ class InseeCollector(BaseCollector):
                         value = float(value_str)
                     except (ValueError, TypeError):
                         self.logger.debug(
-                            "  Valeur non numerique ignoree : "
+                            "  Non-numeric value ignored: "
                             "period=%s, value='%s'", period, value_str,
                         )
                         continue
@@ -200,7 +200,7 @@ class InseeCollector(BaseCollector):
                 )
 
             except Exception as exc:
-                error_msg = f"Échec pour '{name}' (idbank={info['idbank']}): {exc}"
+                error_msg = f"Failed for '{name}' (idbank={info['idbank']}): {exc}"
                 errors.append(error_msg)
                 self.logger.error("  ✗ %s", error_msg)
                 continue
@@ -211,7 +211,7 @@ class InseeCollector(BaseCollector):
         # Check that at least one series was collected
         if not all_series:
             self.logger.error(
-                "Aucune série INSEE collectée. Erreurs : %s", errors
+                "No INSEE series collected. Errors: %s", errors
             )
             return pd.DataFrame()
 
@@ -232,7 +232,7 @@ class InseeCollector(BaseCollector):
         # Log summary
         if errors:
             self.logger.warning(
-                "⚠ Collecte partielle : %d/%d séries réussies",
+                "⚠ Partial collection: %d/%d series succeeded",
                 len(all_series), len(INSEE_SERIES),
             )
 
@@ -258,14 +258,14 @@ class InseeCollector(BaseCollector):
         """
         # 1. Check the period column
         if "period" not in df.columns:
-            raise ValueError("Colonne 'period' manquante dans les données INSEE")
+            raise ValueError("Column 'period' missing from INSEE data")
 
         # 2. Check the number of collected series
         serie_cols = [c for c in df.columns if c != "period"]
         if len(serie_cols) < 3:
             raise ValueError(
-                f"Trop peu de séries collectées : {len(serie_cols)}/6. "
-                f"Colonnes disponibles : {serie_cols}"
+                f"Too few series collected: {len(serie_cols)}/6. "
+                f"Available columns: {serie_cols}"
             )
 
         # 3. Check null values per series
@@ -273,7 +273,7 @@ class InseeCollector(BaseCollector):
             null_count = df[col].isnull().sum()
             if null_count > 0:
                 self.logger.warning(
-                    "  Série '%s' : %d valeurs manquantes sur %d périodes",
+                    "  Series '%s': %d missing values out of %d periods",
                     col, null_count, len(df),
                 )
 
@@ -285,13 +285,13 @@ class InseeCollector(BaseCollector):
                 col_min, col_max = valid_values.min(), valid_values.max()
                 if col_min < -200 or col_max > 500:
                     self.logger.warning(
-                        "  ⚠ Valeurs suspectes pour '%s' : "
+                        "  ⚠ Suspicious values for '%s': "
                         "min=%.1f, max=%.1f", col, col_min, col_max,
                     )
 
         # Log summary
         self.logger.info(
-            "Validation OK : %d périodes | %d séries | %s → %s",
+            "Validation OK: %d periods | %d series | %s → %s",
             len(df), len(serie_cols),
             df["period"].iloc[0], df["period"].iloc[-1],
         )

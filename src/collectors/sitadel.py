@@ -101,7 +101,7 @@ class SitadelCollector(BaseCollector):
             DataFrame filtered on target departments with relevant columns.
         """
         self.logger.info(
-            "Telechargement SITADEL via API DiDo (millesime=%s)...",
+            "Downloading SITADEL via DiDo API (millesime=%s)...",
             SITADEL_MILLESIME,
         )
 
@@ -112,13 +112,13 @@ class SitadelCollector(BaseCollector):
             # Download the raw CSV (extended timeout for large files)
             csv_content = self.fetch_bytes(SITADEL_DIDO_API_URL, params=params)
             self.logger.info(
-                "CSV telecharge : %.1f Mo",
+                "CSV downloaded: %.1f MB",
                 len(csv_content) / (1024 * 1024),
             )
         except Exception as exc:
             raise RuntimeError(
-                f"Echec du telechargement SITADEL via DiDo : {exc}. "
-                f"Verifier le millesime ({SITADEL_MILLESIME}) sur le catalogue DiDo."
+                f"SITADEL download via DiDo failed: {exc}. "
+                f"Check the millesime ({SITADEL_MILLESIME}) on the DiDo catalog."
             ) from exc
 
         # Read the CSV in memory
@@ -146,10 +146,10 @@ class SitadelCollector(BaseCollector):
                     low_memory=False,
                     dtype=str,
                 )
-                self.logger.warning("Fallback latin-1 utilise")
+                self.logger.warning("Fallback latin-1 used")
 
         self.logger.info(
-            "CSV chargé : %d lignes × %d colonnes", len(df), len(df.columns),
+            "CSV loaded: %d rows × %d columns", len(df), len(df.columns),
         )
 
         # Filter on target departments
@@ -163,12 +163,12 @@ class SitadelCollector(BaseCollector):
             df_filtered = df[df["REG"].astype(str).str.strip() == self.config.region_code].copy()
         else:
             raise ValueError(
-                "Ni 'DEP' ni 'REG' trouvés dans les colonnes. "
-                f"Colonnes disponibles : {list(df.columns)}"
+                "Neither 'DEP' nor 'REG' found in columns. "
+                f"Available columns: {list(df.columns)}"
             )
 
         self.logger.info(
-            "Apres filtrage (%d depts) : %d lignes (sur %d total)",
+            "After filtering (%d depts): %d rows (out of %d total)",
             len(self.config.departments), len(df_filtered), len(df),
         )
 
@@ -200,30 +200,30 @@ class SitadelCollector(BaseCollector):
         """
         # 1. Required columns
         if "DEP" not in df.columns:
-            raise ValueError("Colonne 'DEP' manquante dans les données SITADEL")
+            raise ValueError("Column 'DEP' missing from SITADEL data")
 
         # 2. Check departments
         depts_found = sorted(df["DEP"].unique().tolist())
-        self.logger.info("Départements trouvés : %s", depts_found)
+        self.logger.info("Departments found: %s", depts_found)
 
         # 3. Minimum row count
         if len(df) < 100:
             self.logger.warning(
-                "⚠ Très peu de données SITADEL : %d lignes "
-                "(>1000 attendu pour AURA)", len(df),
+                "⚠ Very few SITADEL data: %d rows "
+                "(>1000 expected for AURA)", len(df),
             )
 
         # 4. Check NB_LGT_TOT_CREES if available
         if "NB_LGT_TOT_CREES" in df.columns:
             total_logements = df["NB_LGT_TOT_CREES"].sum()
             self.logger.info(
-                "Total logements autorisés France : %d",
+                "Total authorized housing units France: %d",
                 int(total_logements) if pd.notna(total_logements) else 0,
             )
 
         # Log summary
         self.logger.info(
-            "Validation OK : %d permis | %d départements",
+            "Validation OK: %d permits | %d departments",
             len(df), len(depts_found),
         )
 

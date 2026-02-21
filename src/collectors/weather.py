@@ -90,7 +90,7 @@ class WeatherCollector(BaseCollector):
 
         for city, coords in cities.items():
             self.logger.info(
-                "Collecte météo : %s (lat=%.2f, lon=%.2f, dept=%s)",
+                "Weather collection: %s (lat=%.2f, lon=%.2f, dept=%s)",
                 city, coords["lat"], coords["lon"], coords["dept"],
             )
 
@@ -111,8 +111,8 @@ class WeatherCollector(BaseCollector):
                 # Check that the 'daily' key exists in the response
                 if "daily" not in data:
                     raise ValueError(
-                        f"Réponse API inattendue pour {city} : "
-                        f"clé 'daily' absente. Clés reçues : {list(data.keys())}"
+                        f"Unexpected API response for {city}: "
+                        f"'daily' key missing. Keys received: {list(data.keys())}"
                     )
 
                 # Convert to DataFrame and enrich with metadata
@@ -122,7 +122,7 @@ class WeatherCollector(BaseCollector):
                 all_frames.append(df)
 
                 self.logger.info(
-                    "  ✓ %s : %d jours collectés (%s → %s)",
+                    "  ✓ %s: %d days collected (%s → %s)",
                     city, len(df),
                     df["time"].iloc[0] if len(df) > 0 else "?",
                     df["time"].iloc[-1] if len(df) > 0 else "?",
@@ -130,7 +130,7 @@ class WeatherCollector(BaseCollector):
 
             except Exception as exc:
                 # Record the error but continue with other cities
-                error_msg = f"Échec pour {city} : {exc}"
+                error_msg = f"Failed for {city}: {exc}"
                 errors.append(error_msg)
                 self.logger.error("  ✗ %s", error_msg)
                 continue
@@ -141,7 +141,7 @@ class WeatherCollector(BaseCollector):
         # Check that at least one city was collected
         if not all_frames:
             self.logger.error(
-                "Aucune donnée météo collectée. Erreurs : %s", errors
+                "No weather data collected. Errors: %s", errors
             )
             return pd.DataFrame()
 
@@ -155,16 +155,16 @@ class WeatherCollector(BaseCollector):
             result["hdd"] = (18.0 - result["temperature_2m_mean"]).clip(lower=0)
             result["cdd"] = (result["temperature_2m_mean"] - 18.0).clip(lower=0)
             self.logger.info(
-                "HDD/CDD calculés (base 18°C) — "
-                "HDD moyen=%.1f, CDD moyen=%.1f",
+                "HDD/CDD computed (base 18°C) — "
+                "mean HDD=%.1f, mean CDD=%.1f",
                 result["hdd"].mean(), result["cdd"].mean(),
             )
 
         # Log summary if partial collection
         if errors:
             self.logger.warning(
-                "⚠ Collecte partielle : %d/%d villes réussies. "
-                "Villes en erreur : %s",
+                "⚠ Partial collection: %d/%d cities succeeded. "
+                "Cities with errors: %s",
                 len(all_frames), len(cities), errors,
             )
 
@@ -193,7 +193,7 @@ class WeatherCollector(BaseCollector):
         missing = required_cols - set(df.columns)
         if missing:
             raise ValueError(
-                f"Colonnes obligatoires manquantes dans les données météo : {missing}"
+                f"Required columns missing from weather data: {missing}"
             )
 
         # 2. Type conversion
@@ -203,14 +203,14 @@ class WeatherCollector(BaseCollector):
         null_pct = df.isnull().mean()
         for col in null_pct[null_pct > 0.05].index:
             self.logger.warning(
-                "⚠ Colonne '%s' : %.1f%% de valeurs nulles",
+                "⚠ Column '%s': %.1f%% null values",
                 col, null_pct[col] * 100,
             )
 
         # 4. Log validation summary
         self.logger.info(
-            "Validation OK : %d lignes | %d villes | %s → %s | "
-            "T° moy=%.1f°C [%.1f, %.1f]",
+            "Validation OK: %d rows | %d cities | %s → %s | "
+            "mean T°=%.1f°C [%.1f, %.1f]",
             len(df),
             df["city"].nunique(),
             df["time"].min().strftime("%Y-%m-%d"),
