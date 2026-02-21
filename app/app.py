@@ -26,36 +26,36 @@ st.set_page_config(
 
 # --- Sidebar: Navigation ---
 st.sidebar.title("HVAC Market Analysis")
-st.sidebar.caption("Analyse du marche HVAC en France")
+st.sidebar.caption("HVAC market analysis in France")
 
 page = st.sidebar.radio(
     "Navigation",
     [
-        "Accueil",
-        "Exploration des donnees",
-        "Carte de France",
-        "Predictions ML",
-        "Comparaison des modeles",
-        "Pipeline & mise a jour",
+        "Home",
+        "Data Exploration",
+        "France Map",
+        "ML Predictions",
+        "Model Comparison",
+        "Pipeline & Update",
     ],
     index=0,
 )
 
 st.sidebar.markdown("---")
 st.sidebar.info(
-    "**Donnees** : 96 departements\n\n"
+    "**Data** : 96 departements\n\n"
     "**Sources** : Open-Meteo, ADEME DPE, INSEE, Eurostat, SITADEL\n\n"
     "**ML** : LightGBM, XGBoost, Ridge, Prophet, LSTM"
 )
 
 # --- Page dispatch ---
 PAGE_MODULES = {
-    "Accueil": "home",
-    "Exploration des donnees": "exploration",
-    "Carte de France": "carte",
-    "Predictions ML": "predictions",
-    "Comparaison des modeles": "models",
-    "Pipeline & mise a jour": "pipeline_page",
+    "Home": "home",
+    "Data Exploration": "exploration",
+    "France Map": "carte",
+    "ML Predictions": "predictions",
+    "Model Comparison": "models",
+    "Pipeline & Update": "pipeline_page",
 }
 
 module_name = PAGE_MODULES.get(page, "home")
@@ -63,5 +63,5 @@ try:
     module = __import__(f"pages.{module_name}", fromlist=[module_name])
     module.render()
 except Exception as e:
-    st.error(f"Erreur lors du chargement de la page '{page}' : {e}")
-    st.info("Verifiez que toutes les dependances sont installees.")
+    st.error(f"Error loading page '{page}' : {e}")
+    st.info("Check that all dependencies are installed.")

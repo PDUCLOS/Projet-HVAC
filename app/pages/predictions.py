@@ -20,26 +20,26 @@ def render():
     models_dir = eval_dir
 
     if not eval_dir.exists():
-        st.warning("Aucun modele entraine. Lancez d'abord l'entrainement.")
+        st.warning("No trained model. Run training first.")
         st.code("python -m src.pipeline train", language="bash")
         return
 
     # --- Load the dataset ---
     features_path = Path("data/features/hvac_features_dataset.csv")
     if not features_path.exists():
-        st.warning("Dataset de features non disponible.")
+        st.warning("Features dataset not available.")
         return
 
     df = pd.read_csv(features_path, low_memory=False)
-    st.success(f"Dataset charge : {len(df):,} lignes x {len(df.columns)} colonnes")
+    st.success(f"Dataset loaded: {len(df):,} rows x {len(df.columns)} columns")
 
     # --- Target variable selection ---
     target_cols = [c for c in df.columns if c.startswith("nb_") or c.startswith("pct_")]
     if not target_cols:
-        st.error("Aucune variable cible trouvee dans le dataset.")
+        st.error("No target variable found in the dataset.")
         return
 
-    target = st.selectbox("Variable cible", target_cols, index=0)
+    target = st.selectbox("Target Variable", target_cols, index=0)
 
     # --- Load results ---
     if results_file.exists():
@@ -48,13 +48,13 @@ def render():
         _display_eval_results(eval_results)
 
     # --- Visualize predictions ---
-    st.subheader("Predictions vs Realite")
+    st.subheader("Predictions vs Actual")
 
     # Look for prediction files
     pred_files = list(eval_dir.glob("predictions_*.csv"))
     if pred_files:
         selected_pred = st.selectbox(
-            "Fichier de predictions",
+            "Predictions File",
             [f.name for f in pred_files],
         )
         df_pred = pd.read_csv(eval_dir / selected_pred)
@@ -75,12 +75,12 @@ def render():
                 x=[min_val, max_val],
                 y=[min_val, max_val],
                 mode="lines",
-                name="Parfait",
+                name="Perfect",
                 line=dict(dash="dash", color="red"),
             ))
             fig.update_layout(
-                title="Predictions vs Valeurs reelles",
-                xaxis_title="Valeurs reelles",
+                title="Predictions vs Actual Values",
+                xaxis_title="Actual Values",
                 yaxis_title="Predictions",
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -89,19 +89,19 @@ def render():
             df_pred["residual"] = df_pred["y_true"] - df_pred["y_pred"]
             fig_res = px.histogram(
                 df_pred, x="residual", nbins=50,
-                title="Distribution des residus",
+                title="Residuals Distribution",
                 marginal="box",
             )
             st.plotly_chart(fig_res, use_container_width=True)
     else:
-        st.info("Pas de fichier de predictions. Lancez l'evaluation.")
+        st.info("No predictions file. Run evaluation.")
 
     # --- Feature Importance ---
     st.subheader("Feature Importance")
     fi_files = list(eval_dir.glob("feature_importance_*.csv"))
     if fi_files:
         selected_fi = st.selectbox(
-            "Modele",
+            "Model",
             [f.stem.replace("feature_importance_", "") for f in fi_files],
         )
         fi_path = eval_dir / f"feature_importance_{selected_fi}.csv"
@@ -123,18 +123,18 @@ def render():
                 for img_file in shap_files[:3]:
                     st.image(str(img_file), caption=img_file.stem)
         else:
-            st.info("Pas de feature importance disponible.")
+            st.info("No feature importance available.")
 
 
 def _display_eval_results(results: dict):
     """Display evaluation metrics."""
-    st.subheader("Metriques d'evaluation")
+    st.subheader("Evaluation Metrics")
 
     if isinstance(results, dict):
         metrics_data = []
         for model_name, metrics in results.items():
             if isinstance(metrics, dict):
-                row = {"Modele": model_name}
+                row = {"Model": model_name}
                 row.update(metrics)
                 metrics_data.append(row)
 
@@ -143,12 +143,12 @@ def _display_eval_results(results: dict):
             st.dataframe(df_metrics, use_container_width=True, hide_index=True)
 
             # Comparison chart
-            metric_cols = [c for c in df_metrics.columns if c != "Modele"]
+            metric_cols = [c for c in df_metrics.columns if c != "Model"]
             if metric_cols:
-                selected_metric = st.selectbox("Metrique a comparer", metric_cols)
+                selected_metric = st.selectbox("Metric to compare", metric_cols)
                 fig = px.bar(
-                    df_metrics, x="Modele", y=selected_metric,
-                    title=f"Comparaison : {selected_metric}",
-                    color="Modele",
+                    df_metrics, x="Model", y=selected_metric,
+                    title=f"Comparison: {selected_metric}",
+                    color="Model",
                 )
                 st.plotly_chart(fig, use_container_width=True)

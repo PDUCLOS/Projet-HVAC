@@ -7,17 +7,17 @@ import pandas as pd
 
 
 def render():
-    st.title("Analyse du Marche HVAC en France")
+    st.title("HVAC Market Analysis in France")
     st.markdown(
         """
-        Ce dashboard presente l'analyse predictive du marche des equipements
-        HVAC (chauffage, ventilation, climatisation) en France metropolitaine,
-        a travers l'exploitation de donnees publiques Open Data.
+        This dashboard presents the predictive analysis of the HVAC equipment market
+        (heating, ventilation, air conditioning) in metropolitan France,
+        through the exploitation of Open Data public datasets.
         """
     )
 
     # --- Key metrics ---
-    st.header("Vue d'ensemble")
+    st.header("Overview")
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -30,46 +30,46 @@ def render():
     n_sitadel = _count_rows(raw_dir / "sitadel" / "permis_construire_france.csv")
     n_features = _count_rows(features_path)
 
-    col1.metric("Donnees meteo", f"{n_weather:,}" if n_weather else "Non collecte")
-    col2.metric("DPE ADEME", f"{n_dpe:,}" if n_dpe else "Non collecte")
-    col3.metric("Permis SITADEL", f"{n_sitadel:,}" if n_sitadel else "Non collecte")
-    col4.metric("Dataset ML", f"{n_features:,}" if n_features else "Non genere")
+    col1.metric("Weather Data", f"{n_weather:,}" if n_weather else "Not collected")
+    col2.metric("DPE ADEME", f"{n_dpe:,}" if n_dpe else "Not collected")
+    col3.metric("Permis SITADEL", f"{n_sitadel:,}" if n_sitadel else "Not collected")
+    col4.metric("Dataset ML", f"{n_features:,}" if n_features else "Not generated")
 
     # --- Pipeline architecture ---
-    st.header("Architecture du pipeline")
+    st.header("Pipeline Architecture")
     st.markdown(
         """
         ```
-        1. COLLECTE         Open-Meteo, ADEME DPE, INSEE, Eurostat, SITADEL
+        1. COLLECTION       Open-Meteo, ADEME DPE, INSEE, Eurostat, SITADEL
               |
-        2. NETTOYAGE        Deduplication, outliers, types, valeurs manquantes
+        2. CLEANING         Deduplication, outliers, types, missing values
               |
-        3. FUSION           Jointure mois x departement (96 depts x N mois)
+        3. MERGE            Join month x department (96 depts x N months)
               |
-        4. FEATURES         Lags, rolling, interactions, tendances
+        4. FEATURES         Lags, rolling, interactions, trends
               |
         5. OUTLIERS         IQR + Z-score + Isolation Forest (consensus 2/3)
               |
-        6. MODELISATION     LightGBM, XGBoost, Ridge, Prophet, LSTM
+        6. MODELING          LightGBM, XGBoost, Ridge, Prophet, LSTM
               |
         7. EVALUATION       MAE, RMSE, MAPE, R2, Feature Importance (SHAP)
               |
-        8. PCLOUD           Upload automatique des resultats
+        8. PCLOUD           Automatic upload of results
         ```
         """
     )
 
     # --- Data sources ---
-    st.header("Sources de donnees")
+    st.header("Data Sources")
     sources = pd.DataFrame({
         "Source": ["Open-Meteo", "ADEME DPE", "INSEE BDM", "Eurostat", "SITADEL"],
-        "Type": ["Meteo", "Energie", "Economie", "Industrie", "Construction"],
-        "Granularite": [
-            "Jour x Ville",
-            "Unitaire (DPE)",
-            "Mois (national)",
-            "Mois (national)",
-            "Mois x Departement",
+        "Type": ["Weather", "Energy", "Economy", "Industry", "Construction"],
+        "Granularity": [
+            "Day x City",
+            "Per unit (DPE)",
+            "Month (national)",
+            "Month (national)",
+            "Month x Department",
         ],
         "API": [
             "open-meteo.com",
@@ -78,18 +78,18 @@ def render():
             "ec.europa.eu/eurostat",
             "data.statistiques.developpement-durable.gouv.fr",
         ],
-        "Authentification": ["Aucune"] * 5,
+        "Authentication": ["None"] * 5,
     })
     st.dataframe(sources, use_container_width=True, hide_index=True)
 
     # --- CLI commands ---
-    st.header("Commandes CLI")
+    st.header("CLI Commands")
     st.code(
         """
-# Mise a jour complete (collecte + pipeline + upload pCloud)
+# Full update (collection + pipeline + upload pCloud)
 python -m src.pipeline update_all
 
-# Collecte seule
+# Collection only
 python -m src.pipeline collect
 python -m src.pipeline collect --sources weather,dpe
 
@@ -101,10 +101,10 @@ python -m src.pipeline train
 python -m src.pipeline evaluate
 
 # pCloud
-python -m src.pipeline sync_pcloud   # Telecharger depuis pCloud
-python -m src.pipeline upload_pcloud  # Uploader vers pCloud
+python -m src.pipeline sync_pcloud   # Download from pCloud
+python -m src.pipeline upload_pcloud  # Upload to pCloud
 
-# Lancer le dashboard
+# Launch the dashboard
 streamlit run app/app.py
         """,
         language="bash",

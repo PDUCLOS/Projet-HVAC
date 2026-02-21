@@ -14,7 +14,7 @@ def render():
     try:
         from config.settings import FRANCE_DEPARTMENTS, REGION_NAMES
     except ImportError:
-        st.error("Impossible de charger la configuration des departements.")
+        st.error("Unable to load department configuration.")
         return
 
     # --- Build the departments DataFrame ---
@@ -61,7 +61,7 @@ def render():
         # Map with data
         metric_cols = [c for c in ["nb_dpe_total", "nb_installations_pac", "nb_installations_clim"] if c in df_depts.columns]
         if metric_cols:
-            selected_metric = st.selectbox("Metrique a afficher", metric_cols)
+            selected_metric = st.selectbox("Metric to display", metric_cols)
 
             fig = px.scatter_mapbox(
                 df_depts,
@@ -76,13 +76,13 @@ def render():
                 zoom=5,
                 center={"lat": 46.6, "lon": 2.3},
                 mapbox_style="carto-positron",
-                title=f"{selected_metric} par departement",
+                title=f"{selected_metric} by department",
             )
             fig.update_layout(height=700)
             st.plotly_chart(fig, use_container_width=True)
 
             # Detailed table
-            st.subheader("Donnees par departement")
+            st.subheader("Data by Department")
             display_cols = ["dept_code", "prefecture", "region"] + metric_cols
             st.dataframe(
                 df_depts[display_cols].sort_values(metric_cols[0], ascending=False),
@@ -92,18 +92,18 @@ def render():
         else:
             _render_base_map(df_depts)
     else:
-        st.info("Pas de donnees ML disponibles. Affichage des 96 departements.")
+        st.info("No ML data available. Displaying the 96 departments.")
         _render_base_map(df_depts)
 
     # --- Stats by region ---
-    st.subheader("Repartition par region")
+    st.subheader("Distribution by Region")
     region_counts = df_depts.groupby("region")["dept_code"].count().reset_index()
-    region_counts.columns = ["Region", "Departements"]
+    region_counts.columns = ["Region", "Departments"]
     fig = px.bar(
-        region_counts.sort_values("Departements", ascending=True),
-        x="Departements", y="Region",
+        region_counts.sort_values("Departments", ascending=True),
+        x="Departments", y="Region",
         orientation="h",
-        title="Nombre de departements par region",
+        title="Number of departments by region",
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -119,7 +119,7 @@ def _render_base_map(df_depts: pd.DataFrame):
         zoom=5,
         center={"lat": 46.6, "lon": 2.3},
         mapbox_style="carto-positron",
-        title="96 departements metropolitains",
+        title="96 metropolitan departments",
     )
     fig.update_traces(marker=dict(size=8, color="#1f77b4"))
     fig.update_layout(height=700)
