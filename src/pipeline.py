@@ -176,7 +176,7 @@ def run_merge() -> None:
         logger.error("ML dataset empty! Check source data.")
     else:
         logger.info(
-            "Dataset ML construit : %d lignes × %d colonnes",
+            "ML dataset built: %d rows × %d columns",
             len(df_ml), len(df_ml.columns),
         )
 
