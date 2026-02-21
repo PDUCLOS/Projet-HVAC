@@ -109,15 +109,15 @@ class EDAAnalyzer:
         filepath = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not filepath.exists():
             raise FileNotFoundError(
-                f"Features dataset introuvable : {filepath}. "
-                f"Exécuter 'python -m src.pipeline process' d'abord."
+                f"Features dataset not found: {filepath}. "
+                f"Run 'python -m src.pipeline process' first."
             )
 
         df = pd.read_csv(filepath)
         df["dept"] = df["dept"].astype(str).str.zfill(2)
         df["date"] = pd.to_datetime(df["date_id"].astype(str), format="%Y%m")
 
-        logger.info("Dataset chargé : %d lignes × %d colonnes", len(df), len(df.columns))
+        logger.info("Dataset loaded: %d rows × %d columns", len(df), len(df.columns))
         return df
 
     def _ensure_dirs(self) -> None:
@@ -151,7 +151,7 @@ class EDAAnalyzer:
             Dictionary with key dataset metrics.
         """
         df = self.df
-        logger.info("=== VUE D'ENSEMBLE ===")
+        logger.info("=== OVERVIEW ===")
 
         stats = {
             "shape": df.shape,
@@ -183,7 +183,7 @@ class EDAAnalyzer:
         # Keep only columns with at least 1 NaN
         nan_cols = df.columns[df.isna().any()].tolist()
         if not nan_cols:
-            logger.info("  Aucune valeur manquante — heatmap NaN ignorée.")
+            logger.info("  No missing values — NaN heatmap skipped.")
             return Path()
 
         # Calculate % of NaN per column
@@ -193,8 +193,8 @@ class EDAAnalyzer:
         bars = ax.barh(range(len(nan_pct)), nan_pct.values, color="#e74c3c", alpha=0.8)
         ax.set_yticks(range(len(nan_pct)))
         ax.set_yticklabels(nan_pct.index, fontsize=9)
-        ax.set_xlabel("% de valeurs manquantes")
-        ax.set_title("Valeurs manquantes par feature")
+        ax.set_xlabel("% Missing Values")
+        ax.set_title("Missing Values by Feature")
         ax.invert_yaxis()
 
         # Add values on the bars
@@ -218,16 +218,16 @@ class EDAAnalyzer:
         targets = [c for c in self.TARGET_COLS if c in df.columns]
 
         fig, axes = plt.subplots(2, 2, figsize=(14, 10))
-        fig.suptitle("Distribution des variables cibles", fontsize=16, y=1.02)
+        fig.suptitle("Target Variable Distributions", fontsize=16, y=1.02)
 
         for ax, col in zip(axes.flat, targets):
             data = df[col].dropna()
             ax.hist(data, bins=30, color="#3498db", alpha=0.7, edgecolor="white")
-            ax.axvline(data.mean(), color="#e74c3c", linestyle="--", label=f"Moyenne: {data.mean():.0f}")
-            ax.axvline(data.median(), color="#2ecc71", linestyle="--", label=f"Médiane: {data.median():.0f}")
+            ax.axvline(data.mean(), color="#e74c3c", linestyle="--", label=f"Mean: {data.mean():.0f}")
+            ax.axvline(data.median(), color="#2ecc71", linestyle="--", label=f"Median: {data.median():.0f}")
             ax.set_title(col)
-            ax.set_xlabel("Valeur")
-            ax.set_ylabel("Fréquence")
+            ax.set_xlabel("Value")
+            ax.set_ylabel("Frequency")
             ax.legend(fontsize=9)
 
         plt.tight_layout()
@@ -246,7 +246,7 @@ class EDAAnalyzer:
         nrows = (n + ncols - 1) // ncols
 
         fig, axes = plt.subplots(nrows, ncols, figsize=(16, 4 * nrows))
-        fig.suptitle("Distribution des features clés", fontsize=16, y=1.02)
+        fig.suptitle("Key Feature Distributions", fontsize=16, y=1.02)
 
         for i, (ax, col) in enumerate(zip(axes.flat, features)):
             data = df[col].dropna()
@@ -284,9 +284,9 @@ class EDAAnalyzer:
                 linewidth=1.5, alpha=0.85,
             )
 
-        ax.set_title("Installations PAC par mois et département", fontsize=15)
+        ax.set_title("Heat Pump Installations by Month and Department", fontsize=15)
         ax.set_xlabel("Date")
-        ax.set_ylabel("Nombre d'installations PAC")
+        ax.set_ylabel("Heat Pump Installation Count")
         ax.legend(loc="upper left", fontsize=9, ncol=2)
         ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=3))
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y-%m"))
@@ -313,9 +313,9 @@ class EDAAnalyzer:
                 linewidth=1.5, alpha=0.85,
             )
 
-        ax.set_title("DPE totaux par mois et département", fontsize=15)
+        ax.set_title("Total DPE by Month and Department", fontsize=15)
         ax.set_xlabel("Date")
-        ax.set_ylabel("Nombre de DPE")
+        ax.set_ylabel("DPE Count")
         ax.legend(loc="upper left", fontsize=9, ncol=2)
         ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(interval=3))
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%Y-%m"))
@@ -348,9 +348,9 @@ class EDAAnalyzer:
                  linewidth=2, marker="o", markersize=3, label="PAC")
         ax2.plot(agg["date"], agg["nb_installations_clim"], color="#3498db",
                  linewidth=2, marker="s", markersize=3, label="Climatisation")
-        ax2.set_ylabel("Installations PAC / Clim (lignes)")
+        ax2.set_ylabel("Heat Pump / AC Installations (lines)")
 
-        ax1.set_title("France — Volume DPE et installations PAC/Clim", fontsize=15)
+        ax1.set_title("France — DPE Volume and Heat Pump/AC Installations", fontsize=15)
         ax1.set_xlabel("Date")
 
         # Combine legends
@@ -377,16 +377,16 @@ class EDAAnalyzer:
         # Heat pumps by month
         sns.boxplot(data=df, x="month", y="nb_installations_pac",
                     palette="coolwarm", ax=axes[0])
-        axes[0].set_title("Saisonnalité des installations PAC")
-        axes[0].set_xlabel("Mois")
-        axes[0].set_ylabel("Installations PAC")
+        axes[0].set_title("Seasonality of Heat Pump Installations")
+        axes[0].set_xlabel("Month")
+        axes[0].set_ylabel("Heat Pump Installations")
 
         # Air conditioning by month
         sns.boxplot(data=df, x="month", y="nb_installations_clim",
                     palette="YlOrRd", ax=axes[1])
-        axes[1].set_title("Saisonnalité des installations Climatisation")
-        axes[1].set_xlabel("Mois")
-        axes[1].set_ylabel("Installations Clim")
+        axes[1].set_title("Seasonality of AC Installations")
+        axes[1].set_xlabel("Month")
+        axes[1].set_ylabel("AC Installations")
 
         plt.tight_layout()
         return self._save_fig("07_seasonality_boxplots")
@@ -412,9 +412,9 @@ class EDAAnalyzer:
             pivot, annot=True, fmt=".0f", cmap="YlOrRd",
             linewidths=0.5, ax=ax,
         )
-        ax.set_title("Installations PAC moyennes : département × mois", fontsize=14)
-        ax.set_xlabel("Mois")
-        ax.set_ylabel("Département")
+        ax.set_title("Average Heat Pump Installations: Department × Month", fontsize=14)
+        ax.set_xlabel("Month")
+        ax.set_ylabel("Department")
 
         return self._save_fig("08_heatmap_dept_month")
 
@@ -441,7 +441,7 @@ class EDAAnalyzer:
         agg = agg.sort_values("nb_dpe_total", ascending=True)
 
         fig, axes = plt.subplots(1, 3, figsize=(18, 7))
-        fig.suptitle("Comparaison des départements", fontsize=16, y=1.02)
+        fig.suptitle("Department Comparison", fontsize=16, y=1.02)
 
         for ax, col, color, title in zip(
             axes,
@@ -451,7 +451,7 @@ class EDAAnalyzer:
         ):
             ax.barh(agg["dept_label"], agg[col], color=color, alpha=0.8)
             ax.set_title(title, fontsize=13)
-            ax.set_xlabel("Volume total")
+            ax.set_xlabel("Total Volume")
             # Add values
             for i, v in enumerate(agg[col]):
                 ax.text(v + agg[col].max() * 0.01, i, f"{v:,.0f}",
@@ -472,8 +472,8 @@ class EDAAnalyzer:
 
         fig, ax = plt.subplots(figsize=(12, 6))
         bars = ax.barh(labels, pct.values, color=[self.DEPT_COLORS.get(d, "#333") for d in pct.index])
-        ax.set_xlabel("Taux moyen de PAC (%)")
-        ax.set_title("Taux moyen de pompes à chaleur par département", fontsize=14)
+        ax.set_xlabel("Average Heat Pump Rate (%)")
+        ax.set_title("Average Heat Pump Rate by Department", fontsize=14)
 
         for bar, val in zip(bars, pct.values):
             ax.text(bar.get_width() + 0.05, bar.get_y() + bar.get_height() / 2,
@@ -498,7 +498,7 @@ class EDAAnalyzer:
         nrows = (n + ncols - 1) // ncols
 
         fig, axes = plt.subplots(nrows, ncols, figsize=(18, 5 * nrows))
-        fig.suptitle("Features clés vs Installations PAC", fontsize=16, y=1.02)
+        fig.suptitle("Key Features vs Heat Pump Installations", fontsize=16, y=1.02)
 
         for i, (ax, feat) in enumerate(zip(axes.flat, features)):
             valid = df[[feat, "nb_installations_pac"]].dropna()
@@ -536,28 +536,28 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df.copy()
-        df["saison"] = df["month"].map(lambda m: (
-            "Hiver" if m in [12, 1, 2] else
-            "Printemps" if m in [3, 4, 5] else
-            "Été" if m in [6, 7, 8] else "Automne"
+        df["season"] = df["month"].map(lambda m: (
+            "Winter" if m in [12, 1, 2] else
+            "Spring" if m in [3, 4, 5] else
+            "Summer" if m in [6, 7, 8] else "Fall"
         ))
         season_colors = {
-            "Hiver": "#3498db", "Printemps": "#2ecc71",
-            "Été": "#e74c3c", "Automne": "#f39c12",
+            "Winter": "#3498db", "Spring": "#2ecc71",
+            "Summer": "#e74c3c", "Fall": "#f39c12",
         }
 
         fig, ax = plt.subplots(figsize=(12, 8))
-        for saison, color in season_colors.items():
-            mask = df["saison"] == saison
+        for season, color in season_colors.items():
+            mask = df["season"] == season
             ax.scatter(
                 df.loc[mask, "temp_mean"],
                 df.loc[mask, "nb_installations_pac"],
-                c=color, label=saison, alpha=0.6, s=30,
+                c=color, label=season, alpha=0.6, s=30,
             )
 
-        ax.set_title("Température moyenne vs Installations PAC (par saison)", fontsize=14)
-        ax.set_xlabel("Température moyenne (°C)")
-        ax.set_ylabel("Installations PAC")
+        ax.set_title("Average Temperature vs Heat Pump Installations (by Season)", fontsize=14)
+        ax.set_xlabel("Average Temperature (°C)")
+        ax.set_ylabel("Heat Pump Installations")
         ax.legend(fontsize=11)
 
         return self._save_fig("12_temp_vs_pac_by_season")
@@ -580,23 +580,23 @@ class EDAAnalyzer:
 
         buf = StringIO()
         buf.write("=" * 70 + "\n")
-        buf.write("  RAPPORT EDA — HVAC Market Analysis (France)\n")
+        buf.write("  EDA REPORT — HVAC Market Analysis (France)\n")
         buf.write("=" * 70 + "\n\n")
 
         # 1. Overview
-        buf.write("1. VUE D'ENSEMBLE\n")
+        buf.write("1. OVERVIEW\n")
         buf.write("-" * 40 + "\n")
         for key, val in stats.items():
             buf.write(f"  {key}: {val}\n")
 
         # 2. Descriptive statistics of targets
-        buf.write("\n\n2. STATISTIQUES DESCRIPTIVES — VARIABLES CIBLES\n")
+        buf.write("\n\n2. DESCRIPTIVE STATISTICS — TARGET VARIABLES\n")
         buf.write("-" * 40 + "\n")
         targets = [c for c in self.TARGET_COLS if c in df.columns]
         buf.write(df[targets].describe().to_string())
 
         # 3. Statistics by department
-        buf.write("\n\n\n3. VOLUMES PAR DÉPARTEMENT\n")
+        buf.write("\n\n\n3. VOLUMES BY DEPARTMENT\n")
         buf.write("-" * 40 + "\n")
         dept_stats = df.groupby("dept").agg({
             "nb_dpe_total": ["sum", "mean"],
@@ -606,16 +606,16 @@ class EDAAnalyzer:
         buf.write(dept_stats.to_string())
 
         # 4. Seasonality
-        buf.write("\n\n\n4. SAISONNALITÉ — PAC PAR MOIS (MOYENNE TOUS DEPTS)\n")
+        buf.write("\n\n\n4. SEASONALITY — HEAT PUMPS BY MONTH (ALL DEPT AVERAGE)\n")
         buf.write("-" * 40 + "\n")
         month_avg = df.groupby("month")["nb_installations_pac"].mean().round(1)
         for m, v in month_avg.items():
-            mois_fr = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun",
-                       "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
-            buf.write(f"  {mois_fr[m-1]:>3}: {v:>8.1f}\n")
+            months_en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            buf.write(f"  {months_en[m-1]:>3}: {v:>8.1f}\n")
 
         # 5. Top correlations
-        buf.write("\n\n5. TOP CORRÉLATIONS AVEC nb_installations_pac\n")
+        buf.write("\n\n5. TOP CORRELATIONS WITH nb_installations_pac\n")
         buf.write("-" * 40 + "\n")
         numeric = df.select_dtypes(include=[np.number])
         if "nb_installations_pac" in numeric.columns:
@@ -628,7 +628,7 @@ class EDAAnalyzer:
 
         report_text = buf.getvalue()
         report_path.write_text(report_text, encoding="utf-8")
-        logger.info("Rapport EDA sauvegardé : %s", report_path)
+        logger.info("EDA report saved: %s", report_path)
 
         return report_path
 
@@ -643,7 +643,7 @@ class EDAAnalyzer:
             Dictionary with paths to generated files and stats.
         """
         logger.info("=" * 60)
-        logger.info("  Phase 3 — Analyse Exploratoire (EDA)")
+        logger.info("  Phase 3 — Exploratory Data Analysis (EDA)")
         logger.info("=" * 60)
 
         self._ensure_dirs()
@@ -656,7 +656,7 @@ class EDAAnalyzer:
         results["stats"] = stats
 
         # 2. NaN heatmap
-        logger.info("Graphiques NaN...")
+        logger.info("NaN charts...")
         fig_path = self.plot_nan_heatmap()
         if fig_path.name:
             results["figures"].append(str(fig_path))
@@ -667,30 +667,30 @@ class EDAAnalyzer:
         results["figures"].append(str(self.plot_feature_distributions()))
 
         # 4. Time series
-        logger.info("Séries temporelles...")
+        logger.info("Time series...")
         results["figures"].append(str(self.plot_timeseries_pac()))
         results["figures"].append(str(self.plot_timeseries_dpe_total()))
         results["figures"].append(str(self.plot_timeseries_aura_aggregated()))
 
         # 5. Seasonality
-        logger.info("Saisonnalité...")
+        logger.info("Seasonality...")
         results["figures"].append(str(self.plot_seasonality_boxplots()))
         results["figures"].append(str(self.plot_heatmap_dept_month()))
 
         # 6. Geography
-        logger.info("Comparaison départements...")
+        logger.info("Department comparison...")
         results["figures"].append(str(self.plot_dept_comparison()))
         results["figures"].append(str(self.plot_pct_pac_by_dept()))
 
         # 7. Relationships
-        logger.info("Scatter plots features vs cible...")
+        logger.info("Scatter plots features vs target...")
         results["figures"].append(str(self.plot_scatter_features_vs_target()))
         results["figures"].append(str(self.plot_temp_vs_pac_by_season()))
 
         # 8. Text report
-        logger.info("Génération du rapport texte...")
+        logger.info("Generating text report...")
         report_path = self.generate_text_report(stats)
         results["report"] = str(report_path)
 
-        logger.info("EDA terminée : %d graphiques générés.", len(results["figures"]))
+        logger.info("EDA complete: %d charts generated.", len(results["figures"]))
         return results
