@@ -3,13 +3,13 @@
 HVAC Market Analysis — Source Package
 =====================================
 
-Pipeline complet d'analyse et de prédiction du marché HVAC
-en région Auvergne-Rhône-Alpes.
+Complete analysis and prediction pipeline for the HVAC market
+in the Auvergne-Rhône-Alpes region.
 
 Modules:
-    collectors  — Collecte multi-sources (météo, INSEE, DPE, etc.)
-    processing  — Nettoyage, fusion, feature engineering
-    database    — Gestion base de données (schéma en étoile)
-    analysis    — Analyse exploratoire et corrélations
-    models      — Modèles ML/DL et évaluation
+    collectors  — Multi-source data collection (weather, INSEE, DPE, etc.)
+    processing  — Cleaning, merging, feature engineering
+    database    — Database management (star schema)
+    analysis    — Exploratory data analysis and correlations
+    models      — ML/DL models and evaluation
 """

@@ -224,8 +224,8 @@ def generate_sitadel():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("  GENERATION DE DONNEES DE DEMONSTRATION")
-    print("  96 departements x 2019-2025")
+    print("  DEMO DATA GENERATION")
+    print("  96 departments x 2019-2025")
     print("=" * 60)
 
     generate_weather()
@@ -235,9 +235,9 @@ if __name__ == "__main__":
     generate_dpe()
 
     print("=" * 60)
-    print("  GENERATION TERMINEE")
+    print("  GENERATION COMPLETE")
     print("=" * 60)
-    print("\nPour lancer le pipeline complet :")
+    print("\nTo run the full pipeline:")
     print("  python -m src.pipeline process")
     print("  python -m src.pipeline train")
     print("  streamlit run app/app.py")
