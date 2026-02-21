@@ -223,7 +223,7 @@ class OutlierDetector:
         # Keep only present and non-NaN columns
         available_cols = [c for c in columns if c in df.columns]
         if len(available_cols) < 2:
-            self.logger.warning("Pas assez de colonnes pour Isolation Forest")
+            self.logger.warning("Not enough columns for Isolation Forest")
             return {"n_outliers": 0, "indices": [], "scores": []}
 
         # Impute NaN with median for Isolation Forest
@@ -231,7 +231,7 @@ class OutlierDetector:
         df_if = df_if.fillna(df_if.median())
 
         if len(df_if) < 10:
-            self.logger.warning("Pas assez de donnees pour Isolation Forest")
+            self.logger.warning("Not enough data for Isolation Forest")
             return {"n_outliers": 0, "indices": [], "scores": []}
 
         # Adjust contamination to the dataset
@@ -283,14 +283,14 @@ class OutlierDetector:
             the detection report.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  DETECTION DES OUTLIERS")
+        self.logger.info("  OUTLIER DETECTION")
         self.logger.info("=" * 60)
 
         df = df.copy()
         report: Dict[str, Any] = {"n_rows": len(df)}
 
         # 1. IQR
-        self.logger.info("  Methode 1 : IQR (Tukey, factor=%.1f)...", self.iqr_factor)
+        self.logger.info("  Method 1: IQR (Tukey, factor=%.1f)...", self.iqr_factor)
         iqr_results = self.detect_iqr(df, columns)
         report["iqr"] = iqr_results
 
@@ -301,12 +301,12 @@ class OutlierDetector:
 
         n_iqr = df["_outlier_iqr"].sum()
         self.logger.info(
-            "    IQR : %d outliers (%d colonnes affectees)",
+            "    IQR: %d outliers (%d columns affected)",
             n_iqr, len(iqr_results),
         )
 
         # 2. Modified Z-score
-        self.logger.info("  Methode 2 : Z-score modifie (seuil=%.1f)...", self.zscore_threshold)
+        self.logger.info("  Method 2: Modified Z-score (threshold=%.1f)...", self.zscore_threshold)
         zscore_results = self.detect_zscore_modified(df, columns)
         report["zscore"] = zscore_results
 
@@ -317,12 +317,12 @@ class OutlierDetector:
 
         n_zscore = df["_outlier_zscore"].sum()
         self.logger.info(
-            "    Z-score : %d outliers (%d colonnes affectees)",
+            "    Z-score: %d outliers (%d columns affected)",
             n_zscore, len(zscore_results),
         )
 
         # 3. Isolation Forest
-        self.logger.info("  Methode 3 : Isolation Forest (contamination=%.2f)...", self.contamination)
+        self.logger.info("  Method 3: Isolation Forest (contamination=%.2f)...", self.contamination)
         iforest_results = self.detect_isolation_forest(df, columns)
         report["isolation_forest"] = iforest_results
 
@@ -349,9 +349,9 @@ class OutlierDetector:
         }
 
         self.logger.info("-" * 40)
-        self.logger.info("  RESUME :")
+        self.logger.info("  SUMMARY:")
         self.logger.info("    IQR              : %d outliers (%.1f%%)", n_iqr, 100 * n_iqr / len(df))
-        self.logger.info("    Z-score modifie  : %d outliers (%.1f%%)", n_zscore, 100 * n_zscore / len(df))
+        self.logger.info("    Modified Z-score : %d outliers (%.1f%%)", n_zscore, 100 * n_zscore / len(df))
         self.logger.info("    Isolation Forest : %d outliers (%.1f%%)", n_iforest, 100 * n_iforest / len(df))
         self.logger.info("    Consensus (>=2)  : %d outliers (%.1f%%)", n_consensus, 100 * n_consensus / len(df))
         self.logger.info("=" * 60)
@@ -395,7 +395,7 @@ class OutlierDetector:
         if strategy == "remove":
             return self._apply_remove(df_flagged, use_consensus, report)
 
-        self.logger.error("Strategie inconnue : %s", strategy)
+        self.logger.error("Unknown strategy: %s", strategy)
         return df_flagged, report
 
     def _apply_clip(
@@ -444,7 +444,7 @@ class OutlierDetector:
 
         report["clip_details"] = clip_details
         report["total_clipped"] = n_clipped
-        self.logger.info("  Winsorization : %d valeurs clippees", n_clipped)
+        self.logger.info("  Winsorization: %d values clipped", n_clipped)
 
         return df, report
 
@@ -462,7 +462,7 @@ class OutlierDetector:
 
         report["n_removed"] = n_removed
         self.logger.info(
-            "  Suppression : %d lignes retirees (%s)",
+            "  Removal: %d rows removed (%s)",
             n_removed, col,
         )
 
@@ -511,7 +511,7 @@ class OutlierDetector:
                     })
 
         self.logger.info(
-            "  Anomalies temporelles : %d detectees (seuil=%.0f%%)",
+            "  Temporal anomalies: %d detected (threshold=%.0f%%)",
             len(anomalies), threshold_pct,
         )
         return {"anomalies": anomalies, "threshold_pct": threshold_pct}
@@ -538,29 +538,29 @@ class OutlierDetector:
         """
         lines = [
             "=" * 70,
-            "RAPPORT DE DETECTION DES OUTLIERS",
+            "OUTLIER DETECTION REPORT",
             "=" * 70,
-            f"Dataset : {report.get('n_rows', len(df))} lignes",
-            f"Strategie appliquee : {report.get('strategy', 'flag')}",
+            f"Dataset: {report.get('n_rows', len(df))} rows",
+            f"Applied strategy: {report.get('strategy', 'flag')}",
             "",
         ]
 
         # IQR
-        lines.append("--- METHODE 1 : IQR (Tukey, factor=%.1f) ---" % self.iqr_factor)
+        lines.append("--- METHOD 1: IQR (Tukey, factor=%.1f) ---" % self.iqr_factor)
         iqr = report.get("iqr", {})
         if iqr:
             for col, info in iqr.items():
                 lines.append(
-                    "  %-35s : %3d outliers (%5.1f%%) | bornes [%.2f, %.2f]"
+                    "  %-35s : %3d outliers (%5.1f%%) | bounds [%.2f, %.2f]"
                     % (col, info["n_outliers"], info["pct"],
                        info["lower_bound"], info["upper_bound"])
                 )
         else:
-            lines.append("  Aucun outlier IQR detecte.")
+            lines.append("  No IQR outliers detected.")
         lines.append("")
 
         # Z-score
-        lines.append("--- METHODE 2 : Z-score modifie (seuil=%.1f) ---" % self.zscore_threshold)
+        lines.append("--- METHOD 2: Modified Z-score (threshold=%.1f) ---" % self.zscore_threshold)
         zscore = report.get("zscore", {})
         if zscore:
             for col, info in zscore.items():
@@ -569,54 +569,54 @@ class OutlierDetector:
                     % (col, info["n_outliers"], info["pct"])
                 )
         else:
-            lines.append("  Aucun outlier Z-score detecte.")
+            lines.append("  No Z-score outliers detected.")
         lines.append("")
 
         # Isolation Forest
-        lines.append("--- METHODE 3 : Isolation Forest ---")
+        lines.append("--- METHOD 3: Isolation Forest ---")
         iforest = report.get("isolation_forest", {})
         lines.append(
-            "  Outliers multivaries : %d (%.1f%%)"
+            "  Multivariate outliers: %d (%.1f%%)"
             % (iforest.get("n_outliers", 0), iforest.get("pct", 0))
         )
         lines.append("")
 
         # Consensus
-        lines.append("--- CONSENSUS (>= 2 methodes) ---")
+        lines.append("--- CONSENSUS (>= 2 methods) ---")
         consensus = report.get("consensus", {})
         lines.append(
-            "  Outliers confirmes : %d (%.1f%%)"
+            "  Confirmed outliers: %d (%.1f%%)"
             % (consensus.get("n_outliers", 0), consensus.get("pct", 0))
         )
         lines.append("")
 
         # Clipping
         if "clip_details" in report:
-            lines.append("--- WINSORIZATION APPLIQUEE ---")
+            lines.append("--- WINSORIZATION APPLIED ---")
             for col, info in report["clip_details"].items():
                 lines.append(
-                    "  %-35s : %3d valeurs clippees | bornes [%.2f, %.2f]"
+                    "  %-35s : %3d values clipped | bounds [%.2f, %.2f]"
                     % (col, info["n_clipped"], info["lower"], info["upper"])
                 )
             lines.append(
-                "  Total valeurs modifiees : %d" % report.get("total_clipped", 0)
+                "  Total values modified: %d" % report.get("total_clipped", 0)
             )
             lines.append("")
 
         # Temporal anomalies
         if temporal_report and temporal_report.get("anomalies"):
-            lines.append("--- ANOMALIES TEMPORELLES ---")
+            lines.append("--- TEMPORAL ANOMALIES ---")
             lines.append(
-                "  Seuil de variation : %.0f%%" % temporal_report["threshold_pct"]
+                "  Variation threshold: %.0f%%" % temporal_report["threshold_pct"]
             )
             for a in temporal_report["anomalies"][:20]:
                 lines.append(
-                    "  Dept %s | %d | %s %+.1f%% (valeur=%.0f)"
+                    "  Dept %s | %d | %s %+.1f%% (value=%.0f)"
                     % (a["dept"], a["date_id"], a["type"], a["pct_change"], a["value"])
                 )
             total = len(temporal_report["anomalies"])
             if total > 20:
-                lines.append("  ... et %d autres anomalies" % (total - 20))
+                lines.append("  ... and %d more anomalies" % (total - 20))
             lines.append("")
 
         lines.append("=" * 70)
@@ -625,7 +625,7 @@ class OutlierDetector:
         report_text = "\n".join(lines)
         path = self.report_dir / "outlier_report.txt"
         path.write_text(report_text, encoding="utf-8")
-        self.logger.info("Rapport outliers sauvegarde → %s", path)
+        self.logger.info("Outlier report saved → %s", path)
 
         return path
 

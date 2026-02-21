@@ -85,30 +85,30 @@ class DatasetMerger:
             ML-ready DataFrame with all features and target variables.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  PHASE 2.4 — Fusion multi-sources → Dataset ML")
+        self.logger.info("  PHASE 2.4 — Multi-source Merge → ML Dataset")
         self.logger.info("=" * 60)
 
         # 1. Target variable: DPE aggregated by month x department
         df_dpe = self._prepare_dpe_target()
         if df_dpe is None or df_dpe.empty:
-            self.logger.error("Impossible de construire le dataset : DPE manquants")
+            self.logger.error("Cannot build dataset: DPE data missing")
             return pd.DataFrame()
         self.logger.info(
-            "  DPE cible : %d lignes (mois × dept)", len(df_dpe),
+            "  DPE target: %d rows (month × dept)", len(df_dpe),
         )
 
         # 2. Weather features (month x department)
         df_meteo = self._prepare_weather_features()
         if df_meteo is not None:
             self.logger.info(
-                "  Météo features : %d lignes", len(df_meteo),
+                "  Weather features: %d rows", len(df_meteo),
             )
 
         # 3. Economic features (month, national)
         df_eco = self._prepare_economic_features()
         if df_eco is not None:
             self.logger.info(
-                "  Économie features : %d lignes", len(df_eco),
+                "  Economic features: %d rows", len(df_eco),
             )
 
         # 4. Progressive merging
@@ -124,7 +124,7 @@ class DatasetMerger:
                 suffixes=("", "_meteo"),
             )
             self.logger.info(
-                "  Après fusion météo : %d lignes × %d colonnes",
+                "  After weather merge: %d rows × %d columns",
                 len(df), len(df.columns),
             )
 
@@ -137,7 +137,7 @@ class DatasetMerger:
                 suffixes=("", "_eco"),
             )
             self.logger.info(
-                "  Après fusion économie : %d lignes × %d colonnes",
+                "  After economic merge: %d rows × %d columns",
                 len(df), len(df.columns),
             )
 
@@ -154,7 +154,7 @@ class DatasetMerger:
         )
         df = df[df["date_id"] >= dpe_start].copy()
         self.logger.info(
-            "  Après filtre DPE v2 (>= %d) : %d lignes", dpe_start, len(df),
+            "  After DPE v2 filter (>= %d): %d rows", dpe_start, len(df),
         )
 
         # 8. Final sort
@@ -163,11 +163,11 @@ class DatasetMerger:
         # 9. Log the final dataset
         self.logger.info("=" * 60)
         self.logger.info("  DATASET ML-READY")
-        self.logger.info("  Dimensions : %d lignes × %d colonnes", len(df), len(df.columns))
-        self.logger.info("  Colonnes : %s", list(df.columns))
-        self.logger.info("  Période : %d → %d", df["date_id"].min(), df["date_id"].max())
+        self.logger.info("  Dimensions: %d rows × %d columns", len(df), len(df.columns))
+        self.logger.info("  Columns: %s", list(df.columns))
+        self.logger.info("  Period: %d → %d", df["date_id"].min(), df["date_id"].max())
         self.logger.info(
-            "  Départements : %s",
+            "  Departments: %s",
             sorted(df["dept"].unique().tolist()),
         )
 
@@ -175,16 +175,16 @@ class DatasetMerger:
         null_pct = df.isna().mean() * 100
         cols_with_nulls = null_pct[null_pct > 0].sort_values(ascending=False)
         if len(cols_with_nulls) > 0:
-            self.logger.info("  Colonnes avec NaN :")
+            self.logger.info("  Columns with NaN:")
             for col, pct in cols_with_nulls.items():
                 self.logger.info("    %-30s : %.1f%% NaN", col, pct)
         else:
-            self.logger.info("  Aucun NaN dans le dataset ✓")
+            self.logger.info("  No NaN in dataset ✓")
         self.logger.info("=" * 60)
 
         # 10. Save
         output_path = self._save_ml_dataset(df)
-        self.logger.info("  ✓ Dataset ML sauvegardé → %s", output_path)
+        self.logger.info("  ✓ ML dataset saved → %s", output_path)
 
         return df
 
@@ -212,17 +212,17 @@ class DatasetMerger:
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():
-            self.logger.error("Fichier DPE introuvable : ni %s ni %s", clean_path, raw_path)
+            self.logger.error("DPE file not found: neither %s nor %s", clean_path, raw_path)
             return None
 
-        self.logger.info("  Lecture DPE depuis %s...", filepath.name)
+        self.logger.info("  Reading DPE from %s...", filepath.name)
 
         # Detect if the file contains pre-computed columns
         # (cleaned file has them, raw file does not)
         sample = pd.read_csv(filepath, nrows=2)
         has_precalc = "is_pac" in sample.columns
         self.logger.info(
-            "  Colonnes pré-calculées : %s", "oui" if has_precalc else "non",
+            "  Pre-computed columns: %s", "yes" if has_precalc else "no",
         )
 
         # Read in chunks (low_memory=False to avoid DtypeWarning)
@@ -313,7 +313,7 @@ class DatasetMerger:
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():
-            self.logger.warning("Fichier météo introuvable")
+            self.logger.warning("Weather file not found")
             return None
 
         df = pd.read_csv(filepath)
@@ -328,7 +328,7 @@ class DatasetMerger:
         if "dept" in df.columns:
             df["dept"] = df["dept"].astype(str).str.zfill(2)
         else:
-            self.logger.error("  Colonne 'dept' manquante dans météo")
+            self.logger.error("  Column 'dept' missing in weather data")
             return None
 
         # Aggregation columns
@@ -582,7 +582,7 @@ class DatasetMerger:
         df.to_csv(output_path, index=False)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         self.logger.info(
-            "Dataset ML : %d lignes × %d cols → %s (%.1f Mo)",
+            "ML dataset: %d rows × %d cols → %s (%.1f MB)",
             len(df), len(df.columns), output_path, size_mb,
         )
         return output_path

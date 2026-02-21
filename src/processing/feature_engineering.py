@@ -101,7 +101,7 @@ class FeatureEngineer:
         self.logger.info("=" * 60)
         self.logger.info("  FEATURE ENGINEERING")
         self.logger.info("=" * 60)
-        self.logger.info("  Dataset en entrée : %d lignes × %d colonnes", len(df), len(df.columns))
+        self.logger.info("  Input dataset: %d rows × %d columns", len(df), len(df.columns))
 
         n_cols_start = len(df.columns)
 
@@ -128,13 +128,13 @@ class FeatureEngineer:
 
         n_cols_end = len(df.columns)
         self.logger.info(
-            "  Features ajoutées : %d nouvelles colonnes (%d → %d)",
+            "  Features added: %d new columns (%d → %d)",
             n_cols_end - n_cols_start, n_cols_start, n_cols_end,
         )
 
         # Save the enriched dataset
         output_path = self._save_features(df)
-        self.logger.info("  ✓ Features sauvegardées → %s", output_path)
+        self.logger.info("  ✓ Features saved → %s", output_path)
         self.logger.info("=" * 60)
 
         return df
@@ -154,12 +154,12 @@ class FeatureEngineer:
         ml_path = self.config.features_data_dir / "hvac_ml_dataset.csv"
         if not ml_path.exists():
             raise FileNotFoundError(
-                f"Dataset ML introuvable : {ml_path}. "
-                f"Lancer d'abord 'python -m src.pipeline merge'."
+                f"ML dataset not found: {ml_path}. "
+                f"Run 'python -m src.pipeline merge' first."
             )
 
         df = pd.read_csv(ml_path)
-        self.logger.info("  Chargé %s : %d lignes", ml_path.name, len(df))
+        self.logger.info("  Loaded %s: %d rows", ml_path.name, len(df))
         return self.engineer(df)
 
     # ==================================================================
@@ -206,7 +206,7 @@ class FeatureEngineer:
                 n_features += 1
 
         self.logger.info(
-            "  Lags : %d features (colonnes=%d, lags=%s)",
+            "  Lags: %d features (columns=%d, lags=%s)",
             n_features, len(lag_cols), lags,
         )
         return df
@@ -256,7 +256,7 @@ class FeatureEngineer:
                 n_features += 1
 
         self.logger.info(
-            "  Rolling : %d features (colonnes=%d, windows=%s)",
+            "  Rolling: %d features (columns=%d, windows=%s)",
             n_features, len(roll_cols), self.rolling_windows,
         )
         return df
@@ -303,7 +303,7 @@ class FeatureEngineer:
             n_features += 1
 
         self.logger.info(
-            "  Variations : %d features (colonnes=%d)", n_features, len(var_cols),
+            "  Variations: %d features (columns=%d)", n_features, len(var_cols),
         )
         return df
 
@@ -359,7 +359,7 @@ class FeatureEngineer:
             df["jours_extremes"] = df["nb_jours_canicule"] + df["nb_jours_gel"]
             n_features += 1
 
-        self.logger.info("  Interactions : %d features", n_features)
+        self.logger.info("  Interactions: %d features", n_features)
         return df
 
     # ==================================================================
@@ -397,7 +397,7 @@ class FeatureEngineer:
             df["delta_temp_vs_mean"] = (df["temp_mean"] - temp_avg).round(2)
             n_features += 1
 
-        self.logger.info("  Tendance : %d features", n_features)
+        self.logger.info("  Trend: %d features", n_features)
         return df
 
     # ==================================================================
@@ -430,7 +430,7 @@ class FeatureEngineer:
         ).round(1)
 
         self.logger.info(
-            "  Complétude : min=%.0f%%, median=%.0f%%, max=%.0f%%",
+            "  Completeness: min=%.0f%%, median=%.0f%%, max=%.0f%%",
             df["pct_valid_features"].min(),
             df["pct_valid_features"].median(),
             df["pct_valid_features"].max(),
@@ -457,7 +457,7 @@ class FeatureEngineer:
         df.to_csv(output_path, index=False)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         self.logger.info(
-            "Features dataset : %d lignes × %d cols → %s (%.1f Mo)",
+            "Features dataset: %d rows × %d cols → %s (%.1f MB)",
             len(df), len(df.columns), output_path, size_mb,
         )
         return output_path
