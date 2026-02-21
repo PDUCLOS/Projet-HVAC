@@ -377,7 +377,7 @@ class CorrelationAnalyzer:
             center=0, linewidths=0.5, ax=ax,
         )
         ax.set_title(f"Lag correlations with {target}", fontsize=14)
-        ax.set_xlabel("Horizon du lag")
+        ax.set_xlabel("Lag Horizon")
         ax.set_ylabel("Variable")
 
         return self._save_fig("25_lag_correlations")

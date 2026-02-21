@@ -198,7 +198,7 @@ def run_features() -> None:
     df_features = fe.engineer_from_file()
 
     logger.info(
-        "Features dataset : %d lignes × %d colonnes",
+        "Features dataset: %d rows × %d columns",
         len(df_features), len(df_features.columns),
     )
 

@@ -160,7 +160,7 @@ class LSTMModel:
 
         if len(X_seq_train) < 10:
             self.logger.warning(
-                "  LSTM : trop peu de sequences (%d). Resultats non fiables.",
+                "  LSTM: too few sequences (%d). Results unreliable.",
                 len(X_seq_train),
             )
 
