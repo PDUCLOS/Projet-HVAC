@@ -1,0 +1,85 @@
+# =============================================================================
+# HVAC Market Analysis — Dashboard Deployment + Service
+# =============================================================================
+# Deploiement du dashboard Streamlit (1 replica suffit).
+#
+# kubectl apply -f kubernetes/dashboard-deployment.yaml
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hvac-dashboard
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+    component: dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hvac-market
+      component: dashboard
+  template:
+    metadata:
+      labels:
+        app: hvac-market
+        component: dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: hvac-market:latest
+          command: ["/docker-entrypoint.sh", "dashboard"]
+          ports:
+            - containerPort: 8501
+              name: http
+              protocol: TCP
+          env:
+            - name: DB_TYPE
+              value: "sqlite"
+            - name: DB_PATH
+              value: "/app/data/hvac_market.db"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: hvac-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hvac-dashboard
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+    component: dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8501
+      targetPort: 8501
+      protocol: TCP
+      name: http
+  selector:
+    app: hvac-market
+    component: dashboard

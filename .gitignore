@@ -29,6 +29,8 @@ data/analysis/
 *.zip
 !requirements.txt
 !requirements-dl.txt
+!requirements-api.txt
+!data/sample/
 
 # ---- Base de données ----
 *.db
@@ -44,6 +46,12 @@ data/analysis/
 
 # ---- Jupyter ----
 .ipynb_checkpoints/
+
+# ---- Tests / Coverage ----
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
 
 # ---- Environment / Secrets ----
 .env

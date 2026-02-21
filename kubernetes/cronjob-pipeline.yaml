@@ -1,0 +1,57 @@
+# =============================================================================
+# HVAC Market Analysis — CronJob Pipeline
+# =============================================================================
+# Execute le pipeline de mise a jour le 1er de chaque mois a 6h UTC.
+# Equivalent du DAG Airflow, mais natif Kubernetes.
+#
+# kubectl apply -f kubernetes/cronjob-pipeline.yaml
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hvac-pipeline-monthly
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+    component: pipeline
+spec:
+  schedule: "0 6 1 * *"    # 1er du mois a 6h UTC
+  concurrencyPolicy: Forbid # Pas de run paralleles
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200  # 2h max
+      template:
+        metadata:
+          labels:
+            app: hvac-market
+            component: pipeline
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pipeline
+              image: hvac-market:latest
+              command: ["/docker-entrypoint.sh", "pipeline"]
+              env:
+                - name: DB_TYPE
+                  value: "sqlite"
+                - name: DB_PATH
+                  value: "/app/data/hvac_market.db"
+                - name: LOG_LEVEL
+                  value: "INFO"
+              resources:
+                requests:
+                  memory: "1Gi"
+                  cpu: "500m"
+                limits:
+                  memory: "2Gi"
+                  cpu: "1"
+              volumeMounts:
+                - name: data-volume
+                  mountPath: /app/data
+          volumes:
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: hvac-data-pvc

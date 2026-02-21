@@ -1,0 +1,99 @@
+# =============================================================================
+# HVAC Market Analysis — Docker Compose
+# =============================================================================
+# Demarrage rapide :
+#   docker compose up                   # Tout lancer
+#   docker compose up api               # API seule
+#   docker compose up dashboard         # Dashboard seul
+#   docker compose --profile db up      # Avec PostgreSQL
+#
+# Premiere utilisation avec donnees de demo :
+#   docker compose run --rm pipeline demo
+# =============================================================================
+
+services:
+  # --- API FastAPI (prediction, metriques) ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hvac-api
+    command: api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - DB_TYPE=sqlite
+      - DB_PATH=data/hvac_market.db
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # --- Dashboard Streamlit (visualisation) ---
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hvac-dashboard
+    command: dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - DB_TYPE=sqlite
+      - DB_PATH=data/hvac_market.db
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Pipeline (execution ponctuelle) ---
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hvac-pipeline
+    command: pipeline
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - DB_TYPE=sqlite
+      - DB_PATH=data/hvac_market.db
+      - LOG_LEVEL=INFO
+    profiles:
+      - tools
+
+  # --- PostgreSQL (optionnel, activer avec --profile db) ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: hvac-postgres
+    environment:
+      POSTGRES_DB: hvac_market
+      POSTGRES_USER: hvac_user
+      POSTGRES_PASSWORD: hvac_secure_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hvac_user -d hvac_market"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - db
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local

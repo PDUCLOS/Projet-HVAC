@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+*.egg-info
+
+# Environnements virtuels
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Documentation sources
+docs/
+notebooks/
+*.docx
+*.md
+!README.md
+
+# Donnees (montees en volume)
+data/
+
+# Fichiers temporaires
+*.log
+.DS_Store
+Thumbs.db
+
+# Claude Code
+.claude/
+
+# Tests
+tests/

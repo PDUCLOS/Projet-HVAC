@@ -1,0 +1,22 @@
+# =============================================================================
+# HVAC Market Analysis — PersistentVolumeClaim
+# =============================================================================
+# Stockage persistant pour les donnees, modeles et base SQLite.
+# Les pods API et Dashboard partagent ce volume.
+#
+# kubectl apply -f kubernetes/pvc.yaml
+# =============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hvac-data-pvc
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard

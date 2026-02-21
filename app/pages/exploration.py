@@ -23,7 +23,7 @@ def render():
 
     # --- Chargement ---
     with st.spinner(f"Chargement de {selected}..."):
-        df = _load_dataset(filepath)
+        df = _load_dataset(str(filepath))
 
     if df is None or df.empty:
         st.error(f"Impossible de charger {filepath}")
@@ -128,10 +128,19 @@ def _list_available_datasets() -> dict:
     return datasets
 
 
-def _load_dataset(filepath: Path, max_rows: int = 100_000) -> pd.DataFrame:
-    """Charge un dataset avec limite de lignes."""
+@st.cache_data(ttl=300)
+def _load_dataset(filepath: str, max_rows: int = 100_000) -> pd.DataFrame:
+    """Charge un dataset avec limite de lignes et cache de 5 minutes."""
     try:
-        return pd.read_csv(filepath, nrows=max_rows, low_memory=False)
+        return pd.read_csv(filepath, nrows=max_rows, low_memory=False,
+                           encoding="utf-8")
+    except UnicodeDecodeError:
+        try:
+            return pd.read_csv(filepath, nrows=max_rows, low_memory=False,
+                               encoding="latin-1")
+        except Exception as e:
+            st.error(f"Erreur de lecture : {e}")
+            return pd.DataFrame()
     except Exception as e:
         st.error(f"Erreur de lecture : {e}")
         return pd.DataFrame()

@@ -1,47 +1,48 @@
 # =============================================================================
-# HVAC Market Analysis — Dépendances Python
+# HVAC Market Analysis — Dependances Python
 # =============================================================================
 # Installation : pip install -r requirements.txt
 # Pour le Deep Learning (optionnel) : pip install -r requirements-dl.txt
+# Pour l'API (optionnel) : pip install -r requirements-api.txt
 # =============================================================================
 
-# === Collecte de données ===
-requests>=2.31.0,<3.0.0         # Requêtes HTTP (toutes les APIs)
-eurostat>=1.1.0                  # Package dédié Eurostat
+# === Collecte de donnees ===
+requests>=2.31.0,<3.0.0         # Requetes HTTP (toutes les APIs)
+eurostat>=1.1.0,<2.0.0          # Package dedie Eurostat
 
-# === Traitement de données ===
-pandas>=2.1.0,<3.0.0            # DataFrames et manipulation de données
-numpy>=1.24.0,<2.0.0            # Calcul numérique — borné <2.0 pour compatibilité Prophet
-openpyxl>=3.1.0                  # Lecture/écriture fichiers Excel
+# === Traitement de donnees ===
+pandas>=2.1.0,<3.0.0            # DataFrames et manipulation de donnees
+numpy>=1.24.0,<2.0.0            # Calcul numerique — borne <2.0 pour compatibilite Prophet
+openpyxl>=3.1.0,<4.0.0          # Lecture/ecriture fichiers Excel
 
-# === Base de données ===
+# === Base de donnees ===
 sqlalchemy>=2.0.0,<3.0.0        # ORM et abstraction SQL
-# pyodbc>=5.1.0                  # SQL Server — décommenter si DB_TYPE=mssql
-# psycopg2-binary>=2.9.0        # PostgreSQL — décommenter si DB_TYPE=postgresql
+# pyodbc>=5.1.0                  # SQL Server — decommenter si DB_TYPE=mssql
+# psycopg2-binary>=2.9.0        # PostgreSQL — decommenter si DB_TYPE=postgresql
 
 # === Analyse & Visualisation ===
-matplotlib>=3.7.0                # Graphiques statiques
-seaborn>=0.13.0                  # Graphiques statistiques
-plotly>=5.18.0                   # Graphiques interactifs
-scipy>=1.11.0                    # Fonctions scientifiques
-statsmodels>=0.14.0              # Modèles statistiques et décomposition
+matplotlib>=3.7.0,<4.0.0        # Graphiques statiques
+seaborn>=0.13.0,<1.0.0          # Graphiques statistiques
+plotly>=5.18.0,<6.0.0           # Graphiques interactifs
+scipy>=1.11.0,<2.0.0            # Fonctions scientifiques
+statsmodels>=0.14.0,<1.0.0      # Modeles statistiques et decomposition
 
 # === Machine Learning ===
 scikit-learn>=1.3.0,<2.0.0      # ML classique (Ridge, RandomForest, pipelines)
-xgboost>=2.0.0                   # Gradient boosting
-lightgbm>=4.1.0                  # Gradient boosting (meilleur sur petits datasets)
-prophet>=1.1.5                   # Prédiction de séries temporelles Facebook
-shap>=0.43.0                     # Interprétabilité (feature importance)
+xgboost>=2.0.0,<3.0.0           # Gradient boosting
+lightgbm>=4.1.0,<5.0.0          # Gradient boosting (meilleur sur petits datasets)
+prophet>=1.1.5,<2.0.0           # Prediction de series temporelles Facebook
+shap>=0.43.0,<1.0.0             # Interpretabilite (feature importance)
 
 # === Interface Web ===
-streamlit>=1.30.0                # Dashboard interactif
+streamlit>=1.30.0,<2.0.0        # Dashboard interactif
 
 # === Notebooks ===
-jupyter>=1.0.0                   # Jupyter notebooks
-ipykernel>=6.25.0                # Kernel Python pour Jupyter
+jupyter>=1.0.0,<2.0.0           # Jupyter notebooks
+ipykernel>=6.25.0,<7.0.0        # Kernel Python pour Jupyter
 
 # === Utilitaires ===
-python-dotenv>=1.0.0             # Chargement variables d'environnement
-tqdm>=4.66.0                     # Barres de progression
-lxml>=4.9.0                      # Parsing XML (INSEE SDMX)
-pyarrow>=14.0.0                  # Format Parquet (stockage optimisé)
+python-dotenv>=1.0.0,<2.0.0     # Chargement variables d'environnement
+tqdm>=4.66.0,<5.0.0             # Barres de progression
+lxml>=4.9.0,<6.0.0              # Parsing XML (INSEE SDMX)
+pyarrow>=14.0.0,<18.0.0         # Format Parquet (stockage optimise)

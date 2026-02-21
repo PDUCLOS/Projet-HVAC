@@ -1,0 +1,42 @@
+# =============================================================================
+# HVAC Market Analysis — Configuration Render.com
+# =============================================================================
+# Deploiement automatique depuis GitHub.
+# Render detecte ce fichier et propose la configuration.
+#
+# Services deployes :
+#   - API FastAPI (web service)
+#   - Dashboard Streamlit (web service)
+# =============================================================================
+
+services:
+  # --- API FastAPI ---
+  - type: web
+    name: hvac-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt -r requirements-api.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DB_TYPE
+        value: sqlite
+      - key: DB_PATH
+        value: data/hvac_market.db
+      - key: PYTHON_VERSION
+        value: "3.11"
+    healthCheckPath: /health
+    plan: free
+
+  # --- Dashboard Streamlit ---
+  - type: web
+    name: hvac-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app/app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: DB_TYPE
+        value: sqlite
+      - key: DB_PATH
+        value: data/hvac_market.db
+      - key: PYTHON_VERSION
+        value: "3.11"
+    plan: free

@@ -49,21 +49,19 @@ st.sidebar.info(
 )
 
 # --- Dispatch des pages ---
-if page == "Accueil":
-    from pages import home
-    home.render()
-elif page == "Exploration des donnees":
-    from pages import exploration
-    exploration.render()
-elif page == "Carte de France":
-    from pages import carte
-    carte.render()
-elif page == "Predictions ML":
-    from pages import predictions
-    predictions.render()
-elif page == "Comparaison des modeles":
-    from pages import models
-    models.render()
-elif page == "Pipeline & mise a jour":
-    from pages import pipeline_page
-    pipeline_page.render()
+PAGE_MODULES = {
+    "Accueil": "home",
+    "Exploration des donnees": "exploration",
+    "Carte de France": "carte",
+    "Predictions ML": "predictions",
+    "Comparaison des modeles": "models",
+    "Pipeline & mise a jour": "pipeline_page",
+}
+
+module_name = PAGE_MODULES.get(page, "home")
+try:
+    module = __import__(f"pages.{module_name}", fromlist=[module_name])
+    module.render()
+except Exception as e:
+    st.error(f"Erreur lors du chargement de la page '{page}' : {e}")
+    st.info("Verifiez que toutes les dependances sont installees.")
