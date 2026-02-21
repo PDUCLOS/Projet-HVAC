@@ -340,8 +340,8 @@ class DatabaseConfig:
         # For network databases, check explicit authorization
         if not self.allow_non_local:
             raise ValueError(
-                f"Base de données '{self.db_type}' non locale désactivée. "
-                f"Définir ALLOW_NON_LOCAL=true dans .env pour autoriser."
+                f"Non-local database '{self.db_type}' is disabled. "
+                f"Set ALLOW_NON_LOCAL=true in .env to enable."
             )
 
         # SQL Server via pyodbc
@@ -368,8 +368,8 @@ class DatabaseConfig:
             )
 
         raise ValueError(
-            f"Type de BDD inconnu : '{self.db_type}'. "
-            f"Valeurs acceptées : sqlite, mssql, postgresql."
+            f"Unknown database type: '{self.db_type}'. "
+            f"Accepted values: sqlite, mssql, postgresql."
         )
 
 

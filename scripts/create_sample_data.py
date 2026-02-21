@@ -31,7 +31,7 @@ SAMPLE_ROWS = 200
 
 def main():
     """Entry point."""
-    print("Creation des donnees d'exemple dans data/sample/")
+    print("Creating sample data in data/sample/")
     print("=" * 50)
 
     for source, rel_path in SAMPLE_FILES.items():
@@ -56,24 +56,24 @@ def main():
             f_out.writelines(lines)
 
         size_kb = dst.stat().st_size / 1024
-        print(f"  {source:<10} : {len(lines)-1} lignes ({size_kb:.1f} Ko)")
+        print(f"  {source:<10} : {len(lines)-1} rows ({size_kb:.1f} KB)")
 
     # Add a README in sample/
     readme = SAMPLE_DIR / "README.md"
     readme.write_text(
-        "# Donnees d'exemple\n\n"
-        "Ce dossier contient un extrait de 200 lignes de chaque source.\n"
-        "Utiliser pour tester le pipeline sans telecharger les donnees completes.\n\n"
+        "# Sample Data\n\n"
+        "This folder contains a 200-row extract from each source.\n"
+        "Use to test the pipeline without downloading the full datasets.\n\n"
         "```bash\n"
-        "# Copier les exemples dans data/raw/ pour tester\n"
+        "# Copy samples to data/raw/ for testing\n"
         "cp -r data/sample/* data/raw/\n"
         "python -m src.pipeline process\n"
         "```\n",
         encoding="utf-8",
     )
 
-    print(f"\n  Donnees d'exemple creees dans {SAMPLE_DIR}")
-    print("  Pour tester : cp -r data/sample/* data/raw/")
+    print(f"\n  Sample data created in {SAMPLE_DIR}")
+    print("  To test: cp -r data/sample/* data/raw/")
 
 
 if __name__ == "__main__":
