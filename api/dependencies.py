@@ -149,7 +149,7 @@ class AppState:
         then projects iteratively by re-injecting the previous prediction
         into the lag features.
 
-        Returns a list of dicts {date, valeur_predite, intervalle_bas, intervalle_haut}.
+        Returns a list of dicts {date, predicted_value, lower_bound, upper_bound}.
         """
         df_dept = self.features_df[self.features_df["dept"] == dept].copy()
         if df_dept.empty:
@@ -188,9 +188,9 @@ class AppState:
             margin = 1.96 * rmse
             results.append({
                 "date": f"{next_date[:4]}-{next_date[4:]}",
-                "valeur_predite": round(pred, 2),
-                "intervalle_bas": round(pred - margin, 2),
-                "intervalle_haut": round(pred + margin, 2),
+                "predicted_value": round(pred, 2),
+                "lower_bound": round(pred - margin, 2),
+                "upper_bound": round(pred + margin, 2),
             })
 
             # Re-inject the prediction into lags for the next step

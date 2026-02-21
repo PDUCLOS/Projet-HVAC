@@ -22,12 +22,12 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., examples=["ok"])
     version: str = Field(..., examples=["1.0.0"])
-    modele_principal: str = Field(..., examples=["ridge"])
+    primary_model: str = Field(..., examples=["ridge"])
     nb_features: int = Field(..., ge=0, examples=[81])
-    derniere_date_entrainement: str | None = Field(
+    last_training_date: str | None = Field(
         None, examples=["2025-02-17"]
     )
-    uptime_secondes: float = Field(..., ge=0)
+    uptime_seconds: float = Field(..., ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -38,18 +38,18 @@ class PredictionPoint(BaseModel):
     """A single monthly prediction point."""
 
     date: str = Field(..., examples=["2026-01"])
-    valeur_predite: float = Field(..., examples=[25.4])
-    intervalle_bas: float = Field(..., examples=[20.1])
-    intervalle_haut: float = Field(..., examples=[30.7])
+    predicted_value: float = Field(..., examples=[25.4])
+    lower_bound: float = Field(..., examples=[20.1])
+    upper_bound: float = Field(..., examples=[30.7])
 
 
 class PredictionResponse(BaseModel):
     """Response for the GET /predictions endpoint."""
 
     departement: str = Field(..., examples=["69"])
-    horizon_mois: int = Field(..., ge=1, le=24, examples=[6])
-    modele_utilise: str = Field(..., examples=["ridge"])
-    variable_cible: str = Field(
+    horizon_months: int = Field(..., ge=1, le=24, examples=[6])
+    model_used: str = Field(..., examples=["ridge"])
+    target_variable: str = Field(
         default="nb_installations_pac",
         examples=["nb_installations_pac"],
     )
@@ -78,7 +78,7 @@ class CustomPredictRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _normaliser_dept(self) -> "CustomPredictRequest":
+    def _normalize_dept(self) -> "CustomPredictRequest":
         """Normalize the department code to uppercase."""
         self.departement = self.departement.upper().zfill(2)
         return self
@@ -88,9 +88,9 @@ class CustomPredictResponse(BaseModel):
     """Response for the POST /predict endpoint."""
 
     departement: str
-    modele_utilise: str
-    horizon_mois: int
-    confiance_modele_r2: float
+    model_used: str
+    horizon_months: int
+    model_confidence_r2: float
     predictions: list[PredictionPoint]
 
 
@@ -101,27 +101,27 @@ class CustomPredictResponse(BaseModel):
 class SourceSummary(BaseModel):
     """Summary of a raw data source."""
 
-    nom: str
-    nb_lignes: int
-    derniere_modification: str
+    name: str
+    row_count: int
+    last_modified: str
 
 
 class DataSummaryResponse(BaseModel):
     """Response for the GET /data/summary endpoint."""
 
-    nb_departements: int
-    plage_dates: dict[str, str] = Field(
-        ..., examples=[{"debut": "202107", "fin": "202512"}]
+    department_count: int
+    date_range: dict[str, str] = Field(
+        ..., examples=[{"start": "202107", "end": "202512"}]
     )
-    nb_lignes_features: int
-    sources_brutes: list[SourceSummary]
+    feature_row_count: int
+    raw_sources: list[SourceSummary]
 
 
 class ModelMetric(BaseModel):
     """Metrics for a trained model."""
 
-    modele: str
-    cible: str
+    model: str
+    target: str
     val_rmse: float | None = None
     val_mae: float | None = None
     val_mape: float | None = None
@@ -137,9 +137,9 @@ class ModelMetric(BaseModel):
 class ModelMetricsResponse(BaseModel):
     """Response for the GET /model/metrics endpoint."""
 
-    meilleur_modele: str
-    nb_modeles: int
-    modeles: list[ModelMetric]
+    best_model: str
+    model_count: int
+    models: list[ModelMetric]
 
 
 # ---------------------------------------------------------------------------
@@ -150,11 +150,11 @@ class DepartmentInfo(BaseModel):
     """Information about a department."""
 
     code: str = Field(..., examples=["69"])
-    nom: str = Field(..., examples=["Rhone"])
+    name: str = Field(..., examples=["Rhone"])
 
 
 class DepartmentsResponse(BaseModel):
     """Response for the GET /departments endpoint."""
 
-    nb_departements: int
-    departements: list[DepartmentInfo]
+    department_count: int
+    departments: list[DepartmentInfo]

@@ -64,9 +64,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="HVAC Market Prediction API",
     description=(
-        "API de prediction du marche HVAC (pompes a chaleur) en France.\n\n"
-        "Fournit des previsions mensuelles par departement, les metriques "
-        "des modeles entraines et un resume des donnees disponibles."
+        "Prediction API for the HVAC market (heat pumps) in France.\n\n"
+        "Provides monthly forecasts by department, trained model metrics, "
+        "and a summary of available data."
     ),
     version=API_VERSION,
     lifespan=lifespan,
@@ -87,16 +87,16 @@ app.add_middleware(
 # GET /health
 # ---------------------------------------------------------------------------
 
-@app.get("/health", response_model=HealthResponse, tags=["Systeme"])
+@app.get("/health", response_model=HealthResponse, tags=["System"])
 async def health() -> HealthResponse:
     """Check the API status and return version information."""
     return HealthResponse(
         status="ok",
         version=API_VERSION,
-        modele_principal="ridge",
+        primary_model="ridge",
         nb_features=len(state.feature_names),
-        derniere_date_entrainement=state.model_date,
-        uptime_secondes=round(time.time() - state.start_time, 1),
+        last_training_date=state.model_date,
+        uptime_seconds=round(time.time() - state.start_time, 1),
     )
 
 
@@ -110,14 +110,14 @@ async def get_predictions(
         ...,
         min_length=1,
         max_length=3,
-        description="Code departement (ex: 69, 2A)",
+        description="Department code (e.g., 69, 2A)",
         examples=["69"],
     ),
     horizon: int = Query(
         default=6,
         ge=1,
         le=24,
-        description="Nombre de mois a predire (1-24)",
+        description="Number of months to predict (1-24)",
     ),
 ) -> PredictionResponse:
     """
@@ -134,14 +134,14 @@ async def get_predictions(
     if not predictions:
         raise HTTPException(
             status_code=404,
-            detail=f"Aucune donnee trouvee pour le departement {dept}",
+            detail=f"No data found for department {dept}",
         )
 
     return PredictionResponse(
         departement=dept,
-        horizon_mois=horizon,
-        modele_utilise="ridge",
-        variable_cible=TARGET_COL,
+        horizon_months=horizon,
+        model_used="ridge",
+        target_variable=TARGET_COL,
         predictions=[PredictionPoint(**p) for p in predictions],
     )
 
@@ -169,7 +169,7 @@ async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
     if not predictions:
         raise HTTPException(
             status_code=404,
-            detail=f"Aucune donnee trouvee pour le departement {dept}",
+            detail=f"No data found for department {dept}",
         )
 
     # Model test R2
@@ -183,9 +183,9 @@ async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
 
     return CustomPredictResponse(
         departement=dept,
-        modele_utilise="ridge",
-        horizon_mois=body.horizon,
-        confiance_modele_r2=round(r2, 4),
+        model_used="ridge",
+        horizon_months=body.horizon,
+        model_confidence_r2=round(r2, 4),
         predictions=[PredictionPoint(**p) for p in predictions],
     )
 
@@ -194,7 +194,7 @@ async def post_predict(body: CustomPredictRequest) -> CustomPredictResponse:
 # GET /data/summary
 # ---------------------------------------------------------------------------
 
-@app.get("/data/summary", response_model=DataSummaryResponse, tags=["Donnees"])
+@app.get("/data/summary", response_model=DataSummaryResponse, tags=["Data"])
 async def data_summary() -> DataSummaryResponse:
     """
     Summary of available data.
@@ -206,12 +206,12 @@ async def data_summary() -> DataSummaryResponse:
     nb_depts = df["dept"].nunique() if df is not None else 0
 
     # Date range
-    plage: dict[str, str] = {"debut": "", "fin": ""}
+    plage: dict[str, str] = {"start": "", "end": ""}
     if df is not None and "date_id" in df.columns:
         dates = df["date_id"].dropna().astype(str)
-        plage = {"debut": dates.min(), "fin": dates.max()}
+        plage = {"start": dates.min(), "end": dates.max()}
 
-    nb_lignes = len(df) if df is not None else 0
+    row_count = len(df) if df is not None else 0
 
     # Raw sources
     sources: list[SourceSummary] = []
@@ -226,19 +226,19 @@ async def data_summary() -> DataSummaryResponse:
                     n_lines = sum(1 for _ in f) - 1
                 sources.append(
                     SourceSummary(
-                        nom=f"{sub.name}/{csv_file.name}",
-                        nb_lignes=max(n_lines, 0),
-                        derniere_modification=datetime.fromtimestamp(
+                        name=f"{sub.name}/{csv_file.name}",
+                        row_count=max(n_lines, 0),
+                        last_modified=datetime.fromtimestamp(
                             stat.st_mtime
                         ).strftime("%Y-%m-%d %H:%M"),
                     )
                 )
 
     return DataSummaryResponse(
-        nb_departements=nb_depts,
-        plage_dates=plage,
-        nb_lignes_features=nb_lignes,
-        sources_brutes=sources,
+        department_count=nb_depts,
+        date_range=plage,
+        feature_row_count=row_count,
+        raw_sources=sources,
     )
 
 
@@ -246,7 +246,7 @@ async def data_summary() -> DataSummaryResponse:
 # GET /model/metrics
 # ---------------------------------------------------------------------------
 
-@app.get("/model/metrics", response_model=ModelMetricsResponse, tags=["Modeles"])
+@app.get("/model/metrics", response_model=ModelMetricsResponse, tags=["Models"])
 async def model_metrics() -> ModelMetricsResponse:
     """
     Evaluation metrics for all trained models.
@@ -258,15 +258,15 @@ async def model_metrics() -> ModelMetricsResponse:
     if tr is None or tr.empty:
         raise HTTPException(
             status_code=404,
-            detail="Aucun resultat d'entrainement disponible",
+            detail="No training results available",
         )
 
-    modeles: list[ModelMetric] = []
+    models: list[ModelMetric] = []
     for _, row in tr.iterrows():
-        modeles.append(
+        models.append(
             ModelMetric(
-                modele=str(row.get("model", "")),
-                cible=str(row.get("target", TARGET_COL)),
+                model=str(row.get("model", "")),
+                target=str(row.get("target", TARGET_COL)),
                 val_rmse=_safe_float(row.get("val_rmse")),
                 val_mae=_safe_float(row.get("val_mae")),
                 val_mape=_safe_float(row.get("val_mape")),
@@ -281,13 +281,13 @@ async def model_metrics() -> ModelMetricsResponse:
         )
 
     # Best model = lowest test RMSE (excluding NaN)
-    valid = [m for m in modeles if m.test_rmse is not None]
-    best = min(valid, key=lambda m: m.test_rmse).modele if valid else "inconnu"
+    valid = [m for m in models if m.test_rmse is not None]
+    best = min(valid, key=lambda m: m.test_rmse).model if valid else "unknown"
 
     return ModelMetricsResponse(
-        meilleur_modele=best,
-        nb_modeles=len(modeles),
-        modeles=modeles,
+        best_model=best,
+        model_count=len(models),
+        models=models,
     )
 
 
@@ -304,12 +304,12 @@ async def list_departments() -> DepartmentsResponse:
     are marked in the full list.
     """
     dept_list = [
-        DepartmentInfo(code=code, nom=nom)
-        for code, nom in sorted(DEPARTEMENTS.items())
+        DepartmentInfo(code=code, name=name)
+        for code, name in sorted(DEPARTEMENTS.items())
     ]
     return DepartmentsResponse(
-        nb_departements=len(dept_list),
-        departements=dept_list,
+        department_count=len(dept_list),
+        departments=dept_list,
     )
 
 
@@ -322,15 +322,15 @@ def _validate_department_in_data(dept: str) -> None:
     if state.features_df is None:
         raise HTTPException(
             status_code=503,
-            detail="Donnees non chargees — l'API est en cours de demarrage",
+            detail="Data not loaded — API is starting up",
         )
     available = set(state.features_df["dept"].unique())
     if dept not in available:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"Departement '{dept}' absent du dataset. "
-                f"Departements disponibles : {sorted(available)}"
+                f"Department '{dept}' not found in dataset. "
+                f"Available departments: {sorted(available)}"
             ),
         )
 
