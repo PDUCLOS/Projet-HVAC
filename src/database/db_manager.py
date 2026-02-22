@@ -229,11 +229,46 @@ class DatabaseManager:
     # Import of collected data (CSV → DB)
     # =================================================================
 
+    # Registry of importable sources with metadata
+    IMPORT_SOURCES = {
+        "weather": {
+            "file": "weather/weather_france.csv",
+            "table": "fact_hvac_installations",
+            "description": "Open-Meteo daily weather -> monthly aggregation",
+            "method": "_import_weather",
+        },
+        "insee": {
+            "file": "insee/indicateurs_economiques.csv",
+            "table": "fact_economic_context",
+            "description": "INSEE confidence, business climate indicators",
+            "method": "_import_insee",
+        },
+        "eurostat": {
+            "file": "eurostat/ipi_hvac_france.csv",
+            "table": "fact_economic_context",
+            "description": "Eurostat IPI HVAC (C28, C2825)",
+            "method": "_import_eurostat",
+        },
+        "sitadel": {
+            "file": "sitadel/permis_construire_france.csv",
+            "table": "fact_hvac_installations",
+            "description": "SITADEL construction permits by dept",
+            "method": "_import_sitadel",
+        },
+        "dpe": {
+            "file": "dpe/dpe_france_all.csv",
+            "table": "raw_dpe + fact_hvac_installations",
+            "description": "ADEME DPE individual records -> aggregation",
+            "method": "_import_dpe",
+        },
+    }
+
     def import_collected_data(
         self,
         raw_data_dir: Optional[Path] = None,
+        sources: Optional[list] = None,
     ) -> dict:
-        """Import all collected data (CSV) into the database.
+        """Import collected data (CSV) into the database.
 
         Searches for CSV files in the raw_data_dir directory and
         loads them into the appropriate tables.
@@ -241,6 +276,9 @@ class DatabaseManager:
         Args:
             raw_data_dir: Root directory for raw data.
                           Default: data/raw (from config).
+            sources: List of source names to import.
+                     If None, import all available sources.
+                     Valid: weather, insee, eurostat, sitadel, dpe.
 
         Returns:
             Dictionary {source: nb_rows_imported} for reporting.
@@ -248,42 +286,23 @@ class DatabaseManager:
         if raw_data_dir is None:
             raw_data_dir = Path("data/raw")
 
+        # Determine which sources to import
+        if sources is None:
+            sources_to_import = list(self.IMPORT_SOURCES.keys())
+        else:
+            sources_to_import = [s for s in sources if s in self.IMPORT_SOURCES]
+
         results = {}
 
-        # 1. Import weather → fact_hvac_installations (weather columns)
-        weather_file = raw_data_dir / "weather" / "weather_france.csv"
-        if weather_file.exists():
-            results["weather"] = self._import_weather(weather_file)
-        else:
-            self.logger.warning("Weather file not found: %s", weather_file)
+        for source_name in sources_to_import:
+            meta = self.IMPORT_SOURCES[source_name]
+            filepath = raw_data_dir / meta["file"]
 
-        # 2. Import INSEE indicators → fact_economic_context
-        insee_file = raw_data_dir / "insee" / "indicateurs_economiques.csv"
-        if insee_file.exists():
-            results["insee"] = self._import_insee(insee_file)
-        else:
-            self.logger.warning("INSEE file not found: %s", insee_file)
-
-        # 3. Import Eurostat IPI → fact_economic_context (IPI columns)
-        eurostat_file = raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
-        if eurostat_file.exists():
-            results["eurostat"] = self._import_eurostat(eurostat_file)
-        else:
-            self.logger.warning("Eurostat file not found: %s", eurostat_file)
-
-        # 4. Import SITADEL → fact_hvac_installations (building permits columns)
-        sitadel_file = raw_data_dir / "sitadel" / "permis_construire_france.csv"
-        if sitadel_file.exists():
-            results["sitadel"] = self._import_sitadel(sitadel_file)
-        else:
-            self.logger.warning("SITADEL file not found: %s", sitadel_file)
-
-        # 5. Import DPE → raw_dpe (high-volume individual records)
-        dpe_file = raw_data_dir / "dpe" / "dpe_france_all.csv"
-        if dpe_file.exists():
-            results["dpe"] = self._import_dpe(dpe_file)
-        else:
-            self.logger.warning("DPE file not found: %s", dpe_file)
+            if filepath.exists():
+                import_method = getattr(self, meta["method"])
+                results[source_name] = import_method(filepath)
+            else:
+                self.logger.warning("%s file not found: %s", source_name, filepath)
 
         # Log the summary
         self.logger.info("=" * 50)

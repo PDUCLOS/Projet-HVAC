@@ -114,24 +114,177 @@ def run_init_db() -> None:
     logger.info("Tables created:\n%s", table_info.to_string(index=False))
 
 
-def run_import_data() -> None:
+def run_import_data(interactive: bool = False) -> None:
     """Import collected CSVs into the database.
 
     Reads CSV files from data/raw/ and loads them into the appropriate
     database tables (fact_hvac_installations, fact_economic_context).
     The database must have been initialized beforehand (init_db).
+
+    Args:
+        interactive: If True, show an interactive menu to choose
+            which sources to import.
     """
     from src.database.db_manager import DatabaseManager
 
     logger = logging.getLogger("pipeline")
-    logger.info("Importing collected data into the database...")
 
     db = DatabaseManager(config.database.connection_string)
-    results = db.import_collected_data(raw_data_dir=config.raw_data_dir)
+
+    if interactive:
+        selected = _interactive_import_menu(db, config.raw_data_dir)
+        if not selected:
+            logger.info("No sources selected. Import cancelled.")
+            return
+        results = db.import_collected_data(
+            raw_data_dir=config.raw_data_dir, sources=selected,
+        )
+    else:
+        logger.info("Importing collected data into the database...")
+        results = db.import_collected_data(raw_data_dir=config.raw_data_dir)
 
     # Display table summary after import
     table_info = db.get_table_info()
     logger.info("Table status after import:\n%s", table_info.to_string(index=False))
+
+
+def _interactive_import_menu(db, raw_data_dir) -> list:
+    """Display an interactive menu for database import.
+
+    Shows each available data source with file info (size, rows,
+    last modified) and lets the user pick which ones to import.
+
+    Args:
+        db: DatabaseManager instance (for IMPORT_SOURCES metadata).
+        raw_data_dir: Path to raw data directory.
+
+    Returns:
+        List of selected source names, or empty list if cancelled.
+    """
+    from datetime import datetime
+
+    print()
+    print("  ╔══════════════════════════════════════════════════════════╗")
+    print("  ║           DATABASE IMPORT — Source Selection            ║")
+    print("  ╚══════════════════════════════════════════════════════════╝")
+    print()
+
+    sources_info = []
+    for name, meta in db.IMPORT_SOURCES.items():
+        filepath = raw_data_dir / meta["file"]
+        info = {
+            "name": name,
+            "description": meta["description"],
+            "table": meta["table"],
+            "exists": filepath.exists(),
+            "rows": 0,
+            "size_mb": 0.0,
+            "modified": "N/A",
+        }
+
+        if filepath.exists():
+            stat = filepath.stat()
+            info["size_mb"] = stat.st_size / (1024 * 1024)
+            info["modified"] = datetime.fromtimestamp(
+                stat.st_mtime
+            ).strftime("%Y-%m-%d %H:%M")
+
+            # Count rows (fast line count)
+            try:
+                with open(filepath) as f:
+                    info["rows"] = sum(1 for _ in f) - 1
+            except Exception:
+                pass
+
+        sources_info.append(info)
+
+    # Display each source
+    for i, info in enumerate(sources_info, 1):
+        status = "READY" if info["exists"] else "MISSING"
+        status_icon = "+" if info["exists"] else "x"
+
+        print(f"  [{i}] {status_icon} {info['name'].upper()}")
+        print(f"      {info['description']}")
+        print(f"      Table: {info['table']}")
+
+        if info["exists"]:
+            print(
+                f"      File: {info['rows']:,} rows"
+                f" | {info['size_mb']:.1f} MB"
+                f" | Modified: {info['modified']}"
+            )
+        else:
+            print(f"      File: NOT FOUND")
+        print()
+
+    # Count available sources
+    available = [s for s in sources_info if s["exists"]]
+    n_available = len(available)
+
+    if n_available == 0:
+        print("  No data files found. Run collection first:")
+        print("  python -m src.pipeline collect")
+        return []
+
+    print(f"  ─────────────────────────────────────────────────────")
+    print(f"  {n_available} source(s) available for import.")
+    print()
+    print(f"  Options:")
+    print(f"    a     = Import ALL available sources")
+    print(f"    1,3,5 = Import specific sources (comma-separated)")
+    print(f"    q     = Cancel")
+    print()
+
+    try:
+        choice = input("  Select > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print("\n  Cancelled.")
+        return []
+
+    if choice in ("q", "quit", "cancel", ""):
+        print("  Cancelled.")
+        return []
+
+    if choice in ("a", "all"):
+        selected = [s["name"] for s in available]
+    else:
+        try:
+            indices = [int(x.strip()) - 1 for x in choice.split(",")]
+            selected = []
+            for idx in indices:
+                if 0 <= idx < len(sources_info) and sources_info[idx]["exists"]:
+                    selected.append(sources_info[idx]["name"])
+                elif 0 <= idx < len(sources_info):
+                    print(f"    Skipping {sources_info[idx]['name']} (file missing)")
+        except ValueError:
+            print("  Invalid input. Cancelled.")
+            return []
+
+    if not selected:
+        print("  No valid sources selected.")
+        return []
+
+    # Confirmation
+    print()
+    print(f"  ┌───────────────────────────────────────────────────┐")
+    print(f"  │  Will import {len(selected)} source(s):".ljust(54) + "│")
+    for name in selected:
+        info = next(s for s in sources_info if s["name"] == name)
+        line = f"  │    {name.upper()} ({info['rows']:,} rows)"
+        print(line.ljust(54) + "│")
+    print(f"  └───────────────────────────────────────────────────┘")
+    print()
+
+    try:
+        confirm = input("  Proceed? [Y/n] > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        confirm = "y"
+
+    if confirm in ("n", "no"):
+        print("  Import cancelled.")
+        return []
+
+    return selected
 
 
 def run_clean(interactive: bool = False) -> None:
@@ -675,6 +828,7 @@ Examples:
   python -m src.pipeline collect --sources weather,insee  # Specific sources
   python -m src.pipeline init_db                  # Initialize the database
   python -m src.pipeline import_data              # Import CSVs into the database
+  python -m src.pipeline import_data -i           # Interactive: choose sources to import
   python -m src.pipeline clean                    # Clean raw data
   python -m src.pipeline merge                    # Merge into ML dataset
   python -m src.pipeline features                 # Feature engineering
@@ -758,7 +912,7 @@ Examples:
         run_init_db()
 
     elif args.stage == "import_data":
-        run_import_data()
+        run_import_data(interactive=args.interactive)
 
     elif args.stage == "clean":
         run_clean(interactive=args.interactive)
