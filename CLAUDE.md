@@ -49,6 +49,9 @@
     (currently excluded) could improve model performance
   - **Decision**: For each column, justify keep/drop/add based on feature importance and domain logic
 - This review is a **collaborative discussion** — do not skip it, wait for user input
+- **Document the reasoning in a Jupyter notebook** — the column review, keep/drop decisions,
+  and feature importance analysis must be written up in a notebook (not just in code comments)
+  to serve as a clear, readable deliverable for the portfolio
 
 ## Git Workflow
 
