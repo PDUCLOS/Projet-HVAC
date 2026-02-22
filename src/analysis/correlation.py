@@ -80,12 +80,26 @@ class CorrelationAnalyzer:
         })
 
     def _load_data(self) -> pd.DataFrame:
-        """Load the features dataset."""
+        """Load the features dataset and validate required columns.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ValueError: If required columns (dept, date_id) are missing.
+        """
         filepath = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not filepath.exists():
             raise FileNotFoundError(f"Features dataset not found: {filepath}")
 
         df = pd.read_csv(filepath)
+
+        required = {"dept", "date_id"}
+        missing = required - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"Features dataset is missing required columns: {missing}. "
+                f"Available: {list(df.columns)[:20]}..."
+            )
+
         df["dept"] = df["dept"].astype(str).str.zfill(2)
         df["date"] = pd.to_datetime(df["date_id"].astype(str), format="%Y%m")
         return df
@@ -193,6 +207,10 @@ class CorrelationAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        if "dept" not in df.columns:
+            logger.warning("Skipping correlation by dept: 'dept' column missing")
+            return Path()
+
         target = self.TARGET_COL
         features = [
             "temp_mean", "hdd_sum", "cdd_sum", "precipitation_sum",
@@ -241,6 +259,10 @@ class CorrelationAnalyzer:
         """
         df = self.df.copy()
         target = self.TARGET_COL
+
+        if "month" not in df.columns:
+            logger.warning("Skipping correlation by season: 'month' column missing")
+            return Path()
 
         df["season"] = df["month"].map(lambda m: (
             "1_Winter" if m in [12, 1, 2] else
@@ -455,8 +477,28 @@ class CorrelationAnalyzer:
     # Orchestrator
     # ------------------------------------------------------------------
 
+    def _safe_plot(self, name: str, func, *args, **kwargs) -> Optional[Path]:
+        """Execute a plot function with error handling.
+
+        Args:
+            name: Human-readable name for the plot (used in logs).
+            func: Plot method to call.
+
+        Returns:
+            Path to the saved figure, or None if the plot failed.
+        """
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            logger.error("  ✗ Plot '%s' failed: %s", name, exc)
+            plt.close("all")
+            return None
+
     def run_full_correlation(self) -> Dict[str, Any]:
         """Execute all correlation analyses.
+
+        Each plot is wrapped in error handling so that one failing chart
+        does not crash the entire pipeline.
 
         Returns:
             Dictionary with the paths of generated files.
@@ -468,40 +510,38 @@ class CorrelationAnalyzer:
         self._ensure_dirs()
         self.df = self._load_data()
 
-        results = {"figures": []}
+        results = {"figures": [], "errors": []}
 
-        logger.info("Correlation matrix...")
-        results["figures"].append(str(self.plot_correlation_matrix()))
+        plot_steps = [
+            ("Correlation matrix", self.plot_correlation_matrix),
+            ("Top correlations", self.plot_top_correlations),
+            ("Correlations by department", self.plot_correlation_by_dept),
+            ("Correlations by season", self.plot_correlation_by_season),
+            ("Multicollinearity", self.plot_multicollinearity),
+            ("Lag correlations", self.plot_lag_correlations),
+        ]
 
-        logger.info("Top correlations vs target...")
-        results["figures"].append(str(self.plot_top_correlations()))
+        for label, method in plot_steps:
+            logger.info("%s...", label)
+            fig_path = self._safe_plot(label, method)
+            if fig_path is not None and fig_path.name:
+                results["figures"].append(str(fig_path))
+            elif fig_path is None:
+                results["errors"].append(label)
 
-        logger.info("Correlations by department...")
-        fig = self.plot_correlation_by_dept()
-        if fig.name:
-            results["figures"].append(str(fig))
-
-        logger.info("Correlations by season...")
-        fig = self.plot_correlation_by_season()
-        if fig.name:
-            results["figures"].append(str(fig))
-
-        logger.info("Multicollinearity analysis...")
-        fig = self.plot_multicollinearity()
-        if fig.name:
-            results["figures"].append(str(fig))
-
-        logger.info("Lag correlations...")
-        fig = self.plot_lag_correlations()
-        if fig.name:
-            results["figures"].append(str(fig))
-
+        # Text report
         logger.info("Correlation report...")
-        report = self.generate_correlation_report()
-        results["report"] = str(report)
+        report = self._safe_plot("Correlation report", self.generate_correlation_report)
+        if report is not None:
+            results["report"] = str(report)
 
+        n_ok = len(results["figures"])
+        n_err = len(results["errors"])
         logger.info(
-            "Correlation analysis complete: %d charts.",
-            len(results["figures"]),
+            "Correlation analysis complete: %d charts, %d skipped/failed.",
+            n_ok, n_err,
         )
+        if n_err > 0:
+            logger.warning("  Failed plots: %s", results["errors"])
+
         return results

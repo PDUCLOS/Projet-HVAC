@@ -97,14 +97,18 @@ class EDAAnalyzer:
             "axes.labelsize": 12,
         })
 
+    # Minimum columns required for any EDA analysis
+    REQUIRED_COLS = {"dept", "date_id"}
+
     def _load_data(self) -> pd.DataFrame:
-        """Load the features dataset.
+        """Load the features dataset and validate required columns.
 
         Returns:
-            DataFrame of the features dataset (448 x 90).
+            DataFrame of the features dataset.
 
         Raises:
             FileNotFoundError: If the file does not exist.
+            ValueError: If required columns (dept, date_id) are missing.
         """
         filepath = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not filepath.exists():
@@ -114,6 +118,15 @@ class EDAAnalyzer:
             )
 
         df = pd.read_csv(filepath)
+
+        # Validate required columns
+        missing = self.REQUIRED_COLS - set(df.columns)
+        if missing:
+            raise ValueError(
+                f"Features dataset is missing required columns: {missing}. "
+                f"Available: {list(df.columns)[:20]}..."
+            )
+
         df["dept"] = df["dept"].astype(str).str.zfill(2)
         df["date"] = pd.to_datetime(df["date_id"].astype(str), format="%Y%m")
 
@@ -147,6 +160,9 @@ class EDAAnalyzer:
     def overview(self) -> Dict[str, Any]:
         """Generate global descriptive statistics.
 
+        Gracefully handles missing columns by reporting 'N/A' for
+        unavailable metrics instead of crashing.
+
         Returns:
             Dictionary with key dataset metrics.
         """
@@ -155,17 +171,31 @@ class EDAAnalyzer:
 
         stats = {
             "shape": df.shape,
-            "n_departments": df["dept"].nunique(),
-            "departments": sorted(df["dept"].unique().tolist()),
-            "date_range": f"{df['date'].min():%Y-%m} → {df['date'].max():%Y-%m}",
-            "n_months": df["date_id"].nunique(),
-            "total_dpe": int(df["nb_dpe_total"].sum()),
-            "total_pac": int(df["nb_installations_pac"].sum()),
-            "pct_pac_global": round(
-                df["nb_installations_pac"].sum() / df["nb_dpe_total"].sum() * 100, 2
-            ),
             "nan_pct": round(df.isna().mean().mean() * 100, 2),
         }
+
+        if "dept" in df.columns:
+            stats["n_departments"] = df["dept"].nunique()
+            stats["departments"] = sorted(df["dept"].unique().tolist())
+
+        if "date" in df.columns:
+            stats["date_range"] = f"{df['date'].min():%Y-%m} → {df['date'].max():%Y-%m}"
+
+        if "date_id" in df.columns:
+            stats["n_months"] = df["date_id"].nunique()
+
+        if "nb_dpe_total" in df.columns:
+            stats["total_dpe"] = int(df["nb_dpe_total"].sum())
+
+        if "nb_installations_pac" in df.columns:
+            stats["total_pac"] = int(df["nb_installations_pac"].sum())
+
+        if "nb_installations_pac" in df.columns and "nb_dpe_total" in df.columns:
+            total_dpe = df["nb_dpe_total"].sum()
+            if total_dpe > 0:
+                stats["pct_pac_global"] = round(
+                    df["nb_installations_pac"].sum() / total_dpe * 100, 2
+                )
 
         for key, val in stats.items():
             logger.info("  %s: %s", key, val)
@@ -272,6 +302,11 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        for col in ("dept", "date", "nb_installations_pac"):
+            if col not in df.columns:
+                logger.warning("Skipping timeseries PAC: '%s' column missing", col)
+                return Path()
+
         fig, ax = plt.subplots(figsize=(16, 8))
 
         for dept in sorted(df["dept"].unique()):
@@ -301,6 +336,11 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        for col in ("dept", "date", "nb_dpe_total"):
+            if col not in df.columns:
+                logger.warning("Skipping timeseries DPE total: '%s' column missing", col)
+                return Path()
+
         fig, ax = plt.subplots(figsize=(16, 8))
 
         for dept in sorted(df["dept"].unique()):
@@ -324,12 +364,18 @@ class EDAAnalyzer:
         return self._save_fig("05_timeseries_dpe_total")
 
     def plot_timeseries_aura_aggregated(self) -> Path:
-        """Aggregated AURA time series: heat pumps + AC + total DPE.
+        """Aggregated time series: heat pumps + AC + total DPE.
 
         Returns:
             Path to the saved chart.
         """
         df = self.df
+        required = {"date", "nb_dpe_total", "nb_installations_pac", "nb_installations_clim"}
+        missing = required - set(df.columns)
+        if missing:
+            logger.warning("Skipping aggregated timeseries: missing columns %s", missing)
+            return Path()
+
         agg = df.groupby("date").agg({
             "nb_dpe_total": "sum",
             "nb_installations_pac": "sum",
@@ -372,19 +418,27 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        required = {"month", "nb_installations_pac", "nb_installations_clim"}
+        available = required & set(df.columns)
+        if "month" not in df.columns:
+            logger.warning("Skipping seasonality boxplots: 'month' column missing")
+            return Path()
+
         fig, axes = plt.subplots(1, 2, figsize=(16, 7))
 
         # Heat pumps by month
-        sns.boxplot(data=df, x="month", y="nb_installations_pac",
-                    palette="coolwarm", ax=axes[0])
-        axes[0].set_title("Seasonality of Heat Pump Installations")
+        if "nb_installations_pac" in df.columns:
+            sns.boxplot(data=df, x="month", y="nb_installations_pac",
+                        palette="coolwarm", ax=axes[0])
+            axes[0].set_title("Seasonality of Heat Pump Installations")
         axes[0].set_xlabel("Month")
         axes[0].set_ylabel("Heat Pump Installations")
 
         # Air conditioning by month
-        sns.boxplot(data=df, x="month", y="nb_installations_clim",
-                    palette="YlOrRd", ax=axes[1])
-        axes[1].set_title("Seasonality of AC Installations")
+        if "nb_installations_clim" in df.columns:
+            sns.boxplot(data=df, x="month", y="nb_installations_clim",
+                        palette="YlOrRd", ax=axes[1])
+            axes[1].set_title("Seasonality of AC Installations")
         axes[1].set_xlabel("Month")
         axes[1].set_ylabel("AC Installations")
 
@@ -398,6 +452,11 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        for col in ("nb_installations_pac", "dept", "month"):
+            if col not in df.columns:
+                logger.warning("Skipping heatmap dept×month: '%s' column missing", col)
+                return Path()
+
         pivot = df.pivot_table(
             values="nb_installations_pac",
             index="dept",
@@ -429,6 +488,12 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        required = {"dept", "nb_dpe_total", "nb_installations_pac", "nb_installations_clim"}
+        missing = required - set(df.columns)
+        if missing:
+            logger.warning("Skipping dept comparison: missing columns %s", missing)
+            return Path()
+
         agg = df.groupby("dept").agg({
             "nb_dpe_total": "sum",
             "nb_installations_pac": "sum",
@@ -467,6 +532,10 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        if "pct_pac" not in df.columns or "dept" not in df.columns:
+            logger.warning("Skipping pct_pac_by_dept: 'pct_pac' or 'dept' missing")
+            return Path()
+
         pct = df.groupby("dept")["pct_pac"].mean().sort_values(ascending=True)
         labels = [f"{d} — {self.DEPT_NAMES.get(d, d)}" for d in pct.index]
 
@@ -492,7 +561,15 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
+        if "nb_installations_pac" not in df.columns:
+            logger.warning("Skipping scatter features: 'nb_installations_pac' missing")
+            return Path()
+
         features = [c for c in self.KEY_FEATURES if c in df.columns]
+        if not features:
+            logger.warning("Skipping scatter features: no KEY_FEATURES found")
+            return Path()
+
         n = len(features)
         ncols = 4
         nrows = (n + ncols - 1) // ncols
@@ -611,23 +688,28 @@ class EDAAnalyzer:
         buf.write(df[targets].describe().to_string())
 
         # 3. Statistics by department
-        buf.write("\n\n\n3. VOLUMES BY DEPARTMENT\n")
-        buf.write("-" * 40 + "\n")
-        dept_stats = df.groupby("dept").agg({
-            "nb_dpe_total": ["sum", "mean"],
-            "nb_installations_pac": ["sum", "mean"],
-            "pct_pac": "mean",
-        }).round(2)
-        buf.write(dept_stats.to_string())
+        agg_cols = {}
+        for col in ["nb_dpe_total", "nb_installations_pac"]:
+            if col in df.columns:
+                agg_cols[col] = ["sum", "mean"]
+        if "pct_pac" in df.columns:
+            agg_cols["pct_pac"] = "mean"
+
+        if agg_cols and "dept" in df.columns:
+            buf.write("\n\n\n3. VOLUMES BY DEPARTMENT\n")
+            buf.write("-" * 40 + "\n")
+            dept_stats = df.groupby("dept").agg(agg_cols).round(2)
+            buf.write(dept_stats.to_string())
 
         # 4. Seasonality
-        buf.write("\n\n\n4. SEASONALITY — HEAT PUMPS BY MONTH (ALL DEPT AVERAGE)\n")
-        buf.write("-" * 40 + "\n")
-        month_avg = df.groupby("month")["nb_installations_pac"].mean().round(1)
-        for m, v in month_avg.items():
-            months_en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            buf.write(f"  {months_en[m-1]:>3}: {v:>8.1f}\n")
+        if "month" in df.columns and "nb_installations_pac" in df.columns:
+            buf.write("\n\n\n4. SEASONALITY — HEAT PUMPS BY MONTH (ALL DEPT AVERAGE)\n")
+            buf.write("-" * 40 + "\n")
+            month_avg = df.groupby("month")["nb_installations_pac"].mean().round(1)
+            for m, v in month_avg.items():
+                months_en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                buf.write(f"  {months_en[m-1]:>3}: {v:>8.1f}\n")
 
         # 5. Top correlations
         buf.write("\n\n5. TOP CORRELATIONS WITH nb_installations_pac\n")
@@ -651,8 +733,34 @@ class EDAAnalyzer:
     # Orchestrator
     # ------------------------------------------------------------------
 
+    def _safe_plot(self, name: str, func, *args, **kwargs) -> Optional[Path]:
+        """Execute a plot function with error handling.
+
+        If the plot fails, logs the error and returns None instead of
+        crashing the entire EDA pipeline.
+
+        Args:
+            name: Human-readable name for the plot (used in logs).
+            func: Plot method to call.
+            *args, **kwargs: Arguments forwarded to the plot method.
+
+        Returns:
+            Path to the saved figure, or None if the plot failed.
+        """
+        try:
+            result = func(*args, **kwargs)
+            return result
+        except Exception as exc:
+            logger.error("  ✗ Plot '%s' failed: %s", name, exc)
+            plt.close("all")  # Prevent leaked figures
+            return None
+
     def run_full_eda(self) -> Dict[str, Any]:
         """Execute the full suite of EDA analyses.
+
+        Each plot is wrapped in error handling so that one failing chart
+        does not crash the entire pipeline. Failed plots are logged as
+        errors and skipped.
 
         Returns:
             Dictionary with paths to generated files and stats.
@@ -664,48 +772,48 @@ class EDAAnalyzer:
         self._ensure_dirs()
         self.df = self._load_data()
 
-        results = {"figures": []}
+        results = {"figures": [], "errors": []}
 
         # 1. Overview
-        stats = self.overview()
+        stats = self._safe_plot("overview", self.overview) or {}
         results["stats"] = stats
 
-        # 2. NaN heatmap
-        logger.info("NaN charts...")
-        fig_path = self.plot_nan_heatmap()
-        if fig_path.name:
-            results["figures"].append(str(fig_path))
+        # All plot steps: (label, method)
+        plot_steps = [
+            ("NaN heatmap", self.plot_nan_heatmap),
+            ("Target distributions", self.plot_target_distributions),
+            ("Feature distributions", self.plot_feature_distributions),
+            ("Timeseries PAC", self.plot_timeseries_pac),
+            ("Timeseries DPE total", self.plot_timeseries_dpe_total),
+            ("Timeseries aggregated", self.plot_timeseries_aura_aggregated),
+            ("Seasonality boxplots", self.plot_seasonality_boxplots),
+            ("Heatmap dept × month", self.plot_heatmap_dept_month),
+            ("Department comparison", self.plot_dept_comparison),
+            ("Heat pump rate by dept", self.plot_pct_pac_by_dept),
+            ("Scatter features vs target", self.plot_scatter_features_vs_target),
+            ("Temp vs PAC by season", self.plot_temp_vs_pac_by_season),
+        ]
 
-        # 3. Distributions
-        logger.info("Distributions...")
-        results["figures"].append(str(self.plot_target_distributions()))
-        results["figures"].append(str(self.plot_feature_distributions()))
+        for label, method in plot_steps:
+            logger.info("%s...", label)
+            fig_path = self._safe_plot(label, method)
+            if fig_path is not None and fig_path.name:
+                results["figures"].append(str(fig_path))
+            elif fig_path is None:
+                results["errors"].append(label)
 
-        # 4. Time series
-        logger.info("Time series...")
-        results["figures"].append(str(self.plot_timeseries_pac()))
-        results["figures"].append(str(self.plot_timeseries_dpe_total()))
-        results["figures"].append(str(self.plot_timeseries_aura_aggregated()))
-
-        # 5. Seasonality
-        logger.info("Seasonality...")
-        results["figures"].append(str(self.plot_seasonality_boxplots()))
-        results["figures"].append(str(self.plot_heatmap_dept_month()))
-
-        # 6. Geography
-        logger.info("Department comparison...")
-        results["figures"].append(str(self.plot_dept_comparison()))
-        results["figures"].append(str(self.plot_pct_pac_by_dept()))
-
-        # 7. Relationships
-        logger.info("Scatter plots features vs target...")
-        results["figures"].append(str(self.plot_scatter_features_vs_target()))
-        results["figures"].append(str(self.plot_temp_vs_pac_by_season()))
-
-        # 8. Text report
+        # Text report
         logger.info("Generating text report...")
-        report_path = self.generate_text_report(stats)
-        results["report"] = str(report_path)
+        report_path = self._safe_plot("Text report", self.generate_text_report, stats)
+        if report_path is not None:
+            results["report"] = str(report_path)
 
-        logger.info("EDA complete: %d charts generated.", len(results["figures"]))
+        n_ok = len(results["figures"])
+        n_err = len(results["errors"])
+        logger.info(
+            "EDA complete: %d charts generated, %d skipped/failed.", n_ok, n_err,
+        )
+        if n_err > 0:
+            logger.warning("  Failed plots: %s", results["errors"])
+
         return results
