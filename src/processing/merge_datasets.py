@@ -46,7 +46,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from config.settings import ProjectConfig
+from config.settings import DEPT_NAMES, ProjectConfig
 
 
 class DatasetMerger:
@@ -111,7 +111,21 @@ class DatasetMerger:
                 "  Economic features: %d rows", len(df_eco),
             )
 
-        # 4. Progressive merging
+        # 4. SITADEL construction permits (month x department)
+        df_sitadel = self._prepare_sitadel_features()
+        if df_sitadel is not None:
+            self.logger.info(
+                "  SITADEL features: %d rows", len(df_sitadel),
+            )
+
+        # 5. Department reference data (static: income, price/m2, housing stock)
+        df_ref = self._prepare_reference_features()
+        if df_ref is not None:
+            self.logger.info(
+                "  Reference features: %d departments", len(df_ref),
+            )
+
+        # 6. Progressive merging
         # Base = DPE (contains date_id + dept)
         df = df_dpe.copy()
 
@@ -141,10 +155,36 @@ class DatasetMerger:
                 len(df), len(df.columns),
             )
 
-        # 5. Add temporal metadata
+        # Join SITADEL (same granularity: date_id + dept)
+        if df_sitadel is not None:
+            df = df.merge(
+                df_sitadel,
+                on=["date_id", "dept"],
+                how="left",
+                suffixes=("", "_sitadel"),
+            )
+            self.logger.info(
+                "  After SITADEL merge: %d rows × %d columns",
+                len(df), len(df.columns),
+            )
+
+        # Join reference features (granularity = dept only -> broadcast across months)
+        if df_ref is not None:
+            df = df.merge(
+                df_ref,
+                on="dept",
+                how="left",
+                suffixes=("", "_ref"),
+            )
+            self.logger.info(
+                "  After reference merge: %d rows × %d columns",
+                len(df), len(df.columns),
+            )
+
+        # 7. Add temporal metadata
         df = self._add_time_features(df)
 
-        # 6. Add geographic metadata
+        # 8. Add geographic metadata
         df = self._add_geo_features(df)
 
         # 7. Filter DPE v2 period (>= 2021-07)
@@ -478,6 +518,93 @@ class DatasetMerger:
         return df_eco
 
     # ==================================================================
+    # SITADEL & Reference features
+    # ==================================================================
+
+    def _prepare_sitadel_features(self) -> Optional[pd.DataFrame]:
+        """Prepare SITADEL construction permits aggregated by month x department.
+
+        Features produced:
+        - nb_logements_autorises: total housing units authorized
+        - nb_logements_individuels: individual houses authorized
+        - nb_logements_collectifs: collective housing authorized
+        - surface_autorisee_m2: total surface authorized
+
+        Returns:
+            Aggregated DataFrame, or None if the file is missing.
+        """
+        filepath = self.config.raw_data_dir / "sitadel" / "permis_construire_france.csv"
+        if not filepath.exists():
+            self.logger.warning("SITADEL file not found: %s", filepath)
+            return None
+
+        df = pd.read_csv(filepath)
+
+        # Build date_id from DATE_PRISE_EN_COMPTE (format YYYY-MM)
+        if "DATE_PRISE_EN_COMPTE" in df.columns:
+            df["date_id"] = (
+                df["DATE_PRISE_EN_COMPTE"]
+                .str.replace("-", "")
+                .astype(int)
+            )
+        else:
+            self.logger.warning("  SITADEL: DATE_PRISE_EN_COMPTE column missing")
+            return None
+
+        # Department code
+        if "DEP" in df.columns:
+            df["dept"] = df["DEP"].astype(str).str.zfill(2)
+        else:
+            self.logger.warning("  SITADEL: DEP column missing")
+            return None
+
+        # Rename and select relevant columns
+        rename_map = {
+            "NB_LGT_TOT_CREES": "nb_logements_autorises",
+            "NB_LGT_IND_CREES": "nb_logements_individuels",
+            "NB_LGT_COLL_CREES": "nb_logements_collectifs",
+            "SURF_TOT_M2": "surface_autorisee_m2",
+        }
+        available = {k: v for k, v in rename_map.items() if k in df.columns}
+        df = df.rename(columns=available)
+
+        keep_cols = ["date_id", "dept"] + list(available.values())
+        df = df[keep_cols]
+
+        # Aggregate (sum) per month x department
+        df = df.groupby(["date_id", "dept"]).sum().reset_index()
+
+        return df
+
+    def _prepare_reference_features(self) -> Optional[pd.DataFrame]:
+        """Load department-level reference features (static per department).
+
+        Loads socioeconomic reference data from INSEE:
+        - revenu_median: median household income (Filosofi)
+        - prix_m2_median: median property price per m2 (DVF/Notaires)
+        - nb_logements_total: total housing stock (Recensement)
+        - pct_maisons: percentage of houses (vs apartments)
+
+        Returns:
+            DataFrame with one row per department, or None if missing.
+        """
+        filepath = self.config.raw_data_dir / "insee" / "reference_departements.csv"
+        if not filepath.exists():
+            self.logger.warning("Reference file not found: %s", filepath)
+            return None
+
+        df = pd.read_csv(filepath, dtype={"dept": str})
+        df["dept"] = df["dept"].astype(str).str.zfill(2)
+
+        # Keep only numeric features (drop dept_name which is metadata)
+        keep_cols = ["dept"]
+        for col in ["revenu_median", "prix_m2_median", "nb_logements_total", "pct_maisons"]:
+            if col in df.columns:
+                keep_cols.append(col)
+
+        return df[keep_cols]
+
+    # ==================================================================
     # Enrichment
     # ==================================================================
 
@@ -548,17 +675,7 @@ class DatasetMerger:
         Returns:
             Department name.
         """
-        names = {
-            "01": "Ain",
-            "07": "Ardèche",
-            "26": "Drôme",
-            "38": "Isère",
-            "42": "Loire",
-            "69": "Rhône",
-            "73": "Savoie",
-            "74": "Haute-Savoie",
-        }
-        return names.get(code, f"Dept-{code}")
+        return DEPT_NAMES.get(code, f"Dept-{code}")
 
     # ==================================================================
     # Save

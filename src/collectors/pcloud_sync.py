@@ -320,7 +320,15 @@ class PCloudSync:
             "ipi_hvac_france.csv": self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv",
             "permis_construire_france.csv": self.config.raw_data_dir / "sitadel" / "permis_construire_france.csv",
             "dpe_france_all.csv": self.config.raw_data_dir / "dpe" / "dpe_france_all.csv",
+            "reference_departements.csv": self.config.raw_data_dir / "insee" / "reference_departements.csv",
         }
+
+        # Add features datasets
+        features_dir = self.config.features_data_dir
+        for name in ["hvac_ml_dataset.csv", "hvac_features_dataset.csv"]:
+            path = features_dir / name
+            if path.exists():
+                upload_targets[name] = path
 
         # Add the database if it exists
         db_path = Path(self.config.database.db_path)
