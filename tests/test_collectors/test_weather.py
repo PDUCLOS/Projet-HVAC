@@ -27,7 +27,7 @@ class TestWeatherCollector:
     def test_validate_missing_columns(self, collector_config):
         collector = WeatherCollector(collector_config)
         df = pd.DataFrame({"x": [1, 2, 3]})
-        with pytest.raises(ValueError, match="Colonnes obligatoires manquantes"):
+        with pytest.raises(ValueError, match="Required columns missing"):
             collector.validate(df)
 
     def test_validate_warns_on_nulls(self, collector_config, sample_weather_df, caplog):

@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
 """
-Database Package — Gestion du schéma en étoile et opérations CRUD.
+Database Package — Star schema management and CRUD operations.
 """

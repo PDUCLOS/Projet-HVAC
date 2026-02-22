@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 def render():
-    st.title("Carte de France - HVAC")
+    st.title("France Map - HVAC")
 
     # Load department coordinates from settings
     try:

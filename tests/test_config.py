@@ -141,12 +141,12 @@ class TestDatabaseConfig:
 
     def test_non_local_requires_permission(self):
         db = DatabaseConfig(db_type="mssql", allow_non_local=False)
-        with pytest.raises(ValueError, match="non locale désactivée"):
+        with pytest.raises(ValueError, match="Non-local database.*disabled"):
             _ = db.connection_string
 
     def test_unknown_db_type(self):
         db = DatabaseConfig(db_type="oracle", allow_non_local=True)
-        with pytest.raises(ValueError, match="Type de BDD inconnu"):
+        with pytest.raises(ValueError, match="Unknown database type"):
             _ = db.connection_string
 
 
