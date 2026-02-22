@@ -40,6 +40,16 @@
   - Cross-validation strategy adapted to temporal data (TimeSeriesSplit)
 - Always measure and document model impact of changes (metrics before/after)
 
+## TODO: Data Column Review (Before Optimization)
+
+- **Before optimizing ML/DL**, conduct a full review of selected columns with the user:
+  - **DPE columns**: Document each selected column, its content, and its relevance to the model
+  - **Weather columns**: Same review — explain what each variable brings to prediction
+  - **Evaluate with more data**: With full 96-department data, assess whether additional columns
+    (currently excluded) could improve model performance
+  - **Decision**: For each column, justify keep/drop/add based on feature importance and domain logic
+- This review is a **collaborative discussion** — do not skip it, wait for user input
+
 ## Git Workflow
 
 - Commit messages in English, clear and descriptive
