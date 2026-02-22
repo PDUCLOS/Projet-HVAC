@@ -1,0 +1,47 @@
+# CLAUDE.md — Project Rules for AI Assistant
+
+## Code Standards
+
+- **All code comments MUST be written in English** — no exceptions
+- **Docstrings in English** for all functions, classes, and modules
+- Keep code clean, readable, and well-structured — this project is a portfolio showcase
+
+## Testing Requirements
+
+- **Security tests**: Run security checks (input validation, injection prevention, dependency vulnerabilities) on every change
+- **Regression tests**: Every improvement or evolution MUST include regression tests to ensure existing functionality is not broken
+- **Never skip tests** before committing — run `pytest tests/ -v` to validate all changes
+- Add new tests for every new feature or bug fix
+
+## Documentation
+
+- **Update documentation** (`docs/`, `README.md`, `PROJECT_BRIEF.md`) whenever code changes affect architecture, features, or usage
+- Keep documentation in sync with the codebase at all times
+- Document new features, API changes, and configuration updates
+
+## Project Purpose
+
+- This project is a **portfolio showcase** for the Data Science Lead certification (Jedha Bootcamp, Bac+5 RNCP Level 7)
+- Every change should reflect **professional quality** — clean code, proper testing, clear documentation
+- The project must demonstrate end-to-end data science skills: collection, ETL, ML, deep learning, API, dashboard, DevOps
+
+## Local Execution
+
+- The project MUST always remain **runnable locally** (SQLite, local venv, no mandatory cloud dependency)
+- Docker support is optional but local Python execution is the primary mode
+- Preserve portability: `python -m src.pipeline all` must work on any machine after setup
+
+## ML / Deep Learning Optimization (Pending Full Data)
+
+- When full data is available (~5-8M DPE from 96 departments), optimize:
+  - Feature importance analysis and feature selection
+  - Hyperparameter tuning (Ridge, LightGBM)
+  - Deep learning models (LSTM/Transformer) with sufficient data volume
+  - Cross-validation strategy adapted to temporal data (TimeSeriesSplit)
+- Always measure and document model impact of changes (metrics before/after)
+
+## Git Workflow
+
+- Commit messages in English, clear and descriptive
+- Never push secrets, credentials, or large data files
+- Keep `.gitignore` up to date
