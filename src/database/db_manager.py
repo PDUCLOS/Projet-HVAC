@@ -622,7 +622,7 @@ class DatabaseManager:
         chunk_size = _cfg.processing.dpe_import_chunk_size
         total_imported = 0
 
-        for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
+        for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size, low_memory=False)):
             # First chunk: replace to clear the table
             # Subsequent chunks: append
             mode = "replace" if i == 0 else "append"
