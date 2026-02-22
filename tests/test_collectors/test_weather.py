@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
+import requests
 
 from src.collectors.weather import WeatherCollector
 
@@ -94,3 +95,100 @@ class TestWeatherCollector:
         assert len(df) >= 1
         assert "pac_inefficient" in df.columns
         assert "elevation" in df.columns
+
+
+class TestFetchWithRetry:
+    """Tests for _fetch_with_retry (429 backoff logic)."""
+
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_success_on_first_attempt(self, mock_fetch, collector_config):
+        """Returns data immediately when no error occurs."""
+        mock_fetch.return_value = {"daily": {"time": ["2023-01-01"]}}
+        collector = WeatherCollector(collector_config)
+        result = collector._fetch_with_retry("http://test", {}, "TestCity")
+        assert result == {"daily": {"time": ["2023-01-01"]}}
+        assert mock_fetch.call_count == 1
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_retries_on_429_then_succeeds(self, mock_fetch, mock_sleep, collector_config):
+        """Retries on 429 and eventually succeeds."""
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        http_429 = requests.exceptions.HTTPError(response=resp_429)
+
+        mock_fetch.side_effect = [
+            http_429,
+            http_429,
+            {"daily": {"time": ["2023-01-01"]}},
+        ]
+        collector = WeatherCollector(collector_config)
+        result = collector._fetch_with_retry("http://test", {}, "TestCity")
+
+        assert result is not None
+        assert result["daily"]["time"] == ["2023-01-01"]
+        assert mock_fetch.call_count == 3
+        # Should have slept twice (5s, 10s)
+        assert mock_sleep.call_count == 2
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_returns_none_after_max_retries(self, mock_fetch, mock_sleep, collector_config):
+        """Returns None when all 429 retries are exhausted."""
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        http_429 = requests.exceptions.HTTPError(response=resp_429)
+
+        mock_fetch.side_effect = http_429
+        collector = WeatherCollector(collector_config)
+        result = collector._fetch_with_retry("http://test", {}, "TestCity")
+
+        assert result is None
+        assert mock_fetch.call_count == WeatherCollector._MAX_429_RETRIES
+
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_non_429_error_raised_immediately(self, mock_fetch, collector_config):
+        """Non-429 HTTP errors are raised without retry."""
+        resp_500 = MagicMock()
+        resp_500.status_code = 500
+        http_500 = requests.exceptions.HTTPError(response=resp_500)
+
+        mock_fetch.side_effect = http_500
+        collector = WeatherCollector(collector_config)
+
+        with pytest.raises(requests.exceptions.HTTPError):
+            collector._fetch_with_retry("http://test", {}, "TestCity")
+        assert mock_fetch.call_count == 1
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_connection_error_with_429_retried(self, mock_fetch, mock_sleep, collector_config):
+        """ConnectionError containing '429' is caught and retried."""
+        conn_err = requests.exceptions.ConnectionError(
+            "Max retries exceeded: too many 429 error responses"
+        )
+        mock_fetch.side_effect = [
+            conn_err,
+            {"daily": {"time": ["2023-01-01"]}},
+        ]
+        collector = WeatherCollector(collector_config)
+        result = collector._fetch_with_retry("http://test", {}, "TestCity")
+
+        assert result is not None
+        assert mock_fetch.call_count == 2
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_exponential_backoff_timing(self, mock_fetch, mock_sleep, collector_config):
+        """Backoff follows exponential pattern: 5, 10, 20, 40, 80."""
+        resp_429 = MagicMock()
+        resp_429.status_code = 429
+        http_429 = requests.exceptions.HTTPError(response=resp_429)
+
+        mock_fetch.side_effect = http_429
+        collector = WeatherCollector(collector_config)
+        collector._fetch_with_retry("http://test", {}, "TestCity")
+
+        expected_waits = [5.0, 10.0, 20.0, 40.0, 80.0]
+        actual_waits = [call.args[0] for call in mock_sleep.call_args_list]
+        assert actual_waits == expected_waits

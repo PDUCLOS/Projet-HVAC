@@ -137,7 +137,7 @@ class CollectorConfig:
     request_timeout: int = 30
     max_retries: int = 3
     retry_backoff_factor: float = 1.0
-    rate_limit_delay: float = 0.5
+    rate_limit_delay: float = 1.5
     log_level: str = "INFO"
 
     @classmethod
@@ -177,7 +177,7 @@ class CollectorConfig:
             request_timeout=int(os.getenv("REQUEST_TIMEOUT", "30")),
             max_retries=int(os.getenv("MAX_RETRIES", "3")),
             retry_backoff_factor=float(os.getenv("RETRY_BACKOFF", "1.0")),
-            rate_limit_delay=float(os.getenv("RATE_LIMIT_DELAY", "0.5")),
+            rate_limit_delay=float(os.getenv("RATE_LIMIT_DELAY", "1.5")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )
 

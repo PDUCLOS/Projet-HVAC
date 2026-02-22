@@ -33,10 +33,12 @@ Extensibility:
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 
 import pandas as pd
+import requests
 
 from src.collectors.base import BaseCollector
 
@@ -72,6 +74,67 @@ class WeatherCollector(BaseCollector):
     output_subdir: ClassVar[str] = "weather"
     output_filename: ClassVar[str] = "weather_france.csv"
 
+    # Rate-limiting constants for Open-Meteo free tier
+    _MAX_429_RETRIES: ClassVar[int] = 5           # Max retries on 429 per city
+    _INITIAL_BACKOFF: ClassVar[float] = 5.0        # Initial wait on 429 (seconds)
+    _BATCH_SIZE: ClassVar[int] = 10                # Cities per batch before extra pause
+    _BATCH_PAUSE: ClassVar[float] = 5.0            # Extra pause between batches (seconds)
+
+    def _fetch_with_retry(
+        self, url: str, params: Dict[str, Any], city: str
+    ) -> Optional[Any]:
+        """Fetch JSON with 429-specific exponential backoff.
+
+        The urllib3 Retry handles transient errors, but for sustained
+        429 rate limiting across 96 cities, we need a higher-level
+        retry loop with longer waits.
+
+        Args:
+            url: API endpoint URL.
+            params: Query parameters.
+            city: City name (for logging).
+
+        Returns:
+            Parsed JSON data, or None if all retries exhausted.
+
+        Raises:
+            Exception: Re-raises non-429 errors immediately.
+        """
+        for attempt in range(1, self._MAX_429_RETRIES + 1):
+            try:
+                return self.fetch_json(url, params=params)
+            except requests.exceptions.HTTPError as exc:
+                if exc.response is not None and exc.response.status_code == 429:
+                    wait = self._INITIAL_BACKOFF * (2 ** (attempt - 1))
+                    self.logger.warning(
+                        "  429 Too Many Requests for %s (attempt %d/%d) "
+                        "— waiting %.0fs before retry...",
+                        city, attempt, self._MAX_429_RETRIES, wait,
+                    )
+                    time.sleep(wait)
+                    continue
+                # Non-429 HTTP errors: raise immediately
+                raise
+            except requests.exceptions.ConnectionError as exc:
+                # urllib3 Retry wraps 429 as ConnectionError after max retries
+                error_str = str(exc)
+                if "429" in error_str or "too many" in error_str.lower():
+                    wait = self._INITIAL_BACKOFF * (2 ** (attempt - 1))
+                    self.logger.warning(
+                        "  429 rate limit for %s (attempt %d/%d) "
+                        "— waiting %.0fs before retry...",
+                        city, attempt, self._MAX_429_RETRIES, wait,
+                    )
+                    time.sleep(wait)
+                    continue
+                raise
+
+        self.logger.error(
+            "  All %d retries exhausted for %s — skipping city",
+            self._MAX_429_RETRIES, city,
+        )
+        return None
+
     def collect(self) -> pd.DataFrame:
         """Collect weather data for all reference cities.
 
@@ -106,9 +169,13 @@ class WeatherCollector(BaseCollector):
                 self.config.end_date, effective_end,
             )
 
-        for city, coords in cities.items():
+        city_items = list(cities.items())
+        total_cities = len(city_items)
+
+        for idx, (city, coords) in enumerate(city_items, 1):
             self.logger.info(
-                "Weather collection: %s (lat=%.2f, lon=%.2f, dept=%s)",
+                "Weather collection [%d/%d]: %s (lat=%.2f, lon=%.2f, dept=%s)",
+                idx, total_cities,
                 city, coords["lat"], coords["lon"], coords["dept"],
             )
 
@@ -123,8 +190,15 @@ class WeatherCollector(BaseCollector):
             }
 
             try:
-                # API call — retry is handled automatically by the session
-                data = self.fetch_json(OPENMETEO_BASE_URL, params=params)
+                # API call with 429-specific retry and exponential backoff
+                data = self._fetch_with_retry(
+                    OPENMETEO_BASE_URL, params=params, city=city,
+                )
+
+                # _fetch_with_retry returns None if all retries exhausted
+                if data is None:
+                    errors.append(f"Failed for {city}: 429 rate limit exhausted")
+                    continue
 
                 # Check that the 'daily' key exists in the response
                 if "daily" not in data:
@@ -155,6 +229,14 @@ class WeatherCollector(BaseCollector):
 
             # Courtesy pause between calls
             self.rate_limit_pause()
+
+            # Extra pause between batches to stay well under rate limits
+            if idx % self._BATCH_SIZE == 0 and idx < total_cities:
+                self.logger.info(
+                    "  Batch pause (%d/%d cities done) — waiting %.0fs...",
+                    idx, total_cities, self._BATCH_PAUSE,
+                )
+                time.sleep(self._BATCH_PAUSE)
 
         # Check that at least one city was collected
         if not all_frames:
