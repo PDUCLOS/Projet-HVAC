@@ -536,6 +536,21 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df.copy()
+
+        # Determine which temperature column is available
+        temp_col = None
+        for candidate in ["temp_mean", "temperature_2m_mean"]:
+            if candidate in df.columns:
+                temp_col = candidate
+                break
+
+        if temp_col is None or "nb_installations_pac" not in df.columns:
+            logger.warning(
+                "Skipping temp_vs_pac_by_season: missing columns "
+                "(need temp_mean or temperature_2m_mean + nb_installations_pac)"
+            )
+            return self._save_fig("12_temp_vs_pac_by_season")
+
         df["season"] = df["month"].map(lambda m: (
             "Winter" if m in [12, 1, 2] else
             "Spring" if m in [3, 4, 5] else
@@ -550,7 +565,7 @@ class EDAAnalyzer:
         for season, color in season_colors.items():
             mask = df["season"] == season
             ax.scatter(
-                df.loc[mask, "temp_mean"],
+                df.loc[mask, temp_col],
                 df.loc[mask, "nb_installations_pac"],
                 c=color, label=season, alpha=0.6, s=30,
             )
