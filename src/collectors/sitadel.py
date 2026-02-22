@@ -59,14 +59,23 @@ SITADEL_DIDO_API_URL = (
 SITADEL_MILLESIME = "2026-01"  # Latest known update
 
 # Columns of interest in the SITADEL CSV file
+# NOTE: The DiDo API renamed columns in early 2026:
+#   DEP → DEP_CODE, REG → REG_CODE
+# We handle both old and new names for backwards compatibility.
 SITADEL_COLUMNS = [
-    "REG",                    # Region code
-    "DEP",                    # Department code
+    "REG",                    # Region code (legacy name)
+    "DEP",                    # Department code (legacy name)
     "DATE_PRISE_EN_COMPTE",   # Permit processing date
     "NB_LGT_TOT_CREES",      # Total number of housing units created
     "CAT_DEM",                # Applicant category
     "I_AUT_PC",               # Building permit indicator
 ]
+
+# Column renaming map: DiDo API 2026+ → legacy internal names
+_DIDO_COLUMN_MAP = {
+    "DEP_CODE": "DEP",
+    "REG_CODE": "REG",
+}
 
 
 class SitadelCollector(BaseCollector):
@@ -151,6 +160,20 @@ class SitadelCollector(BaseCollector):
         self.logger.info(
             "CSV loaded: %d rows × %d columns", len(df), len(df.columns),
         )
+
+        # Normalize column names: DiDo API renamed columns in 2026
+        # (DEP_CODE → DEP, REG_CODE → REG) for backwards compatibility
+        renamed = {
+            old: new
+            for old, new in _DIDO_COLUMN_MAP.items()
+            if old in df.columns and new not in df.columns
+        }
+        if renamed:
+            df = df.rename(columns=renamed)
+            self.logger.info(
+                "Columns renamed for compatibility: %s",
+                {old: new for old, new in renamed.items()},
+            )
 
         # Filter on target departments
         # The DEP column can have various formats (01, 1, 001...)

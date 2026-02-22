@@ -1,7 +1,7 @@
 # HVAC Market Analysis — Metropolitan France
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![Tests](https://img.shields.io/badge/tests-513%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-530%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.989-orange)
 ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
