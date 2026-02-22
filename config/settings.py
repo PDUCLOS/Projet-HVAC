@@ -222,6 +222,109 @@ DEPT_NAMES: Dict[str, str] = {
 }
 
 
+# Prefecture elevations (meters above sea level) — source: Open-Meteo Elevation API
+# (Copernicus DEM GLO-90, 90m resolution) + IGN BD ALTI validation.
+# Used for PAC (heat pump) efficiency modeling: high altitude = lower COP.
+PREFECTURE_ELEVATIONS: Dict[str, int] = {
+    "01": 224,   # Bourg-en-Bresse
+    "02": 82,    # Laon
+    "03": 242,   # Moulins
+    "04": 608,   # Digne-les-Bains
+    "05": 735,   # Gap
+    "06": 10,    # Nice
+    "07": 300,   # Privas
+    "08": 160,   # Charleville-Mezieres
+    "09": 390,   # Foix
+    "10": 113,   # Troyes
+    "11": 111,   # Carcassonne
+    "12": 635,   # Rodez
+    "13": 12,    # Marseille
+    "14": 25,    # Caen
+    "15": 631,   # Aurillac
+    "16": 100,   # Angouleme
+    "17": 8,     # La Rochelle
+    "18": 153,   # Bourges
+    "19": 455,   # Tulle
+    "21": 245,   # Dijon
+    "22": 135,   # Saint-Brieuc
+    "23": 457,   # Gueret
+    "24": 86,    # Perigueux
+    "25": 307,   # Besancon
+    "26": 126,   # Valence
+    "27": 64,    # Evreux
+    "28": 142,   # Chartres
+    "29": 63,    # Quimper
+    "2A": 18,    # Ajaccio
+    "2B": 5,     # Bastia
+    "30": 39,    # Nimes
+    "31": 141,   # Toulouse
+    "32": 169,   # Auch
+    "33": 6,     # Bordeaux
+    "34": 27,    # Montpellier
+    "35": 40,    # Rennes
+    "36": 155,   # Chateauroux
+    "37": 60,    # Tours
+    "38": 212,   # Grenoble
+    "39": 255,   # Lons-le-Saunier
+    "40": 60,    # Mont-de-Marsan
+    "41": 73,    # Blois
+    "42": 517,   # Saint-Etienne
+    "43": 629,   # Le Puy-en-Velay
+    "44": 8,     # Nantes
+    "45": 116,   # Orleans
+    "46": 135,   # Cahors
+    "47": 50,    # Agen
+    "48": 731,   # Mende
+    "49": 47,    # Angers
+    "50": 20,    # Saint-Lo
+    "51": 83,    # Chalons-en-Champagne
+    "52": 318,   # Chaumont
+    "53": 90,    # Laval
+    "54": 212,   # Nancy
+    "55": 188,   # Bar-le-Duc
+    "56": 10,    # Vannes
+    "57": 178,   # Metz
+    "58": 194,   # Nevers
+    "59": 20,    # Lille
+    "60": 67,    # Beauvais
+    "61": 135,   # Alencon
+    "62": 57,    # Arras
+    "63": 401,   # Clermont-Ferrand
+    "64": 190,   # Pau
+    "65": 304,   # Tarbes
+    "66": 40,    # Perpignan
+    "67": 142,   # Strasbourg
+    "68": 194,   # Colmar
+    "69": 175,   # Lyon
+    "70": 221,   # Vesoul
+    "71": 180,   # Macon
+    "72": 55,    # Le Mans
+    "73": 270,   # Chambery
+    "74": 448,   # Annecy
+    "75": 35,    # Paris
+    "76": 12,    # Rouen
+    "77": 43,    # Melun
+    "78": 132,   # Versailles
+    "79": 62,    # Niort
+    "80": 34,    # Amiens
+    "81": 174,   # Albi
+    "82": 82,    # Montauban
+    "83": 2,     # Toulon
+    "84": 23,    # Avignon
+    "85": 72,    # La Roche-sur-Yon
+    "86": 120,   # Poitiers
+    "87": 300,   # Limoges
+    "88": 324,   # Epinal
+    "89": 100,   # Auxerre
+    "90": 352,   # Belfort
+    "91": 80,    # Evry
+    "92": 35,    # Nanterre
+    "93": 49,    # Bobigny
+    "94": 37,    # Creteil
+    "95": 30,    # Pontoise
+}
+
+
 def _get_departments_for_scope(scope: str) -> List[str]:
     """Return the list of departments for the chosen scope.
 
@@ -422,6 +525,7 @@ class ThresholdsConfig:
     """
     heatwave_temp: float = 35.0
     frost_temp: float = 0.0
+    pac_inefficiency_temp: float = -7.0   # Below this, air-source heat pump COP drops critically
     cost_outlier_max: float = 50_000.0
 
 

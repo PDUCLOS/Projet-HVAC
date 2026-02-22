@@ -19,6 +19,9 @@ Computed data:
       -> Indicator of heating demand
     - CDD (Cooling Degree Days) = max(0, temp_mean - 18)
       -> Indicator of cooling demand
+    - pac_inefficient (bool): 1 if temp_min < -7degC
+      -> Below -7degC, air-source heat pump COP drops critically (<2.0)
+      -> Key domain knowledge: PAC viability depends on outdoor temperature
 
 NOTE: The archive API does not directly provide HDD/CDD;
       they are computed from mean temperature (base 18degC).
@@ -38,6 +41,9 @@ from src.collectors.base import BaseCollector
 
 # Open-Meteo Archive API base URL
 OPENMETEO_BASE_URL = "https://archive-api.open-meteo.com/v1/archive"
+
+# Open-Meteo Elevation API (Copernicus DEM GLO-90, 90m resolution)
+OPENMETEO_ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
 
 # Daily weather variables to collect
 DAILY_VARIABLES = [
@@ -160,6 +166,29 @@ class WeatherCollector(BaseCollector):
                 result["hdd"].mean(), result["cdd"].mean(),
             )
 
+        # PAC inefficiency flag: days where T_min < -7°C
+        # Below -7°C, air-source heat pump COP drops below ~2.0,
+        # making it economically unviable vs gas/oil in most cases.
+        pac_threshold = project_config.thresholds.pac_inefficiency_temp
+        if "temperature_2m_min" in result.columns:
+            result["pac_inefficient"] = (
+                result["temperature_2m_min"] < pac_threshold
+            ).astype(int)
+            n_inefficient = result["pac_inefficient"].sum()
+            pct = 100 * n_inefficient / len(result) if len(result) > 0 else 0
+            self.logger.info(
+                "PAC inefficiency flag: %d days (%.1f%%) with T_min < %.0f°C",
+                n_inefficient, pct, pac_threshold,
+            )
+
+        # Fetch elevation for each department and attach to data
+        elevations = self._fetch_elevations(cities)
+        result["elevation"] = result["dept"].map(elevations).fillna(0).astype(float)
+        self.logger.info(
+            "Elevation attached — range: %.0fm (min) to %.0fm (max)",
+            result["elevation"].min(), result["elevation"].max(),
+        )
+
         # Log summary if partial collection
         if errors:
             self.logger.warning(
@@ -168,6 +197,55 @@ class WeatherCollector(BaseCollector):
                 len(all_frames), len(cities), errors,
             )
 
+        return result
+
+    def _fetch_elevations(self, cities: Dict[str, Dict]) -> Dict[str, float]:
+        """Fetch elevation for each reference city via Open-Meteo API.
+
+        Falls back to static PREFECTURE_ELEVATIONS from config if the API
+        is unreachable (offline mode, proxy, etc.).
+
+        Args:
+            cities: Dictionary {city_name: {lat, lon, dept, region}}.
+
+        Returns:
+            Dictionary {dept_code: elevation_meters}.
+        """
+        from config.settings import PREFECTURE_ELEVATIONS
+
+        items = list(cities.items())
+        lats = ",".join(str(c["lat"]) for _, c in items)
+        lons = ",".join(str(c["lon"]) for _, c in items)
+
+        try:
+            data = self.fetch_json(
+                OPENMETEO_ELEVATION_URL,
+                params={"latitude": lats, "longitude": lons},
+            )
+            elevations = data.get("elevation", [])
+            if len(elevations) == len(items):
+                result = {
+                    items[i][1]["dept"]: elevations[i]
+                    for i in range(len(items))
+                }
+                self.logger.info(
+                    "Elevation fetched via API for %d cities", len(result),
+                )
+                return result
+        except Exception as exc:
+            self.logger.warning(
+                "Elevation API unavailable (%s), using static reference", exc,
+            )
+
+        # Fallback: use static reference data
+        result = {}
+        for _, coords in items:
+            dept = coords["dept"]
+            result[dept] = float(PREFECTURE_ELEVATIONS.get(dept, 0))
+        self.logger.info(
+            "Elevation loaded from static reference for %d departments",
+            len(result),
+        )
         return result
 
     def validate(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -190,10 +268,17 @@ class WeatherCollector(BaseCollector):
         """
         # 1. Check required columns
         required_cols = {"time", "city", "dept", "temperature_2m_mean"}
+        expected_cols = {"pac_inefficient", "elevation"}
         missing = required_cols - set(df.columns)
         if missing:
             raise ValueError(
                 f"Required columns missing from weather data: {missing}"
+            )
+        missing_optional = expected_cols - set(df.columns)
+        if missing_optional:
+            self.logger.info(
+                "Optional columns not yet present (will be added on next collection): %s",
+                missing_optional,
             )
 
         # 2. Type conversion

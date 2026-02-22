@@ -38,8 +38,9 @@ class TestWeatherCollector:
         with caplog.at_level(logging.WARNING):
             collector.validate(sample_weather_df)
 
+    @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_collect_success(self, mock_fetch, collector_config):
+    def test_collect_success(self, mock_fetch, mock_elev, collector_config):
         """Test that collect returns a valid DataFrame with mocked data."""
         # Simulate the Open-Meteo API response
         mock_fetch.return_value = {
@@ -59,12 +60,17 @@ class TestWeatherCollector:
         assert "temperature_2m_mean" in df.columns
         assert "hdd" in df.columns
         assert "cdd" in df.columns
+        assert "pac_inefficient" in df.columns
+        assert "elevation" in df.columns
         # HDD must be > 0 when temp < 18
         assert (df["hdd"] >= 0).all()
         assert (df["cdd"] >= 0).all()
+        # PAC inefficiency: none of these temps are below -7
+        assert (df["pac_inefficient"] == 0).all()
 
+    @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_collect_partial_failure(self, mock_fetch, collector_config):
+    def test_collect_partial_failure(self, mock_fetch, mock_elev, collector_config):
         """Test resilience when a city fails."""
         # First city OK, second one fails
         mock_fetch.side_effect = [
@@ -86,3 +92,5 @@ class TestWeatherCollector:
         # We should still have the data from the first city
         assert not df.empty
         assert len(df) >= 1
+        assert "pac_inefficient" in df.columns
+        assert "elevation" in df.columns

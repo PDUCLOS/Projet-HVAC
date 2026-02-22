@@ -300,6 +300,7 @@ def menu_collection() -> None:
             console.print(f"         [bold]{i}[/bold]  {src['label']}  [dim]({src['estimate']})[/dim]")
 
         console.print("    [bold]v[/bold]  Verify data dates (detailed report)")
+        console.print("    [bold]p[/bold]  PAC efficiency map (altitude & climate analysis)")
         console.print("    [bold]0[/bold]  Back to main menu")
 
         choice = get_choice("Select")
@@ -312,6 +313,9 @@ def menu_collection() -> None:
 
         elif choice == "v":
             _show_date_verification()
+
+        elif choice == "p":
+            _show_pac_efficiency_map()
 
         elif choice in ("1", "2", "3", "4", "5"):
             source_keys = list(COLLECTION_SOURCES.keys())
@@ -479,6 +483,109 @@ def _show_date_verification() -> None:
                 border_style=status_color,
             )
         )
+
+    pause()
+
+
+def _show_pac_efficiency_map() -> None:
+    """Show PAC efficiency analysis by department (altitude + climate)."""
+    clear_screen()
+    show_header()
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold]PAC (HEAT PUMP) EFFICIENCY ANALYSIS[/bold]\n"
+            f"[dim]Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n\n"
+            "[dim]COP = Coefficient of Performance (higher = more efficient)\n"
+            "Below -7°C, air-source heat pump COP drops critically (<2.0)[/dim]",
+            border_style="magenta",
+            box=box.DOUBLE,
+        )
+    )
+
+    from config.settings import PREFECTURE_ELEVATIONS, FRANCE_DEPARTMENTS
+
+    # Build department table sorted by altitude (highest first)
+    table = Table(
+        title="Department Analysis — Altitude & PAC Viability",
+        box=box.ROUNDED,
+        show_lines=False,
+        border_style="magenta",
+    )
+
+    table.add_column("Dept", style="bold", width=5)
+    table.add_column("Prefecture", min_width=18)
+    table.add_column("Altitude", justify="right", min_width=8)
+    table.add_column("Mountain", justify="center", width=8)
+    table.add_column("COP Estimate", justify="center", min_width=12)
+    table.add_column("PAC Viability", min_width=14)
+
+    # Collect data and sort by altitude descending
+    rows = []
+    for city, info in FRANCE_DEPARTMENTS.items():
+        dept = info["dept"]
+        alt = PREFECTURE_ELEVATIONS.get(dept, 0)
+        is_mountain = alt > 800
+        # Simplified COP estimate (full version uses actual frost days)
+        cop_base = max(1.0, min(5.0, 4.5 - 0.0005 * alt))
+        rows.append((dept, city, alt, is_mountain, cop_base))
+
+    rows.sort(key=lambda x: x[2], reverse=True)
+
+    for dept, city, alt, is_mountain, cop_base in rows:
+        # Color coding
+        if alt > 800:
+            alt_style = "[bold red]"
+            mountain = "[bold red]YES[/bold red]"
+        elif alt > 400:
+            alt_style = "[yellow]"
+            mountain = "[dim]-[/dim]"
+        else:
+            alt_style = "[green]"
+            mountain = "[dim]-[/dim]"
+
+        if cop_base < 3.0:
+            cop_str = f"[bold red]{cop_base:.1f}[/bold red]"
+            viability = "[bold red]LOW[/bold red]"
+        elif cop_base < 4.0:
+            cop_str = f"[yellow]{cop_base:.1f}[/yellow]"
+            viability = "[yellow]MODERATE[/yellow]"
+        else:
+            cop_str = f"[green]{cop_base:.1f}[/green]"
+            viability = "[green]HIGH[/green]"
+
+        table.add_row(
+            dept,
+            city,
+            f"{alt_style}{alt}m",
+            mountain,
+            cop_str,
+            viability,
+        )
+
+    console.print()
+    console.print(table)
+
+    # Summary stats
+    altitudes = list(PREFECTURE_ELEVATIONS.values())
+    n_mountain = sum(1 for a in altitudes if a > 800)
+    n_moderate = sum(1 for a in altitudes if 400 < a <= 800)
+    n_low = sum(1 for a in altitudes if a <= 400)
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]Summary:[/bold]\n"
+            f"  [red]Mountain (>800m):[/red]   {n_mountain} departments — PAC viability LOW\n"
+            f"  [yellow]Elevated (400-800m):[/yellow] {n_moderate} departments — PAC viability MODERATE\n"
+            f"  [green]Lowland (<400m):[/green]     {n_low} departments — PAC viability HIGH\n\n"
+            f"[dim]Note: COP estimates are based on altitude only.\n"
+            f"After data collection, full estimates will include actual frost days,\n"
+            f"temperature data, and housing structure (pct_maisons).[/dim]",
+            border_style="cyan",
+        )
+    )
 
     pause()
 

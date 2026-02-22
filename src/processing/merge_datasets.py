@@ -343,6 +343,8 @@ class DatasetMerger:
         - precipitation_sum: monthly precipitation
         - nb_jours_canicule: days with T > 35°C
         - nb_jours_gel: days with T < 0°C
+        - nb_jours_pac_inefficient: days with T_min < -7°C (PAC COP critical)
+        - elevation: reference city altitude (meters)
         - wind_max: maximum wind speed
 
         Returns:
@@ -396,6 +398,20 @@ class DatasetMerger:
             df["_gel"] = (df["temperature_2m_min"] < self.config.thresholds.frost_temp).astype(int)
             agg_dict["_gel"] = "sum"
 
+        # PAC inefficiency: days with T_min < -7°C (air-source heat pump COP < 2.0)
+        pac_threshold = self.config.thresholds.pac_inefficiency_temp
+        if "pac_inefficient" in df.columns:
+            agg_dict["pac_inefficient"] = "sum"
+        elif "temperature_2m_min" in df.columns:
+            df["pac_inefficient"] = (df["temperature_2m_min"] < pac_threshold).astype(int)
+            agg_dict["pac_inefficient"] = "sum"
+
+        # Note: elevation is provided as static 'altitude' by _prepare_reference_features()
+        # via PREFECTURE_ELEVATIONS. We do not aggregate it from weather data to avoid
+        # redundancy. Drop elevation column if present to prevent confusion.
+        if "elevation" in df.columns:
+            df = df.drop(columns=["elevation"])
+
         # Aggregation by month x department
         monthly = df.groupby(["date_id", "dept"]).agg(agg_dict).reset_index()
 
@@ -408,6 +424,8 @@ class DatasetMerger:
             rename["_canicule"] = "nb_jours_canicule"
         if "_gel" in monthly.columns:
             rename["_gel"] = "nb_jours_gel"
+        if "pac_inefficient" in monthly.columns:
+            rename["pac_inefficient"] = "nb_jours_pac_inefficient"
 
         monthly = monthly.rename(columns=rename)
 
@@ -584,6 +602,7 @@ class DatasetMerger:
         - prix_m2_median: median property price per m2 (DVF/Notaires)
         - nb_logements_total: total housing stock (Recensement)
         - pct_maisons: percentage of houses (vs apartments)
+        - altitude: reference city elevation in meters (from PREFECTURE_ELEVATIONS)
 
         Returns:
             DataFrame with one row per department, or None if missing.
@@ -598,9 +617,18 @@ class DatasetMerger:
 
         # Keep only numeric features (drop dept_name which is metadata)
         keep_cols = ["dept"]
-        for col in ["revenu_median", "prix_m2_median", "nb_logements_total", "pct_maisons"]:
+        for col in ["revenu_median", "prix_m2_median", "nb_logements_total", "pct_maisons",
+                     "altitude"]:
             if col in df.columns:
                 keep_cols.append(col)
+
+        # If altitude not in CSV, add from static reference
+        if "altitude" not in df.columns:
+            from config.settings import PREFECTURE_ELEVATIONS
+            df["altitude"] = df["dept"].map(
+                {k: float(v) for k, v in PREFECTURE_ELEVATIONS.items()}
+            ).fillna(0)
+            keep_cols.append("altitude")
 
         return df[keep_cols]
 

@@ -157,5 +157,8 @@ def sample_ml_dataset() -> pd.DataFrame:
                     "month_cos": np.cos(2 * np.pi * month / 12),
                     "nb_jours_canicule": np.random.randint(0, 10),
                     "nb_jours_gel": np.random.randint(0, 15),
+                    "nb_jours_pac_inefficient": np.random.randint(0, 10),
+                    "altitude": 175 if dept == "69" else 212,  # Lyon, Grenoble
+                    "pct_maisons": 32 if dept == "69" else 52,
                 })
     return pd.DataFrame(rows)

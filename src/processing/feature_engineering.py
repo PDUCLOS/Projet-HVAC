@@ -25,7 +25,13 @@ Feature categories:
        - hdd x confiance_menages (cold weather + favorable context)
        - cdd x ipi_hvac (heatwave + industrial activity)
 
-    5. **Cyclic encoding**: sin/cos transformations
+    5. **PAC efficiency features**: heat pump viability indicators
+       - cop_proxy: estimated COP based on temperature and altitude
+       - is_mountain: binary flag for high-altitude departments (>800m)
+       - pac_viability_score: composite score combining temp, altitude, housing type
+       - interact_altitude_frost: altitude x frost days interaction
+
+    6. **Cyclic encoding**: sin/cos transformations
        - Already added in merge_datasets (month_sin, month_cos)
 
 IMPORTANT — NaN handling:
@@ -120,10 +126,13 @@ class FeatureEngineer:
         # 4. Interaction features
         df = self._add_interaction_features(df)
 
-        # 5. Trend features
+        # 5. PAC efficiency features
+        df = self._add_pac_efficiency_features(df)
+
+        # 6. Trend features
         df = self._add_trend_features(df)
 
-        # 6. Completeness feature
+        # 7. Completeness feature
         df = self._add_completeness_flag(df)
 
         n_cols_end = len(df.columns)
@@ -363,7 +372,129 @@ class FeatureEngineer:
         return df
 
     # ==================================================================
-    # 5. Trend features
+    # 5. PAC (heat pump) efficiency features
+    # ==================================================================
+
+    def _add_pac_efficiency_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Add features modeling heat pump viability by climate and geography.
+
+        Domain knowledge:
+        - Air-source heat pump (PAC air-air/air-eau) COP degrades in cold weather.
+        - Below -7°C, COP drops below ~2.0, making PAC economically uncompetitive.
+        - At high altitude (>800m), base temperatures are lower year-round.
+        - Mountain departments have structurally different HVAC adoption patterns.
+
+        Features added:
+        - cop_proxy: estimated COP based on mean temperature and altitude
+          Formula: COP = 4.5 - 0.08 * frost_days - 0.0005 * altitude, clipped [1.0, 5.0]
+        - is_mountain: binary flag (altitude > 800m)
+        - pac_viability_score: composite [0, 1] score combining COP, housing type, frost
+        - interact_altitude_frost: altitude × frost interaction
+        - interact_maisons_altitude: pct_maisons × altitude (houses in mountains)
+
+        Args:
+            df: DataFrame with weather, geographic, and reference features.
+
+        Returns:
+            DataFrame with PAC efficiency features added.
+        """
+        n_features = 0
+
+        # --- COP proxy estimation ---
+        # Based on simplified ASHRAE/SEPEMO model for air-source heat pumps
+        has_frost = "nb_jours_gel" in df.columns
+        has_altitude = "altitude" in df.columns
+        has_pac_days = "nb_jours_pac_inefficient" in df.columns
+
+        if has_frost or has_altitude:
+            cop = np.full(len(df), 4.5)  # Ideal COP at mild temperature
+
+            if has_frost:
+                # Each frost day degrades COP
+                cop -= 0.08 * df["nb_jours_gel"].fillna(0)
+
+            if has_altitude:
+                # Higher altitude = colder base temperature = lower COP
+                cop -= 0.0005 * df["altitude"].fillna(0)
+
+            df["cop_proxy"] = np.clip(cop, 1.0, 5.0).round(2)
+            n_features += 1
+
+        # --- Mountain flag ---
+        if has_altitude:
+            df["is_mountain"] = (df["altitude"] > 800).astype(int)
+            n_features += 1
+
+        # --- PAC viability score (composite [0, 1]) ---
+        # High score = favorable for PAC adoption
+        # Combines: COP quality, housing structure (houses > apartments for PAC),
+        #           and absence of extreme cold days
+        if "cop_proxy" in df.columns:
+            # Normalize COP to [0, 1] (1.0 -> 0, 5.0 -> 1)
+            cop_norm = ((df["cop_proxy"] - 1.0) / 4.0).clip(0, 1)
+
+            # Housing factor: more houses = more PAC potential
+            if "pct_maisons" in df.columns:
+                housing_norm = (df["pct_maisons"].fillna(50) / 100).clip(0, 1)
+            else:
+                housing_norm = 0.5
+
+            # Frost penalty: many frost days = less favorable
+            if has_frost:
+                frost_max = max(df["nb_jours_gel"].max(), 1)
+                frost_penalty = 1 - (df["nb_jours_gel"].fillna(0) / frost_max).clip(0, 1)
+            else:
+                frost_penalty = 0.5
+
+            df["pac_viability_score"] = (
+                0.5 * cop_norm + 0.3 * housing_norm + 0.2 * frost_penalty
+            ).round(4)
+            n_features += 1
+
+        # --- Interaction: altitude × frost days ---
+        # Mountains with cold winters = very hostile for PAC
+        if has_altitude and has_frost:
+            alt_max = max(df["altitude"].max(), 1)
+            frost_max = max(df["nb_jours_gel"].max(), 1)
+            df["interact_altitude_frost"] = (
+                (df["altitude"].fillna(0) / alt_max)
+                * (df["nb_jours_gel"].fillna(0) / frost_max)
+            ).round(4)
+            n_features += 1
+
+        # --- Interaction: pct_maisons × altitude ---
+        # Houses in mountains: potential for PAC but efficiency concern
+        if has_altitude and "pct_maisons" in df.columns:
+            alt_max = max(df["altitude"].max(), 1)
+            df["interact_maisons_altitude"] = (
+                (df["pct_maisons"].fillna(50) / 100)
+                * (df["altitude"].fillna(0) / alt_max)
+            ).round(4)
+            n_features += 1
+
+        # --- PAC inefficient days ratio ---
+        if has_pac_days:
+            # Ratio of PAC-critical days over total days in month (~30)
+            df["pct_jours_pac_inefficient"] = (
+                df["nb_jours_pac_inefficient"].fillna(0) / 30 * 100
+            ).round(1)
+            n_features += 1
+
+        # --- COP x HDD interaction ---
+        # Cold demand (HDD) vs heat pump efficiency (COP):
+        # High HDD + low COP = worst case (high heating need but PAC inefficient)
+        if "cop_proxy" in df.columns and "hdd_sum" in df.columns:
+            hdd_max = max(df["hdd_sum"].max(), 1)
+            df["interact_cop_hdd"] = (
+                (df["cop_proxy"] / 5.0) * (df["hdd_sum"] / hdd_max)
+            ).round(4)
+            n_features += 1
+
+        self.logger.info("  PAC efficiency: %d features", n_features)
+        return df
+
+    # ==================================================================
+    # 6. Trend features
     # ==================================================================
 
     def _add_trend_features(self, df: pd.DataFrame) -> pd.DataFrame:
