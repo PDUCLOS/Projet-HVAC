@@ -48,6 +48,11 @@
   - **Evaluate with more data**: With full 96-department data, assess whether additional columns
     (currently excluded) could improve model performance
   - **Decision**: For each column, justify keep/drop/add based on feature importance and domain logic
+- **Candidate new variables to evaluate with full data**:
+  - **Revenu médian par département** (INSEE Filosofi) — directly linked to aid eligibility
+    (MaPrimeRénov', CEE), strong hypothesis for HVAC installation driver
+  - **Prix du m² par département** — proxy for real estate market activity and housing type
+  - Test both, let SHAP / feature importance decide which adds predictive value
 - This review is a **collaborative discussion** — do not skip it, wait for user input
 - **Document the reasoning in a Jupyter notebook** — the column review, keep/drop decisions,
   and feature importance analysis must be written up in a notebook (not just in code comments)
