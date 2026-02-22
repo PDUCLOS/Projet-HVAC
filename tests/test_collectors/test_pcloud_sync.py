@@ -169,7 +169,7 @@ class TestCheckForUpdates:
             updates = pcloud_sync.check_for_updates()
 
         assert len(updates) >= 2
-        assert any(u["update_reason"] == "nouveau" for u in updates)
+        assert any(u["update_reason"] == "new" for u in updates)
 
     def test_modified_file_detected(self, pcloud_sync, mock_pcloud_response):
         """A modified file is detected."""
@@ -187,7 +187,7 @@ class TestCheckForUpdates:
 
         weather_updates = [u for u in updates if u["name"] == "weather_france.csv"]
         assert len(weather_updates) == 1
-        assert weather_updates[0]["update_reason"] == "modifie"
+        assert weather_updates[0]["update_reason"] == "modified"
 
     def test_no_update_same_hash(self, pcloud_sync, mock_pcloud_response):
         """No update if the hash has not changed."""

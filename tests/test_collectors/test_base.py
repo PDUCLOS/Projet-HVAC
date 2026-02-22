@@ -127,5 +127,5 @@ class TestCollectorRegistry:
         assert cls.source_name == "weather"
 
     def test_get_unknown_raises(self):
-        with pytest.raises(KeyError, match="Collecteur inconnu"):
+        with pytest.raises(KeyError, match="Unknown collector"):
             CollectorRegistry.get("nonexistent_source")

@@ -334,7 +334,7 @@ class TestReport:
         path = detector.generate_report(df_flagged, report)
         assert path.exists()
         content = path.read_text()
-        assert "RAPPORT DE DETECTION DES OUTLIERS" in content
+        assert "OUTLIER DETECTION REPORT" in content
         assert "IQR" in content
         assert "Z-score" in content
         assert "Isolation Forest" in content
@@ -349,7 +349,7 @@ class TestReport:
                     "threshold_pct": 50.0}
         path = detector.generate_report(df_flagged, report, temporal)
         content = path.read_text()
-        assert "ANOMALIES TEMPORELLES" in content
+        assert "TEMPORAL ANOMALIES" in content
 
 
 # ==================================================================
