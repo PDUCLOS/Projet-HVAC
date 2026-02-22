@@ -33,6 +33,7 @@ Extensibility:
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from typing import Any, ClassVar, Dict, List
 
 import pandas as pd
@@ -94,6 +95,17 @@ class WeatherCollector(BaseCollector):
         all_frames: List[pd.DataFrame] = []
         errors: List[str] = []
 
+        # Clamp end_date to yesterday: the Open-Meteo Archive API
+        # only serves historical data (up to the previous day).
+        # Requesting future dates returns HTTP 400 Bad Request.
+        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        effective_end = min(self.config.end_date, yesterday)
+        if effective_end != self.config.end_date:
+            self.logger.info(
+                "  end_date clamped: %s → %s (Archive API only has historical data)",
+                self.config.end_date, effective_end,
+            )
+
         for city, coords in cities.items():
             self.logger.info(
                 "Weather collection: %s (lat=%.2f, lon=%.2f, dept=%s)",
@@ -105,7 +117,7 @@ class WeatherCollector(BaseCollector):
                 "latitude": coords["lat"],
                 "longitude": coords["lon"],
                 "start_date": self.config.start_date,
-                "end_date": self.config.end_date,
+                "end_date": effective_end,
                 "daily": ",".join(DAILY_VARIABLES),
                 "timezone": "Europe/Paris",
             }
