@@ -134,7 +134,7 @@ def run_import_data() -> None:
     logger.info("Table status after import:\n%s", table_info.to_string(index=False))
 
 
-def run_clean() -> None:
+def run_clean(interactive: bool = False) -> None:
     """Clean raw data from all sources.
 
     Reads files from data/raw/, applies cleaning rules
@@ -142,16 +142,139 @@ def run_clean() -> None:
     data/processed/.
 
     Can be rerun safely (idempotent).
+
+    Args:
+        interactive: If True, show a preview of what will be cleaned
+            and let the user choose which rules to skip.
     """
-    from src.processing.clean_data import DataCleaner
+    from src.processing.clean_data import CLEANING_RULES, DataCleaner
 
     logger = logging.getLogger("pipeline")
+
+    if interactive:
+        skip_rules = _interactive_cleaning_menu(config)
+        cleaner = DataCleaner(config, skip_rules=skip_rules)
+    else:
+        cleaner = DataCleaner(config)
+
     logger.info("Cleaning raw data...")
-
-    cleaner = DataCleaner(config)
     stats = cleaner.clean_all()
-
     logger.info("Cleaning complete: %d sources processed", len(stats))
+
+
+def _interactive_cleaning_menu(cfg) -> dict:
+    """Display an interactive menu for the cleaning pipeline.
+
+    Shows a preview of each cleaning rule's impact and lets the user
+    choose which rules to skip. Useful when data is expensive to
+    re-collect (e.g. DPE from ADEME API).
+
+    Args:
+        cfg: Project configuration.
+
+    Returns:
+        Dictionary of rules to skip: {source: {rule1, rule2, ...}}.
+    """
+    from src.processing.clean_data import CLEANING_RULES, DataCleaner
+
+    print("\n" + "=" * 65)
+    print("  INTERACTIVE CLEANING MENU")
+    print("  Preview the impact of each rule before cleaning.")
+    print("=" * 65)
+
+    # Run preview
+    previewer = DataCleaner(cfg)
+    print("\n  Analyzing data (this may take a moment for DPE)...\n")
+    preview = previewer.preview_all()
+
+    skip_rules: dict = {}
+
+    for source, impacts in preview.items():
+        rules_def = CLEANING_RULES.get(source, {})
+        if not rules_def:
+            continue
+
+        # Count total raw rows
+        raw_paths = {
+            "weather": cfg.raw_data_dir / "weather" / "weather_france.csv",
+            "insee": cfg.raw_data_dir / "insee" / "indicateurs_economiques.csv",
+            "eurostat": cfg.raw_data_dir / "eurostat" / "ipi_hvac_france.csv",
+            "dpe": cfg.raw_data_dir / "dpe" / "dpe_france_all.csv",
+        }
+        raw_path = raw_paths.get(source)
+        total_str = ""
+        if raw_path and raw_path.exists():
+            with open(raw_path) as f:
+                total = sum(1 for _ in f) - 1
+            total_str = f" ({total:,} rows)"
+
+        print(f"\n{'─' * 65}")
+        print(f"  [{source.upper()}]{total_str}")
+        print(f"{'─' * 65}")
+
+        for i, impact in enumerate(impacts):
+            rule = impact.get("rule", "?")
+            desc = impact.get("description", rule)
+            affected = impact.get("rows_affected", 0)
+            pct = impact.get("pct", 0)
+            note = impact.get("note", "")
+            note_str = f" ({note})" if note else ""
+
+            status = "DELETE" if not note else "MODIFY"
+            color_prefix = "***" if affected > 0 and "clip" not in rule else "   "
+
+            print(
+                f"  [{i + 1}] {desc}"
+                f"\n      Impact: {affected:,} rows ({pct}%)"
+                f" — {status}{note_str}"
+            )
+
+        # Ask user which rules to skip
+        print(f"\n  Enter rule numbers to SKIP (comma-separated), or press Enter to keep all:")
+        print(f"  Example: 2,3 to skip rules 2 and 3")
+
+        try:
+            user_input = input(f"  Skip [{source}] > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n  Using all rules (non-interactive).")
+            user_input = ""
+
+        if user_input:
+            try:
+                skip_indices = [int(x.strip()) - 1 for x in user_input.split(",")]
+                rule_names = list(rules_def.keys())
+                skipped = set()
+                for idx in skip_indices:
+                    if 0 <= idx < len(rule_names):
+                        skipped.add(rule_names[idx])
+                        print(f"    → Skipping: {rule_names[idx]}")
+                if skipped:
+                    skip_rules[source] = skipped
+            except ValueError:
+                print("    → Invalid input, keeping all rules.")
+
+    # Summary
+    print(f"\n{'=' * 65}")
+    print("  CLEANING CONFIGURATION SUMMARY")
+    print(f"{'=' * 65}")
+    if skip_rules:
+        for source, rules in skip_rules.items():
+            for rule in rules:
+                print(f"  [SKIP] {source}.{rule}")
+    else:
+        print("  All rules will be applied (no skips).")
+    print(f"{'=' * 65}")
+
+    try:
+        confirm = input("\n  Proceed with cleaning? [Y/n] > ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        confirm = "y"
+
+    if confirm in ("n", "no"):
+        print("  Cleaning cancelled.")
+        sys.exit(0)
+
+    return skip_rules
 
 
 def run_merge() -> None:
@@ -245,11 +368,14 @@ def run_outliers(strategy: str = "clip") -> None:
     logger.info("Outliers report → %s", report_path)
 
 
-def run_process() -> None:
+def run_process(interactive: bool = False) -> None:
     """Execute the full processing pipeline (clean → merge → features → outliers).
 
     Chains the four processing stages in sequence.
     This is the recommended command for processing data in one go.
+
+    Args:
+        interactive: If True, show interactive cleaning menu.
     """
     logger = logging.getLogger("pipeline")
     logger.info("=" * 60)
@@ -257,7 +383,7 @@ def run_process() -> None:
     logger.info("  clean → merge → features → outliers")
     logger.info("=" * 60)
 
-    run_clean()
+    run_clean(interactive=interactive)
     run_merge()
     run_features()
     run_outliers()
@@ -553,6 +679,8 @@ Examples:
   python -m src.pipeline merge                    # Merge into ML dataset
   python -m src.pipeline features                 # Feature engineering
   python -m src.pipeline process                  # clean + merge + features
+  python -m src.pipeline clean --interactive      # Interactive: preview before cleaning
+  python -m src.pipeline process -i               # Interactive processing
   python -m src.pipeline eda                      # EDA + correlations
   python -m src.pipeline train                    # Train ML models
   python -m src.pipeline train --target nb_dpe_total  # Different target
@@ -589,6 +717,20 @@ Examples:
              "Ex: nb_installations_pac, nb_dpe_total",
     )
     parser.add_argument(
+        "--interactive", "-i",
+        action="store_true",
+        default=False,
+        help="Interactive mode: preview cleaning impact and choose "
+             "which rules to skip before deleting data.",
+    )
+    parser.add_argument(
+        "--skip-rules",
+        type=str,
+        default=None,
+        help="Rules to skip (format: source.rule,source.rule). "
+             "Ex: dpe.filter_invalid_dates,dpe.filter_invalid_labels",
+    )
+    parser.add_argument(
         "--log-level",
         type=str,
         default="INFO",
@@ -619,7 +761,7 @@ Examples:
         run_import_data()
 
     elif args.stage == "clean":
-        run_clean()
+        run_clean(interactive=args.interactive)
 
     elif args.stage == "merge":
         run_merge()
@@ -631,7 +773,7 @@ Examples:
         run_outliers()
 
     elif args.stage == "process":
-        run_process()
+        run_process(interactive=args.interactive)
 
     elif args.stage == "eda":
         run_eda()

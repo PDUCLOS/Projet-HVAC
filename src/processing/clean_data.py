@@ -32,12 +32,40 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
 
 from config.settings import ProjectConfig
+
+
+# Default cleaning rules per source — each rule can be toggled on/off
+CLEANING_RULES: Dict[str, Dict[str, str]] = {
+    "weather": {
+        "remove_duplicates": "Remove duplicate rows (date x city)",
+        "remove_nan_temps": "Remove rows with no temperature data",
+        "clip_outliers": "Clip extreme values to physical bounds",
+        "recompute_hdd_cdd": "Recompute HDD/CDD from temperature (base 18C)",
+    },
+    "insee": {
+        "filter_non_monthly": "Filter non-monthly rows (quarterly, etc.)",
+        "remove_duplicates": "Remove duplicate periods",
+        "interpolate_gaps": "Interpolate short gaps (max 3 months)",
+    },
+    "eurostat": {
+        "filter_non_monthly": "Filter non-monthly rows",
+        "remove_duplicates": "Remove duplicate rows (period x NACE)",
+        "interpolate_gaps": "Interpolate short IPI gaps (max 3 months)",
+    },
+    "dpe": {
+        "remove_duplicates": "Remove duplicate DPE (numero_dpe)",
+        "filter_invalid_dates": "Filter dates outside DPE v2 range (< 2021-07 or future)",
+        "filter_invalid_labels": "Filter invalid DPE/GES labels (only A-G kept)",
+        "clip_outliers": "Clip extreme numeric values (surface, conso, cost)",
+        "filter_invalid_depts": "Filter rows with unknown department codes",
+    },
+}
 
 
 class DataCleaner:
@@ -53,18 +81,235 @@ class DataCleaner:
         stats: Dictionary of cleaning statistics per source.
     """
 
-    def __init__(self, config: ProjectConfig) -> None:
+    def __init__(
+        self,
+        config: ProjectConfig,
+        skip_rules: Optional[Dict[str, Set[str]]] = None,
+    ) -> None:
         """Initialize the cleaner with the project configuration.
 
         Args:
             config: Centralized project configuration.
+            skip_rules: Rules to skip per source.
+                Example: {"dpe": {"filter_invalid_dates", "filter_invalid_labels"}}
+                If None, all rules are applied (default behavior).
         """
         self.config = config
         self.logger = logging.getLogger("processing.clean")
         self.stats: Dict[str, Dict] = {}
+        self.skip_rules = skip_rules or {}
 
         # Ensure the output directory exists
         self.config.processed_data_dir.mkdir(parents=True, exist_ok=True)
+
+    def _should_skip(self, source: str, rule: str) -> bool:
+        """Check if a cleaning rule should be skipped.
+
+        Args:
+            source: Data source name (weather, dpe, etc.).
+            rule: Rule name (remove_duplicates, clip_outliers, etc.).
+
+        Returns:
+            True if the rule should be skipped.
+        """
+        return rule in self.skip_rules.get(source, set())
+
+    def preview_all(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Preview the impact of each cleaning rule without modifying data.
+
+        Reads each raw file and estimates how many rows would be affected
+        by each cleaning rule. Returns a structured impact report.
+
+        Returns:
+            Dictionary {source: [{rule, description, rows_affected, pct}]}.
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("  CLEANING PREVIEW (dry run)")
+        self.logger.info("=" * 60)
+
+        results: Dict[str, List[Dict[str, Any]]] = {}
+
+        results["weather"] = self._preview_weather()
+        results["insee"] = self._preview_insee()
+        results["eurostat"] = self._preview_eurostat()
+        results["dpe"] = self._preview_dpe()
+
+        return results
+
+    def _preview_weather(self) -> List[Dict[str, Any]]:
+        """Preview weather cleaning impact."""
+        filepath = self.config.raw_data_dir / "weather" / "weather_france.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        # Duplicates
+        date_col = "time" if "time" in df.columns else "date"
+        key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
+        dups = df.duplicated(subset=key_cols).sum()
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["weather"]["remove_duplicates"],
+            "rows_affected": int(dups), "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        # NaN temperatures
+        temp_cols = [c for c in df.columns if "temperature" in c.lower()]
+        null_temps = int(df[temp_cols].isna().all(axis=1).sum()) if temp_cols else 0
+        impacts.append({
+            "rule": "remove_nan_temps", "description": CLEANING_RULES["weather"]["remove_nan_temps"],
+            "rows_affected": null_temps, "pct": round(100 * null_temps / max(total, 1), 1),
+        })
+
+        # Outlier clipping
+        clip_count = 0
+        clip_rules = {
+            "temperature_2m_max": (-30, 50), "temperature_2m_min": (-30, 50),
+            "temperature_2m_mean": (-30, 50), "precipitation_sum": (0, 300),
+            "wind_speed_10m_max": (0, 200),
+        }
+        for col, (vmin, vmax) in clip_rules.items():
+            if col in df.columns:
+                clip_count += int(((df[col] < vmin) | (df[col] > vmax)).sum())
+        impacts.append({
+            "rule": "clip_outliers", "description": CLEANING_RULES["weather"]["clip_outliers"],
+            "rows_affected": clip_count, "pct": round(100 * clip_count / max(total, 1), 1),
+            "note": "values clipped, no rows deleted",
+        })
+
+        return impacts
+
+    def _preview_insee(self) -> List[Dict[str, Any]]:
+        """Preview INSEE cleaning impact."""
+        filepath = self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        # Non-monthly filter
+        if "period" in df.columns:
+            non_monthly = int((~df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")).sum())
+        else:
+            non_monthly = 0
+        impacts.append({
+            "rule": "filter_non_monthly", "description": CLEANING_RULES["insee"]["filter_non_monthly"],
+            "rows_affected": non_monthly, "pct": round(100 * non_monthly / max(total, 1), 1),
+        })
+
+        # Duplicates
+        dups = int(df.duplicated(subset=["period"]).sum()) if "period" in df.columns else 0
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["insee"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        return impacts
+
+    def _preview_eurostat(self) -> List[Dict[str, Any]]:
+        """Preview Eurostat cleaning impact."""
+        filepath = self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        if "period" in df.columns:
+            non_monthly = int((~df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")).sum())
+        else:
+            non_monthly = 0
+        impacts.append({
+            "rule": "filter_non_monthly", "description": CLEANING_RULES["eurostat"]["filter_non_monthly"],
+            "rows_affected": non_monthly, "pct": round(100 * non_monthly / max(total, 1), 1),
+        })
+
+        key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
+        dups = int(df.duplicated(subset=key_cols).sum())
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["eurostat"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        return impacts
+
+    def _preview_dpe(self) -> List[Dict[str, Any]]:
+        """Preview DPE cleaning impact — the most critical source."""
+        filepath = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        # Read a sample to estimate (full read for files < 500k rows)
+        df = pd.read_csv(filepath, low_memory=False)
+        total = len(df)
+        impacts = []
+
+        # Duplicates
+        dups = int(df.duplicated(subset=["numero_dpe"]).sum()) if "numero_dpe" in df.columns else 0
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["dpe"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        # Invalid dates
+        if "date_etablissement_dpe" in df.columns:
+            dates = pd.to_datetime(df["date_etablissement_dpe"], errors="coerce")
+            date_min = pd.Timestamp("2021-07-01")
+            date_max = pd.Timestamp.now()
+            invalid_dates = int((dates.isna() | (dates < date_min) | (dates > date_max)).sum())
+        else:
+            invalid_dates = 0
+        impacts.append({
+            "rule": "filter_invalid_dates", "description": CLEANING_RULES["dpe"]["filter_invalid_dates"],
+            "rows_affected": invalid_dates, "pct": round(100 * invalid_dates / max(total, 1), 1),
+        })
+
+        # Invalid labels
+        valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
+        if "etiquette_dpe" in df.columns:
+            invalid_labels = int((~df["etiquette_dpe"].isin(valid_labels)).sum())
+        else:
+            invalid_labels = 0
+        impacts.append({
+            "rule": "filter_invalid_labels", "description": CLEANING_RULES["dpe"]["filter_invalid_labels"],
+            "rows_affected": invalid_labels, "pct": round(100 * invalid_labels / max(total, 1), 1),
+        })
+
+        # Outlier clipping
+        clip_count = 0
+        clip_rules = {
+            "surface_habitable_logement": (5, 1000),
+            "conso_5_usages_par_m2_ep": (0, 1000),
+            "cout_total_5_usages": (0, 50000),
+        }
+        for col, (vmin, vmax) in clip_rules.items():
+            if col in df.columns:
+                mask = df[col].notna() & ((df[col] < vmin) | (df[col] > vmax))
+                clip_count += int(mask.sum())
+        impacts.append({
+            "rule": "clip_outliers", "description": CLEANING_RULES["dpe"]["clip_outliers"],
+            "rows_affected": clip_count, "pct": round(100 * clip_count / max(total, 1), 1),
+            "note": "values clipped, no rows deleted",
+        })
+
+        # Invalid departments
+        if "code_departement_ban" in df.columns:
+            valid_depts = set(self.config.geo.departments)
+            dept_col = df["code_departement_ban"].astype(str).str.zfill(2)
+            invalid_depts = int((~dept_col.isin(valid_depts)).sum())
+        else:
+            invalid_depts = 0
+        impacts.append({
+            "rule": "filter_invalid_depts", "description": CLEANING_RULES["dpe"]["filter_invalid_depts"],
+            "rows_affected": invalid_depts, "pct": round(100 * invalid_depts / max(total, 1), 1),
+        })
+
+        return impacts
 
     def clean_all(self) -> Dict[str, Dict]:
         """Clean all data sources in the recommended order.
@@ -142,38 +387,49 @@ class DataCleaner:
             df = df.dropna(subset=[date_col])
 
         # 2. Duplicates (date x city)
-        key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
-        dups = df.duplicated(subset=key_cols).sum()
-        df = df.drop_duplicates(subset=key_cols, keep="last")
-        self.logger.info("  Duplicates removed: %d", dups)
+        dups = 0
+        if not self._should_skip("weather", "remove_duplicates"):
+            key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
+            dups = df.duplicated(subset=key_cols).sum()
+            df = df.drop_duplicates(subset=key_cols, keep="last")
+            self.logger.info("  Duplicates removed: %d", dups)
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
         # 3. Critical missing values (temperature)
-        temp_cols = [c for c in df.columns if "temperature" in c.lower()]
-        null_temps = df[temp_cols].isna().all(axis=1).sum() if temp_cols else 0
-        if null_temps > 0:
-            df = df.dropna(subset=temp_cols, how="all")
-            self.logger.info("  Rows with no temperature: %d removed", null_temps)
+        null_temps = 0
+        if not self._should_skip("weather", "remove_nan_temps"):
+            temp_cols = [c for c in df.columns if "temperature" in c.lower()]
+            null_temps = df[temp_cols].isna().all(axis=1).sum() if temp_cols else 0
+            if null_temps > 0:
+                df = df.dropna(subset=temp_cols, how="all")
+                self.logger.info("  Rows with no temperature: %d removed", null_temps)
+        else:
+            self.logger.info("  [SKIPPED] Remove NaN temperatures")
 
         # 4. Clip outlier values
         outliers_removed = 0
-        clip_rules = {
-            "temperature_2m_max": (-30, 50),
-            "temperature_2m_min": (-30, 50),
-            "temperature_2m_mean": (-30, 50),
-            "precipitation_sum": (0, 300),
-            "wind_speed_10m_max": (0, 200),
-        }
-        for col, (vmin, vmax) in clip_rules.items():
-            if col in df.columns:
-                mask_out = (df[col] < vmin) | (df[col] > vmax)
-                n_out = mask_out.sum()
-                if n_out > 0:
-                    self.logger.info(
-                        "  %s: %d values outside [%s, %s] clipped",
-                        col, n_out, vmin, vmax,
-                    )
-                    outliers_removed += n_out
-                df[col] = df[col].clip(vmin, vmax)
+        if not self._should_skip("weather", "clip_outliers"):
+            clip_rules = {
+                "temperature_2m_max": (-30, 50),
+                "temperature_2m_min": (-30, 50),
+                "temperature_2m_mean": (-30, 50),
+                "precipitation_sum": (0, 300),
+                "wind_speed_10m_max": (0, 200),
+            }
+            for col, (vmin, vmax) in clip_rules.items():
+                if col in df.columns:
+                    mask_out = (df[col] < vmin) | (df[col] > vmax)
+                    n_out = mask_out.sum()
+                    if n_out > 0:
+                        self.logger.info(
+                            "  %s: %d values outside [%s, %s] clipped",
+                            col, n_out, vmin, vmax,
+                        )
+                        outliers_removed += n_out
+                    df[col] = df[col].clip(vmin, vmax)
+        else:
+            self.logger.info("  [SKIPPED] Clip outlier values")
 
         # 5. Recompute HDD/CDD (base 18°C) for consistency
         if "temperature_2m_mean" in df.columns:
@@ -244,19 +500,27 @@ class DataCleaner:
         self.logger.info("  Columns: %s", list(df.columns))
 
         # 1. Filter monthly periods (YYYY-MM)
-        if "period" in df.columns:
-            mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
-            non_monthly = (~mask_monthly).sum()
-            if non_monthly > 0:
-                self.logger.info(
-                    "  %d non-monthly rows filtered (quarterly, etc.)",
-                    non_monthly,
-                )
-            df = df[mask_monthly].copy()
+        non_monthly = 0
+        if not self._should_skip("insee", "filter_non_monthly"):
+            if "period" in df.columns:
+                mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
+                non_monthly = (~mask_monthly).sum()
+                if non_monthly > 0:
+                    self.logger.info(
+                        "  %d non-monthly rows filtered (quarterly, etc.)",
+                        non_monthly,
+                    )
+                df = df[mask_monthly].copy()
+        else:
+            self.logger.info("  [SKIPPED] Filter non-monthly rows")
 
         # 2. Duplicates
-        dups = df.duplicated(subset=["period"]).sum()
-        df = df.drop_duplicates(subset=["period"], keep="last")
+        dups = 0
+        if not self._should_skip("insee", "remove_duplicates"):
+            dups = df.duplicated(subset=["period"]).sum()
+            df = df.drop_duplicates(subset=["period"], keep="last")
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
         # 3. Convert to date_id
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
@@ -265,21 +529,24 @@ class DataCleaner:
         df = df.sort_values("date_id").reset_index(drop=True)
 
         # 5. Linear interpolation for short gaps (max 3 months)
-        # This fills occasional gaps in the INSEE series
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        indicator_cols = [c for c in numeric_cols if c not in ["date_id"]]
-        nulls_before = df[indicator_cols].isna().sum().sum()
+        interpolated = 0
+        if not self._should_skip("insee", "interpolate_gaps"):
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            indicator_cols = [c for c in numeric_cols if c not in ["date_id"]]
+            nulls_before = df[indicator_cols].isna().sum().sum()
 
-        for col in indicator_cols:
-            df[col] = df[col].interpolate(method="linear", limit=3)
+            for col in indicator_cols:
+                df[col] = df[col].interpolate(method="linear", limit=3)
 
-        nulls_after = df[indicator_cols].isna().sum().sum()
-        interpolated = nulls_before - nulls_after
+            nulls_after = df[indicator_cols].isna().sum().sum()
+            interpolated = nulls_before - nulls_after
 
-        if interpolated > 0:
-            self.logger.info(
-                "  %d values interpolated (gaps ≤ 3 months)", interpolated,
-            )
+            if interpolated > 0:
+                self.logger.info(
+                    "  %d values interpolated (gaps ≤ 3 months)", interpolated,
+                )
+        else:
+            self.logger.info("  [SKIPPED] Interpolate gaps")
 
         # 6. Log remaining NaN per column
         remaining_nulls = df[indicator_cols].isna().sum()
@@ -340,19 +607,26 @@ class DataCleaner:
         self.logger.info("  Columns: %s", list(df.columns))
 
         # 1. Filter monthly periods
-        if "period" in df.columns:
-            mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
-            non_monthly = (~mask_monthly).sum()
-            if non_monthly > 0:
-                self.logger.info(
-                    "  %d non-monthly rows filtered", non_monthly,
-                )
-            df = df[mask_monthly].copy()
+        if not self._should_skip("eurostat", "filter_non_monthly"):
+            if "period" in df.columns:
+                mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
+                non_monthly = (~mask_monthly).sum()
+                if non_monthly > 0:
+                    self.logger.info(
+                        "  %d non-monthly rows filtered", non_monthly,
+                    )
+                df = df[mask_monthly].copy()
+        else:
+            self.logger.info("  [SKIPPED] Filter non-monthly rows")
 
         # 2. Duplicates
-        key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
-        dups = df.duplicated(subset=key_cols).sum()
-        df = df.drop_duplicates(subset=key_cols, keep="last")
+        dups = 0
+        if not self._should_skip("eurostat", "remove_duplicates"):
+            key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
+            dups = df.duplicated(subset=key_cols).sum()
+            df = df.drop_duplicates(subset=key_cols, keep="last")
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
         # 3. Convert to date_id
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
@@ -459,53 +733,58 @@ class DataCleaner:
             rows_in += len(chunk)
 
             # 1. Duplicates on numero_dpe
-            n_before = len(chunk)
-            chunk = chunk.drop_duplicates(subset=["numero_dpe"], keep="last")
-            dups += n_before - len(chunk)
+            if not self._should_skip("dpe", "remove_duplicates"):
+                n_before = len(chunk)
+                chunk = chunk.drop_duplicates(subset=["numero_dpe"], keep="last")
+                dups += n_before - len(chunk)
 
             # 2. Dates
             chunk["date_etablissement_dpe"] = pd.to_datetime(
                 chunk["date_etablissement_dpe"], errors="coerce"
             )
-            # Filter: DPE v2 only (>= 2021-07-01) and not in the future
-            date_min = pd.Timestamp("2021-07-01")
-            date_max = pd.Timestamp.now()
-            mask_date = (
-                chunk["date_etablissement_dpe"].notna()
-                & (chunk["date_etablissement_dpe"] >= date_min)
-                & (chunk["date_etablissement_dpe"] <= date_max)
-            )
-            n_invalid_date = (~mask_date).sum()
-            date_invalid += n_invalid_date
-            chunk = chunk[mask_date].copy()
+            if not self._should_skip("dpe", "filter_invalid_dates"):
+                date_min = pd.Timestamp("2021-07-01")
+                date_max = pd.Timestamp.now()
+                mask_date = (
+                    chunk["date_etablissement_dpe"].notna()
+                    & (chunk["date_etablissement_dpe"] >= date_min)
+                    & (chunk["date_etablissement_dpe"] <= date_max)
+                )
+                n_invalid_date = (~mask_date).sum()
+                date_invalid += n_invalid_date
+                chunk = chunk[mask_date].copy()
+            else:
+                # Still drop rows with unparseable dates
+                chunk = chunk.dropna(subset=["date_etablissement_dpe"]).copy()
 
             # 3. Valid DPE/GES labels (A-G)
-            valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
-            if "etiquette_dpe" in chunk.columns:
-                mask_etiq = chunk["etiquette_dpe"].isin(valid_labels)
-                n_invalid_etiq = (~mask_etiq).sum()
-                etiquette_invalid += n_invalid_etiq
-                chunk = chunk[mask_etiq].copy()
+            if not self._should_skip("dpe", "filter_invalid_labels"):
+                valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
+                if "etiquette_dpe" in chunk.columns:
+                    mask_etiq = chunk["etiquette_dpe"].isin(valid_labels)
+                    n_invalid_etiq = (~mask_etiq).sum()
+                    etiquette_invalid += n_invalid_etiq
+                    chunk = chunk[mask_etiq].copy()
 
             # 4. Clip numeric values
-            clip_rules = {
-                "surface_habitable_logement": (5, 1000),
-                "conso_5_usages_par_m2_ep": (0, 1000),
-                "conso_5_usages_par_m2_ef": (0, 1000),
-                "emission_ges_5_usages_par_m2": (0, 500),
-                "cout_total_5_usages": (0, 50000),
-                "cout_chauffage": (0, 30000),
-                "cout_ecs": (0, 10000),
-                "hauteur_sous_plafond": (1.5, 8.0),
-            }
-            for col, (vmin, vmax) in clip_rules.items():
-                if col in chunk.columns:
-                    mask_out = chunk[col].notna() & (
-                        (chunk[col] < vmin) | (chunk[col] > vmax)
-                    )
-                    outliers_removed += mask_out.sum()
-                    # Clip rather than delete (preserve the DPE record)
-                    chunk[col] = chunk[col].clip(vmin, vmax)
+            if not self._should_skip("dpe", "clip_outliers"):
+                clip_rules_dpe = {
+                    "surface_habitable_logement": (5, 1000),
+                    "conso_5_usages_par_m2_ep": (0, 1000),
+                    "conso_5_usages_par_m2_ef": (0, 1000),
+                    "emission_ges_5_usages_par_m2": (0, 500),
+                    "cout_total_5_usages": (0, 50000),
+                    "cout_chauffage": (0, 30000),
+                    "cout_ecs": (0, 10000),
+                    "hauteur_sous_plafond": (1.5, 8.0),
+                }
+                for col, (vmin, vmax) in clip_rules_dpe.items():
+                    if col in chunk.columns:
+                        mask_out = chunk[col].notna() & (
+                            (chunk[col] < vmin) | (chunk[col] > vmax)
+                        )
+                        outliers_removed += mask_out.sum()
+                        chunk[col] = chunk[col].clip(vmin, vmax)
 
             # 5. Clean strings (strip whitespace)
             str_cols = chunk.select_dtypes(include=["object"]).columns
@@ -513,14 +792,15 @@ class DataCleaner:
                 chunk[col] = chunk[col].str.strip()
 
             # 6. Validate department code
-            if "code_departement_ban" in chunk.columns:
-                valid_depts = set(self.config.geo.departments)
-                chunk["code_departement_ban"] = (
-                    chunk["code_departement_ban"].astype(str).str.zfill(2)
-                )
-                chunk = chunk[
-                    chunk["code_departement_ban"].isin(valid_depts)
-                ].copy()
+            if not self._should_skip("dpe", "filter_invalid_depts"):
+                if "code_departement_ban" in chunk.columns:
+                    valid_depts = set(self.config.geo.departments)
+                    chunk["code_departement_ban"] = (
+                        chunk["code_departement_ban"].astype(str).str.zfill(2)
+                    )
+                    chunk = chunk[
+                        chunk["code_departement_ban"].isin(valid_depts)
+                    ].copy()
 
             # 7. Derived columns
             chunk["year"] = chunk["date_etablissement_dpe"].dt.year
