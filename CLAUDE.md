@@ -52,7 +52,11 @@
   - **Revenu médian par département** (INSEE Filosofi) — directly linked to aid eligibility
     (MaPrimeRénov', CEE), strong hypothesis for HVAC installation driver
   - **Prix du m² par département** — proxy for real estate market activity and housing type
-  - Test both, let SHAP / feature importance decide which adds predictive value
+  - **Parc de logements par département** (INSEE Recensement) — total housing stock
+    with breakdown by type (maison / appartement), enables normalization of HVAC counts
+    into installation rates and captures structural differences (houses → more heat pumps,
+    apartments → more individual AC, constrained by co-ownership rules)
+  - Test all candidates, let SHAP / feature importance decide which adds predictive value
 - This review is a **collaborative discussion** — do not skip it, wait for user input
 - **Document the reasoning in a Jupyter notebook** — the column review, keep/drop decisions,
   and feature importance analysis must be written up in a notebook (not just in code comments)
