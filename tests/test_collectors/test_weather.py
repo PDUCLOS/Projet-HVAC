@@ -199,13 +199,13 @@ class TestFetchWithRetry:
         assert actual_waits == expected_waits
 
 
-class TestRetryPass:
-    """Tests for the retry pass logic in collect()."""
+class TestMultiPassRetry:
+    """Tests for the multi-pass retry loop in collect()."""
 
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_failed_cities_retried_on_second_pass(
+    def test_failed_cities_retried_on_pass_2(
         self, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
         """Cities that fail on pass 1 are retried on pass 2."""
@@ -227,7 +227,7 @@ class TestRetryPass:
         # Pass 2: city2 succeeds on retry
         side_effects = [good_response]  # city1 pass 1
         side_effects += [conn_err] * 5  # city2 pass 1 (5 retries, all fail)
-        side_effects += [good_response]  # city2 pass 2
+        side_effects += [good_response]  # city2 pass 2 (succeeds)
         mock_fetch.side_effect = side_effects
 
         collector = WeatherCollector(collector_config)
@@ -240,10 +240,10 @@ class TestRetryPass:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_retry_pass_waits_before_starting(
+    def test_retry_pass_waits_cooldown_before_starting(
         self, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
-        """The retry pass waits _RETRY_PASS_PAUSE before starting."""
+        """Each retry pass waits _RETRY_PASS_PAUSE (60s) before starting."""
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -267,7 +267,7 @@ class TestRetryPass:
         collector = WeatherCollector(collector_config)
         collector.collect()
 
-        # Find the 60s cooldown pause in the sleep calls
+        # The 60s cooldown pause must appear in the sleep calls
         sleep_values = [call.args[0] for call in mock_sleep.call_args_list]
         assert WeatherCollector._RETRY_PASS_PAUSE in sleep_values
 
@@ -296,3 +296,82 @@ class TestRetryPass:
         # The 60s retry pass pause should NOT appear
         sleep_values = [call.args[0] for call in mock_sleep.call_args_list]
         assert WeatherCollector._RETRY_PASS_PAUSE not in sleep_values
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_multi_pass_up_to_3_passes(
+        self, mock_fetch, mock_elev, mock_sleep, collector_config
+    ):
+        """Retry loop runs up to 3 passes, recovering cities progressively."""
+        good_response = {
+            "daily": {
+                "time": ["2023-01-01"],
+                "temperature_2m_max": [5.0],
+                "temperature_2m_min": [-2.0],
+                "temperature_2m_mean": [1.5],
+                "precipitation_sum": [2.0],
+                "wind_speed_10m_max": [25.0],
+            }
+        }
+        conn_err = requests.exceptions.ConnectionError(
+            "too many 429 error responses"
+        )
+
+        # Pass 1: both cities fail
+        # Pass 2: city1 succeeds, city2 still fails
+        # Pass 3: city2 finally succeeds
+        side_effects = []
+        side_effects += [conn_err] * 5   # city1 pass 1 (fail)
+        side_effects += [conn_err] * 5   # city2 pass 1 (fail)
+        side_effects += [good_response]  # city1 pass 2 (OK)
+        side_effects += [conn_err] * 5   # city2 pass 2 (fail)
+        side_effects += [good_response]  # city2 pass 3 (OK)
+        mock_fetch.side_effect = side_effects
+
+        collector = WeatherCollector(collector_config)
+        df = collector.collect()
+
+        # Both cities collected across 3 passes
+        assert not df.empty
+        assert len(df) == 2
+
+        # 60s cooldown should appear twice (before pass 2 and pass 3)
+        sleep_values = [call.args[0] for call in mock_sleep.call_args_list]
+        cooldown_count = sleep_values.count(WeatherCollector._RETRY_PASS_PAUSE)
+        assert cooldown_count == 2
+
+    @patch("src.collectors.weather.time.sleep")
+    @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
+    @patch.object(WeatherCollector, "fetch_json")
+    def test_gives_up_after_max_passes(
+        self, mock_fetch, mock_elev, mock_sleep, collector_config
+    ):
+        """After 3 passes, remaining failures are recorded as errors."""
+        good_response = {
+            "daily": {
+                "time": ["2023-01-01"],
+                "temperature_2m_max": [5.0],
+                "temperature_2m_min": [-2.0],
+                "temperature_2m_mean": [1.5],
+                "precipitation_sum": [2.0],
+                "wind_speed_10m_max": [25.0],
+            }
+        }
+        conn_err = requests.exceptions.ConnectionError(
+            "too many 429 error responses"
+        )
+
+        # city1 always succeeds, city2 always fails (all 3 passes)
+        side_effects = [good_response]    # city1 pass 1 (OK)
+        side_effects += [conn_err] * 5    # city2 pass 1 (fail)
+        side_effects += [conn_err] * 5    # city2 pass 2 (fail)
+        side_effects += [conn_err] * 5    # city2 pass 3 (fail)
+        mock_fetch.side_effect = side_effects
+
+        collector = WeatherCollector(collector_config)
+        df = collector.collect()
+
+        # city1 data should still be there
+        assert not df.empty
+        assert len(df) == 1

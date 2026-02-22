@@ -80,6 +80,7 @@ class WeatherCollector(BaseCollector):
     _BATCH_SIZE: ClassVar[int] = 10                # Cities per batch before extra pause
     _BATCH_PAUSE: ClassVar[float] = 10.0           # Extra pause between batches (seconds)
     _RETRY_PASS_PAUSE: ClassVar[float] = 60.0      # Cooldown before retrying failed cities
+    _MAX_RETRY_PASSES: ClassVar[int] = 3           # Max number of retry passes
 
     def _fetch_with_retry(
         self, url: str, params: Dict[str, Any], city: str
@@ -236,57 +237,70 @@ class WeatherCollector(BaseCollector):
 
         city_items = list(cities.items())
         total_cities = len(city_items)
-        failed_cities: List[tuple] = []
+        pending_cities: List[tuple] = list(city_items)
 
-        # --- Pass 1: collect all cities ---------------------------------
-        for idx, (city, coords) in enumerate(city_items, 1):
-            df = self._collect_single_city(
-                city, coords, effective_end, idx, total_cities,
-            )
-            if df is not None:
-                all_frames.append(df)
+        # Multi-pass collection: pass 1 collects all, subsequent passes
+        # retry only the cities that failed (up to _MAX_RETRY_PASSES total).
+        for pass_num in range(1, self._MAX_RETRY_PASSES + 1):
+            if not pending_cities:
+                break
+
+            if pass_num == 1:
+                self.logger.info(
+                    "═══ Pass %d/%d: collecting %d cities ═══",
+                    pass_num, self._MAX_RETRY_PASSES, len(pending_cities),
+                )
             else:
-                failed_cities.append((city, coords))
-
-            # Courtesy pause between calls
-            self.rate_limit_pause()
-
-            # Extra pause between batches to stay well under rate limits
-            if idx % self._BATCH_SIZE == 0 and idx < total_cities:
                 self.logger.info(
-                    "  Batch pause (%d/%d cities done) — waiting %.0fs...",
-                    idx, total_cities, self._BATCH_PAUSE,
+                    "═══ Pass %d/%d: retrying %d failed cities "
+                    "(cooldown %.0fs) ═══",
+                    pass_num, self._MAX_RETRY_PASSES,
+                    len(pending_cities), self._RETRY_PASS_PAUSE,
                 )
-                time.sleep(self._BATCH_PAUSE)
+                time.sleep(self._RETRY_PASS_PAUSE)
 
-        # --- Pass 2: retry failed cities after a long cooldown ----------
-        if failed_cities:
-            self.logger.info(
-                "⏳ %d/%d cities failed on first pass. "
-                "Waiting %.0fs before retry pass...",
-                len(failed_cities), total_cities, self._RETRY_PASS_PAUSE,
-            )
-            time.sleep(self._RETRY_PASS_PAUSE)
+            still_failed: List[tuple] = []
 
-            for retry_idx, (city, coords) in enumerate(failed_cities, 1):
-                self.logger.info(
-                    "Retry pass [%d/%d]: %s",
-                    retry_idx, len(failed_cities), city,
-                )
+            for idx, (city, coords) in enumerate(pending_cities, 1):
                 df = self._collect_single_city(
-                    city, coords, effective_end,
-                    retry_idx, len(failed_cities),
+                    city, coords, effective_end, idx, len(pending_cities),
                 )
                 if df is not None:
                     all_frames.append(df)
                 else:
-                    errors.append(
-                        f"Failed for {city}: 429 rate limit exhausted "
-                        f"(after retry pass)"
-                    )
+                    still_failed.append((city, coords))
 
-                # Longer pause between retries
-                time.sleep(self._BATCH_PAUSE)
+                # Courtesy pause between calls (10s)
+                self.rate_limit_pause()
+
+                # Extra pause between batches to stay well under rate limits
+                if idx % self._BATCH_SIZE == 0 and idx < len(pending_cities):
+                    self.logger.info(
+                        "  Batch pause (%d/%d cities done) — waiting %.0fs...",
+                        idx, len(pending_cities), self._BATCH_PAUSE,
+                    )
+                    time.sleep(self._BATCH_PAUSE)
+
+            # Summary for this pass
+            succeeded = len(pending_cities) - len(still_failed)
+            self.logger.info(
+                "═══ Pass %d result: %d/%d succeeded, %d failed ═══",
+                pass_num, succeeded, len(pending_cities), len(still_failed),
+            )
+
+            pending_cities = still_failed
+
+            # All cities collected — no more passes needed
+            if not pending_cities:
+                self.logger.info("All %d cities collected!", total_cities)
+                break
+
+        # Record any cities still failed after all passes
+        for city, coords in pending_cities:
+            errors.append(
+                f"Failed for {city} (dept {coords['dept']}): "
+                f"exhausted all {self._MAX_RETRY_PASSES} passes"
+            )
 
         # Check that at least one city was collected
         if not all_frames:
