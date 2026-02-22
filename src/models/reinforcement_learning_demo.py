@@ -98,18 +98,18 @@ class HVACMaintenanceEnv:
         self.equipment_age: float = 0.0
         self.equipment_condition: float = 1.0  # 1.0 = new, 0.0 = out of service
 
-    def _generate_weather(self, mois: int) -> Tuple[float, float]:
+    def _generate_weather(self, month_idx: int) -> Tuple[float, float]:
         """Generate realistic temperature and humidity (French temperate climate)."""
         # Sinusoidal temperature: ~3 C in January, ~22 C in July
-        temp = 12.5 + 10.0 * np.sin(2 * np.pi * (mois - 3) / 12)
+        temp = 12.5 + 10.0 * np.sin(2 * np.pi * (month_idx - 3) / 12)
         temp += self.np_random.normal(0, 2.0)
         temperature = float(np.clip((temp + 10) / 50, 0.0, 1.0))
         # Humidity: higher in winter
-        hum = 0.7 - 0.15 * np.sin(2 * np.pi * (mois - 3) / 12)
+        hum = 0.7 - 0.15 * np.sin(2 * np.pi * (month_idx - 3) / 12)
         humidity = float(np.clip(hum + self.np_random.normal(0, 0.05), 0.0, 1.0))
         return temperature, humidity
 
-    def _calculate_demand(self, temperature: float, mois: int) -> float:
+    def _calculate_demand(self, temperature: float, month_idx: int) -> float:
         """HVAC demand in normalized units: high in winter (heating) and summer (AC)."""
         temp_reelle = temperature * 50 - 10
         demand = abs(temp_reelle - 20) / 30 + self.np_random.normal(0, 0.05)
@@ -140,23 +140,23 @@ class HVACMaintenanceEnv:
 
         temp, hum = self._generate_weather(0)
         obs = self._build_observation(temp, hum, self._calculate_demand(temp, 0))
-        return obs, {"mois": MONTHS[0], "age_initial": self.equipment_age}
+        return obs, {"month": MONTHS[0], "initial_age": self.equipment_age}
 
     def step(self, action: int) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """Execute an action and advance by one month. Returns (obs, rew, done, trunc, info)."""
         assert 0 <= action < self.n_actions, f"Invalid action: {action}"
         reward = 0.0
-        info: Dict[str, Any] = {"mois": MONTHS[self.current_month], "action": ACTIONS[action]}
+        info: Dict[str, Any] = {"month": MONTHS[self.current_month], "action": ACTIONS[action]}
 
         # 1. Action cost
-        cout = ACTION_COSTS[action]
-        self.remaining_budget = max(0.0, self.remaining_budget - cout)
-        reward -= cout
+        cost = ACTION_COSTS[action]
+        self.remaining_budget = max(0.0, self.remaining_budget - cost)
+        reward -= cost
 
         # 2. Action effect + failures
         failure_occurred = False
         failure_prob = self._failure_probability()
-        info["probabilite_panne"] = round(failure_prob, 3)
+        info["failure_prob"] = round(failure_prob, 3)
 
         if action == 0:
             # No maintenance — failure risk
@@ -205,7 +205,7 @@ class HVACMaintenanceEnv:
         obs_month = min(self.current_month, 11)
         temp, hum = self._generate_weather(obs_month)
         obs = self._build_observation(temp, hum, self._calculate_demand(temp, obs_month))
-        info.update({"panne": failure_occurred, "equipment_condition": round(self.equipment_condition, 3),
+        info.update({"failure": failure_occurred, "equipment_condition": round(self.equipment_condition, 3),
                      "remaining_budget": round(self.remaining_budget, 3)})
         return obs, float(reward), done_flag, False, info
 
@@ -239,11 +239,11 @@ class AgentQLearning:
         indices = np.clip((observation * self.n_bins).astype(int), 0, self.n_bins - 1)
         return tuple(indices.tolist())
 
-    def _get_q_values(self, etat: Tuple[int, ...]) -> np.ndarray:
+    def _get_q_values(self, state: Tuple[int, ...]) -> np.ndarray:
         """Return Q-values for a state (initialized to 0 if unknown)."""
-        if etat not in self.q_table:
-            self.q_table[etat] = np.zeros(self.n_actions, dtype=np.float64)
-        return self.q_table[etat]
+        if state not in self.q_table:
+            self.q_table[state] = np.zeros(self.n_actions, dtype=np.float64)
+        return self.q_table[state]
 
     def get_nearest_q(self, observation: np.ndarray) -> Tuple[np.ndarray, bool]:
         """Return Q-values from the exact bin or the nearest neighbor if unexplored.
@@ -251,32 +251,32 @@ class AgentQLearning:
         Useful for displaying the policy on unvisited states.
         Returns (q_values, exact_match).
         """
-        etat = self._discretize_state(observation)
-        if etat in self.q_table:
-            return self.q_table[etat].copy(), True
+        state = self._discretize_state(observation)
+        if state in self.q_table:
+            return self.q_table[state].copy(), True
         # Search for the nearest neighbor (Manhattan distance)
         if not self.q_table:
             return np.zeros(self.n_actions), False
-        etat_arr = np.array(etat)
-        meilleur, dist_min = None, float("inf")
-        for e_visite in self.q_table:
-            d = np.sum(np.abs(np.array(e_visite) - etat_arr))
-            if d < dist_min:
-                dist_min, meilleur = d, e_visite
-        return self.q_table[meilleur].copy(), False
+        state_arr = np.array(state)
+        best_match, min_dist = None, float("inf")
+        for visited in self.q_table:
+            d = np.sum(np.abs(np.array(visited) - state_arr))
+            if d < min_dist:
+                min_dist, best_match = d, visited
+        return self.q_table[best_match].copy(), False
 
     def choose_action(self, observation: np.ndarray) -> int:
         """Epsilon-greedy: random exploration or exploitation of max Q."""
         if np.random.random() < self.epsilon:
             return np.random.randint(self.n_actions)
-        etat = self._discretize_state(observation)
-        return int(np.argmax(self._get_q_values(etat)))
+        state = self._discretize_state(observation)
+        return int(np.argmax(self._get_q_values(state)))
 
     def update(self, obs: np.ndarray, action: int, reward: float,
                       next_obs: np.ndarray, done_flag: bool) -> None:
         """Q-Learning update: Q(s,a) += alpha * [target - Q(s,a)]."""
-        etat = self._discretize_state(obs)
-        q_vals = self._get_q_values(etat)
+        state = self._discretize_state(obs)
+        q_vals = self._get_q_values(state)
         q_next = self._get_q_values(self._discretize_state(next_obs))
         target = reward if done_flag else reward + self.gamma * np.max(q_next)
         q_vals[action] += self.alpha * (target - q_vals[action])

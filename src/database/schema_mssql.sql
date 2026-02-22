@@ -1,29 +1,29 @@
 -- =============================================================================
--- HVAC Market Analysis — Schéma en étoile pour SQL Server
+-- HVAC Market Analysis — Star Schema for SQL Server
 -- =============================================================================
--- Ce schéma est l'équivalent SQL Server de schema.sql (SQLite).
--- Différences principales :
+-- This schema is the SQL Server equivalent of schema.sql (SQLite).
+-- Main differences:
 --   - BOOLEAN → BIT (0/1)
 --   - AUTOINCREMENT → IDENTITY(1,1)
 --   - INSERT OR IGNORE → MERGE ... WHEN NOT MATCHED
 --   - TRUE/FALSE → 1/0
---   - VARCHAR sans limite obligatoire
+--   - VARCHAR without mandatory length
 --
--- Usage : exécuté automatiquement par db_manager.py quand DB_TYPE=mssql
+-- Usage: executed automatically by db_manager.py when DB_TYPE=mssql
 -- =============================================================================
 
 
 -- =============================================
--- DIMENSION : Temps
+-- DIMENSION: Time
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'dim_time')
 CREATE TABLE dim_time (
-    date_id     INT PRIMARY KEY,        -- Format YYYYMM (ex: 202401)
+    date_id     INT PRIMARY KEY,        -- Format YYYYMM (e.g., 202401)
     year        INT NOT NULL,
     month       INT NOT NULL,
     quarter     INT NOT NULL,
-    is_heating  BIT NOT NULL,           -- 1 = saison chauffage (oct-mars)
-    is_cooling  BIT NOT NULL,           -- 1 = saison climatisation (juin-sept)
+    is_heating  BIT NOT NULL,           -- 1 = heating season (Oct-Mar)
+    is_cooling  BIT NOT NULL,           -- 1 = cooling season (Jun-Sep)
 
     CHECK (month BETWEEN 1 AND 12),
     CHECK (quarter BETWEEN 1 AND 4),
@@ -32,7 +32,7 @@ CREATE TABLE dim_time (
 
 
 -- =============================================
--- DIMENSION : Géographie
+-- DIMENSION: Geography
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'dim_geo')
 CREATE TABLE dim_geo (
@@ -47,7 +47,7 @@ CREATE TABLE dim_geo (
 
 
 -- =============================================
--- DIMENSION : Type d'équipement (référence)
+-- DIMENSION: Equipment type (reference table)
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'dim_equipment_type')
 CREATE TABLE dim_equipment_type (
@@ -60,7 +60,7 @@ CREATE TABLE dim_equipment_type (
 
 
 -- =============================================
--- TABLE DE FAITS : Installations HVAC
+-- FACT TABLE: HVAC Installations
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'fact_hvac_installations')
 CREATE TABLE fact_hvac_installations (
@@ -68,13 +68,13 @@ CREATE TABLE fact_hvac_installations (
     date_id                 INT NOT NULL,
     geo_id                  INT NOT NULL,
 
-    -- Variable cible (proxy installations via DPE)
+    -- Target variable (installation proxy via DPE)
     nb_dpe_total            INT,
     nb_installations_pac    INT,
     nb_installations_clim   INT,
     nb_dpe_classe_ab        INT,
 
-    -- Features météo (département)
+    -- Weather features (department-specific)
     temp_mean               DECIMAL(5,2),
     temp_max                DECIMAL(5,2),
     temp_min                DECIMAL(5,2),
@@ -84,11 +84,11 @@ CREATE TABLE fact_hvac_installations (
     nb_jours_canicule       INT,
     nb_jours_gel            INT,
 
-    -- Features immobilier (département)
+    -- Real estate features (department-specific)
     nb_permis_construire    INT,
     nb_logements_autorises  INT,
 
-    -- Features énergie (département)
+    -- Energy features (department-specific)
     conso_elec_mwh          DECIMAL(12,2),
     conso_gaz_mwh           DECIMAL(12,2),
 
@@ -99,13 +99,13 @@ CREATE TABLE fact_hvac_installations (
 
 
 -- =============================================
--- TABLE DE FAITS : Contexte économique national
+-- FACT TABLE: National economic context
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'fact_economic_context')
 CREATE TABLE fact_economic_context (
     date_id                 INT PRIMARY KEY,
 
-    -- Indicateurs INSEE (nationaux)
+    -- INSEE indicators (national)
     confiance_menages       DECIMAL(6,2),
     climat_affaires_indus   DECIMAL(6,2),
     climat_affaires_bat     DECIMAL(6,2),
@@ -113,7 +113,7 @@ CREATE TABLE fact_economic_context (
     situation_fin_future    DECIMAL(6,2),
     ipi_manufacturing       DECIMAL(6,2),
 
-    -- Indicateurs Eurostat (nationaux)
+    -- Eurostat indicators (national)
     ipi_hvac_c28            DECIMAL(6,2),
     ipi_hvac_c2825          DECIMAL(6,2),
 
@@ -122,7 +122,7 @@ CREATE TABLE fact_economic_context (
 
 
 -- =============================================
--- INDEX
+-- INDEXES
 -- =============================================
 IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_fact_hvac_date')
     CREATE INDEX idx_fact_hvac_date ON fact_hvac_installations(date_id);
@@ -135,9 +135,9 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_dim_geo_dept')
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_geo
+-- REFERENCE DATA: dim_geo
 -- =============================================
--- MERGE pour l'idempotence (équivalent INSERT OR IGNORE)
+-- MERGE for idempotency (equivalent to INSERT OR IGNORE)
 MERGE dim_geo AS target
 USING (VALUES
     ('01', 'Ain',           'Bourg-en-Bresse', 46.21, 5.23, '84'),
@@ -157,7 +157,7 @@ WHEN NOT MATCHED THEN
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_equipment_type
+-- REFERENCE DATA: dim_equipment_type
 -- =============================================
 MERGE dim_equipment_type AS target
 USING (VALUES
@@ -179,9 +179,9 @@ WHEN NOT MATCHED THEN
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_time (2019-01 à 2025-12)
+-- REFERENCE DATA: dim_time (2019-01 to 2025-12)
 -- =============================================
--- Génération via CTE récursif (plus élégant que 84 lignes)
+-- Generated via recursive CTE (more elegant than 84 rows)
 ;WITH months AS (
     SELECT 201901 AS date_id, 2019 AS year, 1 AS month
     UNION ALL

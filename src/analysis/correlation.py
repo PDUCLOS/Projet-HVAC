@@ -242,7 +242,7 @@ class CorrelationAnalyzer:
         df = self.df.copy()
         target = self.TARGET_COL
 
-        df["saison"] = df["month"].map(lambda m: (
+        df["season"] = df["month"].map(lambda m: (
             "1_Winter" if m in [12, 1, 2] else
             "2_Spring" if m in [3, 4, 5] else
             "3_Summer" if m in [6, 7, 8] else "4_Autumn"
@@ -256,11 +256,11 @@ class CorrelationAnalyzer:
         features = [f for f in features if f in df.columns]
 
         corr_by_season = {}
-        for saison in sorted(df["saison"].unique()):
-            subset = df[df["saison"] == saison]
+        for season in sorted(df["season"].unique()):
+            subset = df[df["season"] == season]
             if len(subset) > 5 and target in subset.columns:
                 corr = subset[features].corrwith(subset[target])
-                corr_by_season[saison.split("_")[1]] = corr
+                corr_by_season[season.split("_")[1]] = corr
 
         if not corr_by_season:
             return Path()
