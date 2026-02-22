@@ -568,6 +568,9 @@ class BaseCollector(ABC):
             )
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
+        # Prevent duplicate output: root logger (via basicConfig in pipeline)
+        # already has a handler, so disable propagation for this logger.
+        self.logger.propagate = False
 
 
 # =============================================================================

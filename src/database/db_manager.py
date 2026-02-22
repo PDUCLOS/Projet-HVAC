@@ -93,6 +93,8 @@ class DatabaseManager:
         if not self.logger.handlers:
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
+        # Prevent duplicate output when root logger also has a handler
+        self.logger.propagate = False
 
         self.logger.info(
             "DB connection: engine=%s", self.db_type,
