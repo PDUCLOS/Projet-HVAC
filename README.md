@@ -1,7 +1,7 @@
 # HVAC Market Analysis — Metropolitan France
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![Tests](https://img.shields.io/badge/tests-119%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-114%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.989-orange)
 ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
@@ -31,7 +31,7 @@ This project builds an **end-to-end data pipeline** to analyze and predict HVAC 
 
 ```mermaid
 graph LR
-    A[5 APIs<br/>Open Data] -->|Collection| B[Data Lake<br/>CSV/SQLite]
+    A[6 Sources<br/>Open Data] -->|Collection| B[Data Lake<br/>CSV/SQLite]
     B -->|ETL| C[Features<br/>~90 variables]
     C -->|ML| D[Models<br/>Ridge, LightGBM]
     D -->|Serving| E[API FastAPI<br/>+ Dashboard]
@@ -45,7 +45,7 @@ graph LR
 | Period | 2019 - 2025 |
 | Best model | Ridge (R2 test = 0.989, RMSE = 0.93) |
 | Trained models | Ridge, LightGBM, Ridge exogenous, Prophet, LSTM |
-| Unit tests | 119 tests |
+| Unit tests | 114 tests |
 | Dashboard | Streamlit (6 interactive pages) |
 | API | FastAPI (6 endpoints, auto Swagger) |
 
@@ -103,9 +103,9 @@ streamlit run app/app.py
 
 ```
 Projet-HVAC/
-├── config/settings.py              # Centralized configuration (96 departments)
+├── config/settings.py              # Centralized configuration (96 departments, names, coordinates)
 ├── src/
-│   ├── pipeline.py                 # CLI orchestrator (16 commands)
+│   ├── pipeline.py                 # CLI orchestrator (16 commands, interactive mode)
 │   ├── collectors/                 # Collection (plugin architecture)
 │   │   ├── base.py                 # BaseCollector + Registry
 │   │   ├── weather.py              # Open-Meteo (96 prefectures)
@@ -113,10 +113,10 @@ Projet-HVAC/
 │   │   ├── eurostat_col.py         # Eurostat IPI
 │   │   ├── sitadel.py              # Building permits
 │   │   ├── dpe.py                  # DPE ADEME
-│   │   └── pcloud_sync.py          # pCloud synchronization
+│   │   └── pcloud_sync.py          # pCloud synchronization (data + features)
 │   ├── processing/                 # Data processing
-│   │   ├── clean_data.py           # Cleaning by source
-│   │   ├── merge_datasets.py       # Multi-source merging
+│   │   ├── clean_data.py           # Cleaning by source (with skip rules + preview)
+│   │   ├── merge_datasets.py       # Multi-source merging (DPE + weather + SITADEL + INSEE ref)
 │   │   ├── feature_engineering.py  # ~90 ML features
 │   │   └── outlier_detection.py    # IQR + Z-score + Isolation Forest
 │   ├── models/                     # Modeling
@@ -126,7 +126,7 @@ Projet-HVAC/
 │   │   ├── evaluate.py             # Metrics, SHAP, visualizations
 │   │   └── reinforcement_learning_demo.py  # RL demo (Gymnasium)
 │   ├── analysis/                   # EDA + correlations
-│   └── database/                   # Star schema, SQLAlchemy
+│   └── database/                   # Star schema, SQLAlchemy (interactive import)
 ├── api/                            # REST API FastAPI
 │   ├── main.py                     # Endpoints (health, predict, metrics)
 │   ├── models.py                   # Pydantic schemas
@@ -139,7 +139,7 @@ Projet-HVAC/
 │   ├── DATABASE_ARCHITECTURE.md    # Module 3: Star schema, OLAP, NoSQL
 │   └── DATA_PIPELINE.md            # Module 4: ETL, monitoring, Airbyte
 ├── scripts/                        # Utility scripts
-├── tests/                          # 119 tests (pytest)
+├── tests/                          # 114 tests (pytest)
 ├── Dockerfile                      # Multi-stage build
 ├── docker-compose.yml              # API + Dashboard + PostgreSQL
 ├── Makefile                        # Shortcut commands
@@ -188,9 +188,9 @@ streamlit run app/app.py
 
 | Page | Description |
 |------|-------------|
-| **Home** | Overview, metrics, pipeline architecture |
+| **Home** | Overview, key metrics, data insights (Top 10 PAC, trends), model performance, architecture |
 | **Exploration** | Interactive exploration (stats, distributions, correlations) |
-| **Map of France** | Interactive map of the 96 departments |
+| **Map of France** | Interactive map with metric selector (PAC, DPE, income, price/m²), department ranking, regional stats |
 | **ML Predictions** | Predictions vs actual, residuals, feature importance |
 | **Model Comparison** | Comparison table, radar chart |
 | **Pipeline** | Data status, pipeline launch, pCloud sync |
@@ -206,14 +206,36 @@ python -m src.pipeline collect --sources weather,insee # Specific sources
 
 # Processing
 python -m src.pipeline process                        # clean+merge+features+outliers
+python -m src.pipeline clean                          # Cleaning only
+python -m src.pipeline merge                          # Merge only
+python -m src.pipeline features                       # Feature engineering only
+
+# Interactive mode (preview impact before applying)
+python -m src.pipeline clean -i                       # Interactive cleaning: preview & skip rules
+python -m src.pipeline process -i                     # Interactive processing (clean step)
+python -m src.pipeline import_data -i                 # Interactive import: choose sources to load
 
 # Machine Learning
 python -m src.pipeline train                          # Train
 python -m src.pipeline evaluate                       # Evaluate
 
+# Database
+python -m src.pipeline init_db                        # Initialize database schema
+python -m src.pipeline import_data                    # Import CSV → database
+
 # All-in-one
 python -m src.pipeline update_all                     # Collect + process + train + upload
+
+# pCloud sync
+python -m src.pipeline upload_pcloud                  # Upload results to pCloud
 ```
+
+### Interactive Mode (`-i` / `--interactive`)
+
+The pipeline supports an interactive mode for data cleaning and import, useful when data is expensive to re-collect:
+
+- **Cleaning**: Preview the impact of each cleaning rule (rows affected) before applying. Skip rules you want to preserve (e.g., keep outliers for analysis).
+- **Import**: Select which data sources to load into the database. View file sizes, row counts, and last-modified dates before importing.
 
 ---
 
@@ -256,9 +278,10 @@ This project covers the 6 modules of the Bac+5 certification:
 |--------|-----|----------|------|
 | **DPE ADEME** | data.ademe.fr | 96 departments | Energy performance diagnostics |
 | **Open-Meteo** | archive-api.open-meteo.com | 96 prefectures, 7 years | Temperature, precipitation, HDD/CDD |
-| **INSEE** | bdm.insee.fr (SDMX) | France, monthly | Economic indicators |
-| **Eurostat** | package `eurostat` | France, monthly | IPI HVAC |
-| **SITADEL** | DiDo API (SDES) | 96 departments | Building permits |
+| **INSEE BDM** | bdm.insee.fr (SDMX) | France, monthly | Economic indicators (confidence, IPI) |
+| **INSEE Filosofi** | Reference CSV | 96 departments (static) | Median income, price/m², housing stock, % houses |
+| **Eurostat** | package `eurostat` | France, monthly | IPI HVAC (C28, C2825) |
+| **SITADEL** | DiDo API (SDES) | 96 departments, monthly | Building permits (integrated into ML merge) |
 
 > All sources are **Open Data** — no API key required.
 
@@ -296,7 +319,7 @@ Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `n
 ## Tests
 
 ```bash
-python -m pytest tests/ -v                              # 119 tests
+python -m pytest tests/ -v                              # 114 tests
 python -m pytest tests/ -v --cov=src --cov-report=term  # With coverage
 ```
 

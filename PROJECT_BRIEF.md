@@ -1,15 +1,15 @@
-# Portfolio Project: HVAC Market Analysis in Rhône-Alpes
+# Portfolio Project: HVAC Market Analysis — Metropolitan France
 ## Sales Prediction via ML/Deep Learning
 
-**Author**: Patrice — Senior Data Analyst
-**Stack**: Python, SQL (local SQLite / SQL Server), Power BI
-**Objective**: Portfolio project for Data Analyst job search
+**Author**: Patrice DUCLOS — Senior Data Analyst (20 years of experience)
+**Stack**: Python, SQL (local SQLite / SQL Server / PostgreSQL), FastAPI, Streamlit, Docker
+**Objective**: Portfolio project for the Data Science Lead certification (Jedha Bootcamp, Bac+5 RNCP Level 7)
 
 ---
 
 ## 1. Project Vision
 
-Build a complete data pipeline (collection → cleaning → analysis → prediction → dashboard) on the HVAC market in the Auvergne-Rhône-Alpes region, by combining energy, weather, economic, and household confidence data to predict sales/installation volumes of heating and air conditioning equipment.
+Build a complete data pipeline (collection → cleaning → analysis → prediction → dashboard) on the HVAC market across **96 metropolitan French departments**, by combining energy, weather, economic, socioeconomic, and construction data to predict sales/installation volumes of heating and air conditioning equipment.
 
 **Design Principles:**
 - Local storage only, CSV outputs and deduplication to avoid duplicates
@@ -30,7 +30,7 @@ hvac-market-analysis/
 ├── .env                         # Local configuration (not versioned)
 ├── config/
 │   ├── __init__.py
-│   └── settings.py              # Centralized configuration (dataclasses)
+│   └── settings.py              # Centralized configuration (96 depts, names, coordinates)
 ├── data/
 │   ├── raw/                     # Downloaded raw data
 │   │   ├── weather/             # Open-Meteo
@@ -44,7 +44,7 @@ hvac-market-analysis/
 │   └── hvac_market.db           # Local SQLite database
 ├── src/
 │   ├── __init__.py
-│   ├── pipeline.py              # CLI orchestrator
+│   ├── pipeline.py              # CLI orchestrator (16 commands, interactive mode -i)
 │   ├── collectors/              # Extensible plugin-based architecture
 │   │   ├── __init__.py
 │   │   ├── base.py              # BaseCollector + CollectorRegistry
@@ -52,27 +52,30 @@ hvac-market-analysis/
 │   │   ├── insee.py             # INSEE BDM (InseeCollector)
 │   │   ├── eurostat_col.py      # Eurostat (EurostatCollector)
 │   │   ├── sitadel.py           # SITADEL via DiDo API (SitadelCollector)
-│   │   └── dpe.py               # DPE ADEME (DpeCollector)
+│   │   ├── dpe.py               # DPE ADEME (DpeCollector)
+│   │   └── pcloud_sync.py       # pCloud synchronization (data + features)
 │   ├── processing/
 │   │   ├── __init__.py
-│   │   ├── clean_data.py        # Source-by-source cleaning (DataCleaner)
-│   │   ├── merge_datasets.py    # Multi-source merge → ML dataset (DatasetMerger)
-│   │   └── feature_engineering.py  # Advanced features: lags, rolling, interactions (FeatureEngineer)
+│   │   ├── clean_data.py        # Source-by-source cleaning (skip rules + preview mode)
+│   │   ├── merge_datasets.py    # Multi-source merge (DPE+weather+SITADEL+INSEE ref)
+│   │   ├── feature_engineering.py  # Advanced features: lags, rolling, interactions
+│   │   └── outlier_detection.py # IQR + Z-score + Isolation Forest (consensus 2/3)
 │   ├── database/
 │   │   ├── __init__.py
 │   │   ├── schema.sql           # Star schema SQLite (+ raw_dpe)
 │   │   ├── schema_mssql.sql     # SQL Server schema (IDENTITY, BIT, MERGE)
-│   │   └── db_manager.py        # CRUD + CSV import + DPE aggregation
+│   │   └── db_manager.py        # CRUD + CSV import + DPE aggregation (interactive source selection)
 │   ├── analysis/
 │   │   ├── __init__.py
 │   │   ├── eda.py               # Exploratory analysis
 │   │   └── correlation.py       # Correlation studies
 │   └── models/
 │       ├── __init__.py
-│       ├── baseline.py          # Classic ML models
-│       ├── deep_learning.py     # LSTM (educational exploration)
-│       ├── train.py             # Training pipeline
-│       └── evaluate.py          # Metrics & comparison
+│       ├── baseline.py          # Classic ML models (Ridge, LightGBM, Prophet)
+│       ├── deep_learning.py     # LSTM (PyTorch)
+│       ├── train.py             # Training pipeline (outlier leakage prevention)
+│       ├── evaluate.py          # Metrics, SHAP, visualizations
+│       └── reinforcement_learning_demo.py  # RL demo (Gymnasium)
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
 │   ├── 02_feature_engineering.ipynb
@@ -202,10 +205,17 @@ python -m src.pipeline init_db                        # Create tables
 python -m src.pipeline collect --sources weather,insee # Specific sources
 python -m src.pipeline collect                         # All sources
 python -m src.pipeline import_data                     # CSV → DB
+python -m src.pipeline import_data -i                  # Interactive: choose sources to import
 python -m src.pipeline clean                           # Cleaning → data/processed/
+python -m src.pipeline clean -i                        # Interactive: preview & skip rules
 python -m src.pipeline merge                           # Merge → data/features/hvac_ml_dataset.csv
 python -m src.pipeline features                        # Features → data/features/hvac_features_dataset.csv
 python -m src.pipeline process                         # clean + merge + features in one command
+python -m src.pipeline process -i                      # Interactive cleaning during process
+python -m src.pipeline train                           # Train ML models
+python -m src.pipeline evaluate                        # Evaluate models
+python -m src.pipeline upload_pcloud                   # Upload results to pCloud
+python -m src.pipeline update_all                      # Full pipeline (collect + process + train + upload)
 ```
 
 ## 5. Data Sources — Technical Details
@@ -215,8 +225,8 @@ python -m src.pipeline process                         # clean + merge + feature
 - **API**: `https://data.ademe.fr/data-fair/api/v1/datasets/dpe03existant/lines`
 - **Format**: Cursor-paginated JSON (~14M total entries)
 - **Scope**: DPE since July 2021
-- **Filtering**: departments 01, 07, 26, 38, 42, 69, 73, 74
-- **Collected volume**: 1,377,781 DPE (30 columns, 300 MB CSV, 316 MB SQLite)
+- **Filtering**: 96 metropolitan departments (01-95, 2A, 2B)
+- **Collected volume**: Varies by deployment (up to ~5-8M DPE for 96 departments)
 - **Usage**: Proxy for "sales" — each DPE mentioning heat pump/air conditioning = recent installation
 - **Heat pump detection**: field `type_generateur_chauffage_principal` (air/water heat pump) + `type_generateur_froid` (reversible air/air heat pump)
 - **Collector**: `src/collectors/dpe.py` (DpeCollector)
@@ -227,7 +237,7 @@ python -m src.pipeline process                         # clean + merge + feature
 - **Auth**: None (free, fair use ~10,000 calls/day)
 - **Variables**: temperature_2m_max/min/mean, precipitation_sum, wind_speed_10m_max
 - **Computed**: HDD = max(0, 18 - temp_mean), CDD = max(0, temp_mean - 18)
-- **8 cities**: Lyon, Grenoble, Saint-Etienne, Annecy, Valence, Chambery, Bourg-en-Bresse, Privas
+- **96 prefectures**: One per metropolitan department (configured in settings.py)
 - **Collector**: `src/collectors/weather.py` (WeatherCollector)
 
 ### 5.3 INSEE BDM — Household Confidence & Business Climate
@@ -247,8 +257,16 @@ python -m src.pipeline process                         # clean + merge + feature
 ### 5.4 Building Permits — SITADEL
 - **Source**: SDES DiDo API (MIGRATION — direct ZIP downloads no longer available)
 - **API**: `https://data.statistiques.developpement-durable.gouv.fr/dido/api/v1/datafiles/{rid}/csv`
-- **Filtering**: DEP in [01, 07, 26, 38, 42, 69, 73, 74]
+- **Filtering**: 96 metropolitan departments
 - **Collector**: `src/collectors/sitadel.py` (SitadelCollector)
+- **Integration**: SITADEL features (nb_logements_autorises, nb_logements_individuels, nb_logements_collectifs, surface_autorisee_m2) are merged into the ML dataset via `merge_datasets.py`
+
+### 5.7 INSEE Filosofi — Reference Data (Static)
+- **Source**: `data/raw/insee/reference_departements.csv` (pre-built from INSEE open data)
+- **Granularity**: Per department (static, no temporal dimension)
+- **Features**: revenu_median, prix_m2_median, nb_logements_total, pct_maisons
+- **Usage**: Socioeconomic context per department, linked to aid eligibility (MaPrimeRenov, CEE) and housing market activity
+- **Integration**: Merged as static features in `merge_datasets.py`
 
 ### 5.5 Eurostat — HVAC Industrial Production
 - **Python package**: `pip install eurostat`
@@ -302,7 +320,7 @@ python -m src.pipeline process                         # clean + merge + feature
 **Additional raw table:**
 ```
 ┌─────────────────────────┐
-│ raw_dpe (1.38M rows)    │   ← Grain = 1 individual DPE
+│ raw_dpe                 │   ← Grain = 1 individual DPE
 │─────────────────────────│
 │ numero_dpe (PK)         │
 │ date_etablissement_dpe  │
@@ -316,21 +334,26 @@ python -m src.pipeline process                         # clean + merge + feature
 ```
 **Aggregation**: `raw_dpe` → `fact_hvac_installations` (nb_dpe_total, nb_installations_pac, nb_installations_clim, nb_dpe_classe_ab) per month x department.
 
-**Audit correction**: economic indicators (national) are separated into their own fact table. No more duplication across 8 departments.
+**Audit corrections**:
+- Economic indicators (national) are separated into their own fact table. No more duplication across departments.
+- SITADEL building permits are now integrated into the ML merge (nb_logements_autorises, surface_autorisee_m2).
+- INSEE Filosofi reference data (revenu_median, prix_m2_median, nb_logements_total, pct_maisons) merged as static department-level features.
+- Outlier detection flags (IQR, Z-score, Isolation Forest) are excluded from training to prevent data leakage.
 
 ## 7. Feature Engineering for ML (IMPLEMENTED ✓)
 
 ### ML-ready dataset (`data/features/hvac_ml_dataset.csv`)
-- **Grain**: month x department (448 rows x 35 columns)
+- **Grain**: month x department (96 departments x N months)
 - **Pipeline**: `python -m src.pipeline merge`
 - **Module**: `src/processing/merge_datasets.py` (DatasetMerger)
+- **Sources merged**: DPE + Weather + INSEE BDM + Eurostat + SITADEL + INSEE Filosofi reference
 
 ### Features dataset (`data/features/hvac_features_dataset.csv`)
-- **Grain**: month x department (448 rows x 90 columns)
+- **Grain**: month x department (96 departments x N months, ~90+ columns)
 - **Pipeline**: `python -m src.pipeline features`
 - **Module**: `src/processing/feature_engineering.py` (FeatureEngineer)
 
-### Feature categories (90 columns)
+### Feature categories (~90+ columns)
 
 **Temporal (7)**
 - month, quarter, year, is_heating, is_cooling
@@ -363,6 +386,16 @@ python -m src.pipeline process                         # clean + merge + feature
 **Economic (6)** — national
 - confiance_menages, climat_affaires_indus, climat_affaires_bat
 - ipi_manufacturing, ipi_hvac_c28, ipi_hvac_c2825
+
+**Construction / SITADEL (4)** — per department, monthly
+- nb_logements_autorises, nb_logements_individuels, nb_logements_collectifs
+- surface_autorisee_m2
+
+**Socioeconomic reference (4)** — per department, static
+- revenu_median (INSEE Filosofi — linked to aid eligibility)
+- prix_m2_median (proxy for real estate market activity)
+- nb_logements_total (housing stock, enables normalization)
+- pct_maisons (structural differences: houses → more heat pumps)
 
 ### Target features (Y)
 - nb_installations_pac: DPE with heat pump per month/department
@@ -400,9 +433,12 @@ Test   : 2025-01 → 2025-12 (12 months)
 
 1. **GitHub repo** clean with comprehensive README
 2. **Jupyter notebooks** with commentary (EDA + Modeling)
-3. **Power BI dashboard** with KPIs and predictions
-4. **Medium article** telling the project story (data storytelling)
-5. **PDF report** summarizing ML results
+3. **Streamlit dashboard** with 6 interactive pages (map, metrics, predictions, model comparison)
+4. **FastAPI REST API** with 6 endpoints (predictions, metrics, departments)
+5. **Docker deployment** (docker-compose with API + Dashboard + optional PostgreSQL)
+6. **Documentation** (governance, database architecture, pipeline — `docs/`)
+7. **Medium article** telling the project story (data storytelling)
+8. **PDF report** summarizing ML results
 
 ## 10. Execution Order
 
@@ -410,50 +446,53 @@ Test   : 2025-01 → 2025-12 (12 months)
 Phase 1 — Setup & Collection (COMPLETED ✓)
   ├── 1.1 Init repo, venv, requirements, centralized config    ✓
   ├── 1.2 Extensible architecture (BaseCollector + Registry)   ✓
-  ├── 1.3 Collect Open-Meteo (20,456 rows, 8 cities)          ✓
+  ├── 1.3 Collect Open-Meteo (96 prefectures)                 ✓
   ├── 1.4 Collect INSEE BDM (85 monthly rows, 4 series)       ✓
   ├── 1.5 Collect Eurostat IPI (168 rows, 2 NACE)             ✓
-  ├── 1.6 Collect SITADEL (DiDo migration in progress)        ~
-  ├── 1.7 DPE ADEME (1,377,781 DPE, 300 MB CSV)              ✓
-  ├── 1.8 SQLite DB initialized + full import (316 MB)        ✓
+  ├── 1.6 Collect SITADEL (DiDo API, 96 departments)          ✓
+  ├── 1.7 DPE ADEME (96 departments)                          ✓
+  ├── 1.8 SQLite DB initialized + full import                  ✓
   ├── 1.9 Dual support SQLite / SQL Server / PostgreSQL        ✓
   ├── 1.10 Portability script (setup_project.py)               ✓
-  └── 1.11 DPE aggregation → fact_hvac_installations           ✓
-      Total data/ volume: 1.2 GB
+  ├── 1.11 DPE aggregation → fact_hvac_installations           ✓
+  ├── 1.12 INSEE Filosofi reference data (96 departments)      ✓
+  └── 1.13 Interactive import menu (source selection)           ✓
 
 Phase 2 — Processing (COMPLETED ✓)
   ├── 2.1 Clean each source (clean_data.py)                     ✓
-  │       Weather: 20,456 rows, 0 duplicates, HDD/CDD recalculated
-  │       INSEE: 114 → 85 (monthly filter), 2 interpolations
-  │       Eurostat: 168 rows, 4 variations > 30% flagged
-  │       DPE: 1,377,781 rows, 14,105 values clipped, 6.9% heat pump
-  ├── 2.2 Create SQL database (corrected star schema)           ✓ (done in Phase 1)
-  ├── 2.3 Load data                                             ✓ (done in Phase 1)
+  │       Weather, INSEE, Eurostat, DPE — with skip rules + preview
+  ├── 2.2 Interactive cleaning menu (preview impact + skip)     ✓
+  ├── 2.3 Create SQL database (corrected star schema)           ✓
   ├── 2.4 Merge into ML-ready dataset (merge_datasets.py)       ✓
-  │       448 rows x 35 columns (month x department)
-  │       Period: 2021-07 → 2026-02 (55 months x 8 depts)
+  │       96 departments x N months
+  │       Sources: DPE + Weather + SITADEL + INSEE ref + Economic
   │       → data/features/hvac_ml_dataset.csv
-  └── 2.5 Feature engineering (feature_engineering.py)           ✓
-          448 rows x 90 columns (+55 advanced features)
-          Lags: 1m, 3m, 6m | Rolling: 3m, 6m (mean + std)
-          Variations: diff + pct_change | Interactions: 4
-          Completeness: 95.3% (NaN = lags at series start)
-          → data/features/hvac_features_dataset.csv
+  ├── 2.5 Feature engineering (feature_engineering.py)           ✓
+  │       ~90+ columns (lags, rolling, interactions, static)
+  │       → data/features/hvac_features_dataset.csv
+  └── 2.6 Outlier detection (IQR + Z-score + Isolation Forest)  ✓
+          Consensus 2/3, outlier flags excluded from training
 
 Phase 3 — Analysis
   ├── 3.1 EDA notebook
   └── 3.2 Correlations
 
-Phase 4 — Modeling
-  ├── 4.1 Baseline models (Ridge, LightGBM, Prophet)
-  ├── 4.2 Exploratory LSTM
-  ├── 4.3 Comparative evaluation
-  └── 4.4 SHAP analysis
+Phase 4 — Modeling (COMPLETED ✓)
+  ├── 4.1 Baseline models (Ridge, LightGBM, Prophet)           ✓
+  ├── 4.2 Exploratory LSTM (PyTorch)                           ✓
+  ├── 4.3 Comparative evaluation                                ✓
+  ├── 4.4 SHAP analysis                                         ✓
+  └── 4.5 Outlier leakage prevention in training                ✓
 
-Phase 5 — Delivery
-  ├── 5.1 Power BI dashboard
-  ├── 5.2 GitHub README
-  └── 5.3 Medium article
+Phase 5 — Deployment & Delivery (IN PROGRESS)
+  ├── 5.1 FastAPI REST API (6 endpoints)                        ✓
+  ├── 5.2 Streamlit dashboard (6 interactive pages)             ✓
+  ├── 5.3 Docker + docker-compose                               ✓
+  ├── 5.4 Kubernetes manifests                                  ✓
+  ├── 5.5 Airflow DAG                                           ✓
+  ├── 5.6 pCloud synchronization (data + features)              ✓
+  ├── 5.7 GitHub README                                         ✓
+  └── 5.8 Documentation (governance, architecture, pipeline)    ✓
 ```
 
 ## 11. Extensibility
