@@ -78,7 +78,8 @@ class WeatherCollector(BaseCollector):
     _MAX_429_RETRIES: ClassVar[int] = 5           # Max retries on 429 per city
     _INITIAL_BACKOFF: ClassVar[float] = 5.0        # Initial wait on 429 (seconds)
     _BATCH_SIZE: ClassVar[int] = 10                # Cities per batch before extra pause
-    _BATCH_PAUSE: ClassVar[float] = 5.0            # Extra pause between batches (seconds)
+    _BATCH_PAUSE: ClassVar[float] = 10.0           # Extra pause between batches (seconds)
+    _RETRY_PASS_PAUSE: ClassVar[float] = 60.0      # Cooldown before retrying failed cities
 
     def _fetch_with_retry(
         self, url: str, params: Dict[str, Any], city: str
@@ -135,6 +136,70 @@ class WeatherCollector(BaseCollector):
         )
         return None
 
+    def _collect_single_city(
+        self,
+        city: str,
+        coords: Dict[str, Any],
+        effective_end: str,
+        idx: int,
+        total: int,
+    ) -> Optional[pd.DataFrame]:
+        """Collect weather data for a single city.
+
+        Args:
+            city: City name.
+            coords: Dictionary with lat, lon, dept, region.
+            effective_end: End date (clamped to yesterday).
+            idx: Current index for progress logging.
+            total: Total number of cities for progress logging.
+
+        Returns:
+            DataFrame with weather data for the city, or None on failure.
+        """
+        self.logger.info(
+            "Weather collection [%d/%d]: %s (lat=%.2f, lon=%.2f, dept=%s)",
+            idx, total, city, coords["lat"], coords["lon"], coords["dept"],
+        )
+
+        params = {
+            "latitude": coords["lat"],
+            "longitude": coords["lon"],
+            "start_date": self.config.start_date,
+            "end_date": effective_end,
+            "daily": ",".join(DAILY_VARIABLES),
+            "timezone": "Europe/Paris",
+        }
+
+        try:
+            data = self._fetch_with_retry(
+                OPENMETEO_BASE_URL, params=params, city=city,
+            )
+
+            if data is None:
+                return None
+
+            if "daily" not in data:
+                raise ValueError(
+                    f"Unexpected API response for {city}: "
+                    f"'daily' key missing. Keys received: {list(data.keys())}"
+                )
+
+            df = pd.DataFrame(data["daily"])
+            df["city"] = city
+            df["dept"] = coords["dept"]
+
+            self.logger.info(
+                "  ✓ %s: %d days collected (%s → %s)",
+                city, len(df),
+                df["time"].iloc[0] if len(df) > 0 else "?",
+                df["time"].iloc[-1] if len(df) > 0 else "?",
+            )
+            return df
+
+        except Exception as exc:
+            self.logger.error("  ✗ Failed for %s: %s", city, exc)
+            return None
+
     def collect(self) -> pd.DataFrame:
         """Collect weather data for all reference cities.
 
@@ -171,61 +236,17 @@ class WeatherCollector(BaseCollector):
 
         city_items = list(cities.items())
         total_cities = len(city_items)
+        failed_cities: List[tuple] = []
 
+        # --- Pass 1: collect all cities ---------------------------------
         for idx, (city, coords) in enumerate(city_items, 1):
-            self.logger.info(
-                "Weather collection [%d/%d]: %s (lat=%.2f, lon=%.2f, dept=%s)",
-                idx, total_cities,
-                city, coords["lat"], coords["lon"], coords["dept"],
+            df = self._collect_single_city(
+                city, coords, effective_end, idx, total_cities,
             )
-
-            # API request parameters
-            params = {
-                "latitude": coords["lat"],
-                "longitude": coords["lon"],
-                "start_date": self.config.start_date,
-                "end_date": effective_end,
-                "daily": ",".join(DAILY_VARIABLES),
-                "timezone": "Europe/Paris",
-            }
-
-            try:
-                # API call with 429-specific retry and exponential backoff
-                data = self._fetch_with_retry(
-                    OPENMETEO_BASE_URL, params=params, city=city,
-                )
-
-                # _fetch_with_retry returns None if all retries exhausted
-                if data is None:
-                    errors.append(f"Failed for {city}: 429 rate limit exhausted")
-                    continue
-
-                # Check that the 'daily' key exists in the response
-                if "daily" not in data:
-                    raise ValueError(
-                        f"Unexpected API response for {city}: "
-                        f"'daily' key missing. Keys received: {list(data.keys())}"
-                    )
-
-                # Convert to DataFrame and enrich with metadata
-                df = pd.DataFrame(data["daily"])
-                df["city"] = city
-                df["dept"] = coords["dept"]
+            if df is not None:
                 all_frames.append(df)
-
-                self.logger.info(
-                    "  ✓ %s: %d days collected (%s → %s)",
-                    city, len(df),
-                    df["time"].iloc[0] if len(df) > 0 else "?",
-                    df["time"].iloc[-1] if len(df) > 0 else "?",
-                )
-
-            except Exception as exc:
-                # Record the error but continue with other cities
-                error_msg = f"Failed for {city}: {exc}"
-                errors.append(error_msg)
-                self.logger.error("  ✗ %s", error_msg)
-                continue
+            else:
+                failed_cities.append((city, coords))
 
             # Courtesy pause between calls
             self.rate_limit_pause()
@@ -236,6 +257,35 @@ class WeatherCollector(BaseCollector):
                     "  Batch pause (%d/%d cities done) — waiting %.0fs...",
                     idx, total_cities, self._BATCH_PAUSE,
                 )
+                time.sleep(self._BATCH_PAUSE)
+
+        # --- Pass 2: retry failed cities after a long cooldown ----------
+        if failed_cities:
+            self.logger.info(
+                "⏳ %d/%d cities failed on first pass. "
+                "Waiting %.0fs before retry pass...",
+                len(failed_cities), total_cities, self._RETRY_PASS_PAUSE,
+            )
+            time.sleep(self._RETRY_PASS_PAUSE)
+
+            for retry_idx, (city, coords) in enumerate(failed_cities, 1):
+                self.logger.info(
+                    "Retry pass [%d/%d]: %s",
+                    retry_idx, len(failed_cities), city,
+                )
+                df = self._collect_single_city(
+                    city, coords, effective_end,
+                    retry_idx, len(failed_cities),
+                )
+                if df is not None:
+                    all_frames.append(df)
+                else:
+                    errors.append(
+                        f"Failed for {city}: 429 rate limit exhausted "
+                        f"(after retry pass)"
+                    )
+
+                # Longer pause between retries
                 time.sleep(self._BATCH_PAUSE)
 
         # Check that at least one city was collected
