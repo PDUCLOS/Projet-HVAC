@@ -15,8 +15,9 @@ def render():
     st.title("Predictions ML")
 
     # --- Load evaluation results ---
-    eval_dir = Path("data/models")
-    results_file = eval_dir / "evaluation_results.json"
+    from config.settings import config as cfg
+    eval_dir = cfg.models_dir
+    results_file = cfg.evaluation_results_path
     models_dir = eval_dir
 
     if not eval_dir.exists():
@@ -25,7 +26,7 @@ def render():
         return
 
     # --- Load the dataset ---
-    features_path = Path("data/features/hvac_features_dataset.csv")
+    features_path = cfg.features_dataset_path
     if not features_path.exists():
         st.warning("Features dataset not available.")
         return

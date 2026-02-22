@@ -21,9 +21,10 @@ def render():
 
     col1, col2, col3, col4 = st.columns(4)
 
-    raw_dir = Path("data/raw")
-    features_path = Path("data/features/hvac_features_dataset.csv")
-    ml_path = Path("data/features/hvac_ml_dataset.csv")
+    from config.settings import config as cfg
+    raw_dir = cfg.raw_data_dir
+    features_path = cfg.features_dataset_path
+    ml_path = cfg.ml_dataset_path
 
     n_weather = _count_rows(raw_dir / "weather" / "weather_france.csv")
     n_dpe = _count_rows(raw_dir / "dpe" / "dpe_france_all.csv")
@@ -181,7 +182,8 @@ def _display_data_insights(ml_path: Path):
 def _display_model_summary():
     """Display model performance if available."""
     import json
-    results_path = Path("data/models/evaluation_results.json")
+    from config.settings import config as cfg
+    results_path = cfg.evaluation_results_path
     if not results_path.exists():
         return
 

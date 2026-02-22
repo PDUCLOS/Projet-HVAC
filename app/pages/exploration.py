@@ -110,17 +110,18 @@ def render():
 
 def _list_available_datasets() -> dict:
     """List available datasets."""
+    from config.settings import config as cfg
     datasets = {}
     paths = {
-        "Dataset ML (features)": Path("data/features/hvac_features_dataset.csv"),
-        "Merged Dataset": Path("data/features/hvac_ml_dataset.csv"),
-        "Weather France (raw)": Path("data/raw/weather/weather_france.csv"),
-        "Weather France (clean)": Path("data/processed/weather/weather_france.csv"),
-        "DPE ADEME (raw)": Path("data/raw/dpe/dpe_france_all.csv"),
-        "DPE ADEME (clean)": Path("data/processed/dpe/dpe_france_clean.csv"),
-        "INSEE Economic": Path("data/raw/insee/indicateurs_economiques.csv"),
-        "Eurostat IPI": Path("data/raw/eurostat/ipi_hvac_france.csv"),
-        "SITADEL Permits": Path("data/raw/sitadel/permis_construire_france.csv"),
+        "Dataset ML (features)": cfg.features_dataset_path,
+        "Merged Dataset": cfg.ml_dataset_path,
+        "Weather France (raw)": cfg.raw_data_dir / "weather" / "weather_france.csv",
+        "Weather France (clean)": cfg.processed_data_dir / "weather" / "weather_france.csv",
+        "DPE ADEME (raw)": cfg.raw_data_dir / "dpe" / "dpe_france_all.csv",
+        "DPE ADEME (clean)": cfg.processed_data_dir / "dpe" / "dpe_france_clean.csv",
+        "INSEE Economic": cfg.raw_data_dir / "insee" / "indicateurs_economiques.csv",
+        "Eurostat IPI": cfg.raw_data_dir / "eurostat" / "ipi_hvac_france.csv",
+        "SITADEL Permits": cfg.raw_data_dir / "sitadel" / "permis_construire_france.csv",
     }
     for name, path in paths.items():
         if path.exists():

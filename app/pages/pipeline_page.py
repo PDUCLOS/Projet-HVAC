@@ -43,7 +43,8 @@ def render():
 
     # --- pCloud synchronization state ---
     st.header("pCloud synchronization")
-    sync_state_file = Path("data/.pcloud_sync_state.json")
+    from config.settings import config as cfg
+    sync_state_file = cfg.pcloud_sync_state_path
     if sync_state_file.exists():
         with open(sync_state_file) as f:
             sync_state = json.load(f)
@@ -106,10 +107,9 @@ streamlit run app/app.py
 
 def _display_data_status():
     """Display the data status."""
-    raw_dir = Path("data/raw")
-    processed_dir = Path("data/processed")
-    features_dir = Path("data/features")
-    models_dir = Path("data/models")
+    from config.settings import config as cfg
+    raw_dir = cfg.raw_data_dir
+    processed_dir = cfg.processed_data_dir
 
     status = []
 
@@ -121,9 +121,9 @@ def _display_data_status():
         "INSEE": raw_dir / "insee" / "indicateurs_economiques.csv",
         "Eurostat": raw_dir / "eurostat" / "ipi_hvac_france.csv",
         "SITADEL": raw_dir / "sitadel" / "permis_construire_france.csv",
-        "ML Dataset": features_dir / "hvac_ml_dataset.csv",
-        "Features Dataset": features_dir / "hvac_features_dataset.csv",
-        "SQLite DB": Path("data/hvac_market.db"),
+        "ML Dataset": cfg.ml_dataset_path,
+        "Features Dataset": cfg.features_dataset_path,
+        "SQLite DB": cfg.db_path,
     }
 
     for name, path in files_to_check.items():

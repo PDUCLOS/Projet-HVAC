@@ -12,11 +12,12 @@ import json
 def render():
     st.title("Model comparison")
 
-    eval_dir = Path("data/models")
+    from config.settings import config as cfg
+    eval_dir = cfg.models_dir
 
     # --- Evaluation report ---
     report_path = eval_dir / "evaluation_report.txt"
-    results_path = eval_dir / "evaluation_results.json"
+    results_path = cfg.evaluation_results_path
 
     if results_path.exists():
         with open(results_path) as f:
@@ -93,7 +94,7 @@ def render():
         st.info("No saved models.")
 
     # --- Outlier Detection Report ---
-    outlier_report = Path("data/features/outlier_report.json")
+    outlier_report = cfg.outlier_report_path
     if outlier_report.exists():
         st.subheader("Outlier detection report")
         with open(outlier_report) as f:

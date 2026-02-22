@@ -193,8 +193,8 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
             try:
                 with open(filepath) as f:
                     info["rows"] = sum(1 for _ in f) - 1
-            except Exception:
-                pass
+            except (OSError, UnicodeDecodeError):
+                info["rows"] = 0
 
         sources_info.append(info)
 

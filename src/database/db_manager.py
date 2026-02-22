@@ -395,12 +395,13 @@ class DatabaseManager:
         if cdd_col:
             agg_dict[cdd_col] = "sum"
 
-        # Count heatwave days (T > 35) and frost days (T < 0)
+        # Count heatwave and frost days using configurable thresholds
+        from config.settings import config as _cfg
         if temp_max_col:
-            df["is_canicule"] = (df[temp_max_col] > 35).astype(int)
+            df["is_canicule"] = (df[temp_max_col] > _cfg.thresholds.heatwave_temp).astype(int)
             agg_dict["is_canicule"] = "sum"
         if temp_min_col:
-            df["is_gel"] = (df[temp_min_col] < 0).astype(int)
+            df["is_gel"] = (df[temp_min_col] < _cfg.thresholds.frost_temp).astype(int)
             agg_dict["is_gel"] = "sum"
 
         monthly = df.groupby(["date_id", "geo_id"]).agg(agg_dict).reset_index()
@@ -616,8 +617,9 @@ class DatabaseManager:
         df_sample = pd.read_csv(filepath, nrows=2)
         self.logger.info("  Columns: %s", list(df_sample.columns))
 
-        # Import in chunks of 50,000 rows to limit memory usage
-        chunk_size = 50_000
+        # Import in chunks to limit memory usage
+        from config.settings import config as _cfg
+        chunk_size = _cfg.processing.dpe_import_chunk_size
         total_imported = 0
 
         for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
@@ -859,7 +861,8 @@ class DatabaseManager:
                     text(f"SELECT COUNT(*) FROM {table_name}")
                 )
                 return result.scalar() or 0
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Count failed for '%s': %s", table_name, exc)
             return 0
 
     def _safe_read_table(self, table_name: str) -> Optional[pd.DataFrame]:
@@ -881,7 +884,8 @@ class DatabaseManager:
         try:
             df = self.query(f"SELECT * FROM {table_name}")
             return df if len(df) > 0 else None
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Read failed for '%s': %s", table_name, exc)
             return None
 
     def _get_geo_mapping(self) -> dict:
@@ -893,7 +897,8 @@ class DatabaseManager:
         try:
             df = self.query("SELECT geo_id, dept_code FROM dim_geo")
             return dict(zip(df["dept_code"].astype(str), df["geo_id"]))
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Geo mapping failed: %s", exc)
             return {}
 
     def _find_col(self, df: pd.DataFrame, candidates: list) -> Optional[str]:

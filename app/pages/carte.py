@@ -32,8 +32,9 @@ def render():
     df_depts = pd.DataFrame(dept_data)
 
     # --- Load data if available ---
-    features_path = Path("data/features/hvac_features_dataset.csv")
-    ml_path = Path("data/features/hvac_ml_dataset.csv")
+    from config.settings import config as cfg
+    features_path = cfg.features_dataset_path
+    ml_path = cfg.ml_dataset_path
 
     df_data = None
     if features_path.exists():

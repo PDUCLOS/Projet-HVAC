@@ -388,12 +388,12 @@ class DatasetMerger:
             if src_col in df.columns:
                 agg_dict[src_col] = agg_func
 
-        # Binary indicators to count
+        # Binary indicators to count (thresholds from config)
         if "temperature_2m_max" in df.columns:
-            df["_canicule"] = (df["temperature_2m_max"] > 35).astype(int)
+            df["_canicule"] = (df["temperature_2m_max"] > self.config.thresholds.heatwave_temp).astype(int)
             agg_dict["_canicule"] = "sum"
         if "temperature_2m_min" in df.columns:
-            df["_gel"] = (df["temperature_2m_min"] < 0).astype(int)
+            df["_gel"] = (df["temperature_2m_min"] < self.config.thresholds.frost_temp).astype(int)
             agg_dict["_gel"] = "sum"
 
         # Aggregation by month x department

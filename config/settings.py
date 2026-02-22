@@ -412,6 +412,34 @@ class DatabaseConfig:
 
 
 @dataclass(frozen=True)
+class ThresholdsConfig:
+    """Thresholds for weather events and cleaning rules.
+
+    Attributes:
+        heatwave_temp: Max temperature above which a day counts as heatwave (°C).
+        frost_temp: Min temperature below which a day counts as frost (°C).
+        cost_outlier_max: Maximum cost value before flagging as outlier.
+    """
+    heatwave_temp: float = 35.0
+    frost_temp: float = 0.0
+    cost_outlier_max: float = 50_000.0
+
+
+@dataclass(frozen=True)
+class ProcessingConfig:
+    """Processing configuration for data pipeline.
+
+    Attributes:
+        dpe_import_chunk_size: Chunk size for importing DPE into the database.
+        dpe_clean_chunk_size: Chunk size for reading DPE during cleaning/merge.
+        dpe_api_page_size: Page size for ADEME DPE API calls.
+    """
+    dpe_import_chunk_size: int = 50_000
+    dpe_clean_chunk_size: int = 200_000
+    dpe_api_page_size: int = 10_000
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     """ML model configuration.
 
@@ -472,10 +500,43 @@ class ProjectConfig:
     network: NetworkConfig = field(default_factory=NetworkConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
+    thresholds: ThresholdsConfig = field(default_factory=ThresholdsConfig)
+    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
     raw_data_dir: Path = Path("data/raw")
     processed_data_dir: Path = Path("data/processed")
     features_data_dir: Path = Path("data/features")
+    models_dir: Path = Path("data/models")
     log_level: str = "INFO"
+
+    @property
+    def features_dataset_path(self) -> Path:
+        """Path to the features dataset CSV."""
+        return self.features_data_dir / "hvac_features_dataset.csv"
+
+    @property
+    def ml_dataset_path(self) -> Path:
+        """Path to the ML dataset CSV."""
+        return self.features_data_dir / "hvac_ml_dataset.csv"
+
+    @property
+    def db_path(self) -> Path:
+        """Path to the SQLite database file."""
+        return Path(self.database.db_path)
+
+    @property
+    def outlier_report_path(self) -> Path:
+        """Path to the outlier detection report."""
+        return self.features_data_dir / "outlier_report.json"
+
+    @property
+    def evaluation_results_path(self) -> Path:
+        """Path to the evaluation results JSON."""
+        return self.models_dir / "evaluation_results.json"
+
+    @property
+    def pcloud_sync_state_path(self) -> Path:
+        """Path to the pCloud synchronization state file."""
+        return Path("data/.pcloud_sync_state.json")
 
     @classmethod
     def from_env(cls) -> ProjectConfig:
@@ -525,9 +586,20 @@ class ProjectConfig:
                 db_driver=os.getenv("DB_DRIVER", "ODBC Driver 17 for SQL Server"),
                 allow_non_local=os.getenv("ALLOW_NON_LOCAL", "").lower() in ("true", "1", "yes"),
             ),
+            thresholds=ThresholdsConfig(
+                heatwave_temp=float(os.getenv("HEATWAVE_TEMP", "35.0")),
+                frost_temp=float(os.getenv("FROST_TEMP", "0.0")),
+                cost_outlier_max=float(os.getenv("COST_OUTLIER_MAX", "50000")),
+            ),
+            processing=ProcessingConfig(
+                dpe_import_chunk_size=int(os.getenv("DPE_IMPORT_CHUNK_SIZE", "50000")),
+                dpe_clean_chunk_size=int(os.getenv("DPE_CLEAN_CHUNK_SIZE", "200000")),
+                dpe_api_page_size=int(os.getenv("DPE_API_PAGE_SIZE", "10000")),
+            ),
             raw_data_dir=Path(os.getenv("RAW_DATA_DIR", "data/raw")),
             processed_data_dir=Path(os.getenv("PROCESSED_DATA_DIR", "data/processed")),
             features_data_dir=Path(os.getenv("FEATURES_DATA_DIR", "data/features")),
+            models_dir=Path(os.getenv("MODELS_DIR", "data/models")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )
 

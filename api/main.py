@@ -128,6 +128,11 @@ async def get_predictions(
     last known observation for the department.
     """
     dept = departement.upper().zfill(2)
+    if dept not in DEPARTEMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid department code '{dept}'. Must be a valid French metropolitan department (01-95, 2A, 2B).",
+        )
     _validate_department_in_data(dept)
 
     predictions = state.predict(dept, horizon)
