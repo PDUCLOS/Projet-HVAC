@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Analysis Package — Analyse exploratoire et études de corrélation.
-=================================================================
+Analysis Package — Exploratory analysis and correlation studies.
+================================================================
 
-Ce package contient les modules d'analyse (Phase 3) :
+This package contains the analysis modules (Phase 3):
 
-    - eda.py          : Analyse exploratoire (distributions, séries temporelles,
-                        saisonnalité, comparaison géographique)
-    - correlation.py  : Études de corrélation (matrice, par dept/saison,
-                        multicolinéarité, lags)
+    - eda.py          : Exploratory data analysis (distributions, time series,
+                        seasonality, geographic comparison)
+    - correlation.py  : Correlation studies (matrix, by dept/season,
+                        multicollinearity, lags)
 
-Usage :
+Usage:
     >>> from src.analysis.eda import EDAAnalyzer
     >>> from src.analysis.correlation import CorrelationAnalyzer
 """

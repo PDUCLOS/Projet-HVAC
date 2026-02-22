@@ -1,0 +1,12 @@
+# =============================================================================
+# HVAC Market Analysis — Namespace Kubernetes
+# =============================================================================
+# kubectl apply -f kubernetes/namespace.yaml
+# =============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hvac-market
+  labels:
+    app: hvac-market
+    environment: production

@@ -1,40 +1,40 @@
 -- =============================================================================
--- HVAC Market Analysis — Schéma en étoile (Star Schema)
+-- HVAC Market Analysis — Star Schema
 -- =============================================================================
--- Base : SQLite (compatible PostgreSQL avec ajustements mineurs)
+-- Database: SQLite (compatible with PostgreSQL with minor adjustments)
 --
--- ARCHITECTURE :
---   Ce schéma sépare les données en deux catégories :
---   1. Données géo-temporelles (grain = mois × département)
---      → Table de faits : fact_hvac_installations
---   2. Données économiques nationales (grain = mois seulement)
---      → Table de faits : fact_economic_context
+-- ARCHITECTURE:
+--   This schema separates data into two categories:
+--   1. Geo-temporal data (grain = month x department)
+--      → Fact table: fact_hvac_installations
+--   2. National economic data (grain = month only)
+--      → Fact table: fact_economic_context
 --
---   Cette séparation évite de dupliquer artificiellement les indicateurs
---   INSEE (nationaux) sur 8 départements.
+--   This separation avoids artificially duplicating INSEE indicators
+--   (national) across 8 departments.
 --
--- CORRECTIONS AUDIT :
---   - Suppression de la duplication fact/dim des indicateurs économiques
---   - Ajout de FK explicite vers dim_time pour fact_economic_context
---   - dim_equipment transformée en table de référence
---   - Contrainte UNIQUE(date_id, geo_id) sur la table de faits
+-- AUDIT CORRECTIONS:
+--   - Removed fact/dim duplication of economic indicators
+--   - Added explicit FK to dim_time for fact_economic_context
+--   - dim_equipment transformed into a reference table
+--   - UNIQUE(date_id, geo_id) constraint on the fact table
 -- =============================================================================
 
 
 -- =============================================
--- DIMENSION : Temps
+-- DIMENSION: Time
 -- =============================================
--- Grain le plus fin = mois (format YYYYMM)
--- Utilisée comme FK par les deux tables de faits
+-- Finest grain = month (format YYYYMM)
+-- Used as FK by both fact tables
 CREATE TABLE IF NOT EXISTS dim_time (
-    date_id     INTEGER PRIMARY KEY,   -- Format YYYYMM (ex: 202401 = janvier 2024)
-    year        INTEGER NOT NULL,      -- Année (2019-2025)
-    month       INTEGER NOT NULL,      -- Mois (1-12)
-    quarter     INTEGER NOT NULL,      -- Trimestre (1-4)
-    is_heating  BOOLEAN NOT NULL,      -- Saison de chauffage (octobre-mars)
-    is_cooling  BOOLEAN NOT NULL,      -- Saison de climatisation (juin-septembre)
+    date_id     INTEGER PRIMARY KEY,   -- Format YYYYMM (e.g., 202401 = January 2024)
+    year        INTEGER NOT NULL,      -- Year (2019-2025)
+    month       INTEGER NOT NULL,      -- Month (1-12)
+    quarter     INTEGER NOT NULL,      -- Quarter (1-4)
+    is_heating  BOOLEAN NOT NULL,      -- Heating season (October-March)
+    is_cooling  BOOLEAN NOT NULL,      -- Cooling season (June-September)
 
-    -- Contraintes de cohérence
+    -- Consistency constraints
     CHECK (month BETWEEN 1 AND 12),
     CHECK (quarter BETWEEN 1 AND 4),
     CHECK (year BETWEEN 2015 AND 2030)
@@ -42,110 +42,110 @@ CREATE TABLE IF NOT EXISTS dim_time (
 
 
 -- =============================================
--- DIMENSION : Géographie
+-- DIMENSION: Geography
 -- =============================================
--- Une ligne par département de la région AURA
--- Chaque département a une ville de référence pour la météo
+-- One row per department of metropolitan France
+-- Each department has a reference city for weather data
 CREATE TABLE IF NOT EXISTS dim_geo (
     geo_id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    dept_code   VARCHAR(3)  NOT NULL UNIQUE,  -- Code département (01, 07, etc.)
-    dept_name   VARCHAR(50) NOT NULL,         -- Nom du département
-    city_ref    VARCHAR(50) NOT NULL,         -- Ville de référence météo
-    latitude    DECIMAL(7,4),                 -- Latitude de la ville de référence
-    longitude   DECIMAL(7,4),                -- Longitude de la ville de référence
-    region_code VARCHAR(3) DEFAULT '84'       -- Code région (84 = AURA)
+    dept_code   VARCHAR(3)  NOT NULL UNIQUE,  -- Department code (01, 07, etc.)
+    dept_name   VARCHAR(50) NOT NULL,         -- Department name
+    city_ref    VARCHAR(50) NOT NULL,         -- Weather reference city
+    latitude    DECIMAL(7,4),                 -- Latitude of the reference city
+    longitude   DECIMAL(7,4),                -- Longitude of the reference city
+    region_code VARCHAR(3) DEFAULT 'FR'       -- Region code (FR = metropolitan France)
 );
 
 
 -- =============================================
--- DIMENSION : Type d'équipement (table de référence)
+-- DIMENSION: Equipment type (reference table)
 -- =============================================
--- Catalogue des types d'équipements HVAC identifiables dans les DPE.
--- N'est PAS une FK dans la table de faits (les faits sont agrégés
--- par mois×département, pas par type d'équipement individuel).
--- Sert pour les analyses détaillées et le filtrage des DPE bruts.
+-- Catalog of HVAC equipment types identifiable in DPE records.
+-- Is NOT a FK in the fact table (facts are aggregated
+-- by month x department, not by individual equipment type).
+-- Used for detailed analyses and filtering of raw DPE records.
 CREATE TABLE IF NOT EXISTS dim_equipment_type (
     equip_type_id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    label           VARCHAR(100) NOT NULL,    -- Ex: "PAC air-air", "Chaudière gaz"
+    label           VARCHAR(100) NOT NULL,    -- E.g., "PAC air-air", "Chaudiere gaz"
     categorie       VARCHAR(50)  NOT NULL,    -- "chauffage", "climatisation", "mixte"
     energie_source  VARCHAR(50),              -- "electricite", "gaz", "fioul", "bois"
-    is_renewable    BOOLEAN DEFAULT FALSE     -- Énergie renouvelable (PAC, bois)
+    is_renewable    BOOLEAN DEFAULT FALSE     -- Renewable energy (heat pump, wood)
 );
 
 
 -- =============================================
--- TABLE DE FAITS : Installations HVAC
+-- FACT TABLE: HVAC Installations
 -- =============================================
--- Grain = mois × département
--- Contient les métriques spécifiques à chaque département :
---   - Comptages d'installations (variable cible ML)
---   - Météo locale (HDD/CDD)
---   - Permis de construire locaux
---   - Consommation énergie locale
+-- Grain = month x department
+-- Contains metrics specific to each department:
+--   - Installation counts (ML target variable)
+--   - Local weather (HDD/CDD)
+--   - Local building permits
+--   - Local energy consumption
 CREATE TABLE IF NOT EXISTS fact_hvac_installations (
     fact_id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     date_id                 INTEGER NOT NULL,   -- FK → dim_time (YYYYMM)
     geo_id                  INTEGER NOT NULL,   -- FK → dim_geo
 
-    -- === Variable cible (Y) : proxy installations via DPE ===
-    nb_dpe_total            INTEGER,            -- Total DPE du mois/département
-    nb_installations_pac    INTEGER,            -- DPE mentionnant une PAC
-    nb_installations_clim   INTEGER,            -- DPE mentionnant une climatisation
-    nb_dpe_classe_ab        INTEGER,            -- DPE classe A ou B (bâtiment performant)
+    -- === Target variable (Y): installation proxy via DPE ===
+    nb_dpe_total            INTEGER,            -- Total DPEs for the month/department
+    nb_installations_pac    INTEGER,            -- DPEs mentioning a heat pump
+    nb_installations_clim   INTEGER,            -- DPEs mentioning air conditioning
+    nb_dpe_classe_ab        INTEGER,            -- DPEs with class A or B (high-performance building)
 
-    -- === Features météo (spécifiques au département) ===
-    temp_mean               DECIMAL(5,2),       -- Température moyenne mensuelle (°C)
-    temp_max                DECIMAL(5,2),       -- Température max mensuelle (°C)
-    temp_min                DECIMAL(5,2),       -- Température min mensuelle (°C)
-    heating_degree_days     DECIMAL(8,2),       -- HDD mensuel (somme, base 18°C)
-    cooling_degree_days     DECIMAL(8,2),       -- CDD mensuel (somme, base 18°C)
-    precipitation_cumul     DECIMAL(8,2),       -- Précipitations cumulées (mm)
-    nb_jours_canicule       INTEGER,            -- Jours avec T > 35°C
-    nb_jours_gel            INTEGER,            -- Jours avec T < 0°C
+    -- === Weather features (department-specific) ===
+    temp_mean               DECIMAL(5,2),       -- Monthly average temperature (°C)
+    temp_max                DECIMAL(5,2),       -- Monthly max temperature (°C)
+    temp_min                DECIMAL(5,2),       -- Monthly min temperature (°C)
+    heating_degree_days     DECIMAL(8,2),       -- Monthly HDD (sum, base 18°C)
+    cooling_degree_days     DECIMAL(8,2),       -- Monthly CDD (sum, base 18°C)
+    precipitation_cumul     DECIMAL(8,2),       -- Cumulative precipitation (mm)
+    nb_jours_canicule       INTEGER,            -- Days with T > 35°C
+    nb_jours_gel            INTEGER,            -- Days with T < 0°C
 
-    -- === Features immobilier (spécifiques au département) ===
-    nb_permis_construire    INTEGER,            -- Nombre de permis accordés
-    nb_logements_autorises  INTEGER,            -- Nombre de logements autorisés
+    -- === Real estate features (department-specific) ===
+    nb_permis_construire    INTEGER,            -- Number of permits granted
+    nb_logements_autorises  INTEGER,            -- Number of housing units authorized
 
-    -- === Features énergie (spécifiques au département) ===
-    conso_elec_mwh          DECIMAL(12,2),      -- Consommation électrique (MWh)
-    conso_gaz_mwh           DECIMAL(12,2),      -- Consommation gaz (MWh)
+    -- === Energy features (department-specific) ===
+    conso_elec_mwh          DECIMAL(12,2),      -- Electricity consumption (MWh)
+    conso_gaz_mwh           DECIMAL(12,2),      -- Gas consumption (MWh)
 
-    -- Contraintes
+    -- Constraints
     FOREIGN KEY (date_id) REFERENCES dim_time(date_id),
     FOREIGN KEY (geo_id) REFERENCES dim_geo(geo_id),
-    UNIQUE(date_id, geo_id)  -- Une seule ligne par mois × département
+    UNIQUE(date_id, geo_id)  -- One row per month x department
 );
 
 
 -- =============================================
--- TABLE DE FAITS : Contexte économique national
+-- FACT TABLE: National economic context
 -- =============================================
--- Grain = mois seulement (données nationales, pas départementales)
--- Les indicateurs INSEE et Eurostat sont identiques pour tous les départements.
--- La jointure avec fact_hvac_installations se fait via date_id.
+-- Grain = month only (national data, not department-level)
+-- INSEE and Eurostat indicators are identical for all departments.
+-- The join with fact_hvac_installations is done via date_id.
 CREATE TABLE IF NOT EXISTS fact_economic_context (
     date_id                 INTEGER PRIMARY KEY, -- FK → dim_time (YYYYMM)
 
-    -- === Indicateurs INSEE (nationaux, mensuels) ===
-    confiance_menages       DECIMAL(6,2),       -- Indice synthétique (base 100)
-    climat_affaires_indus   DECIMAL(6,2),       -- Climat affaires industrie (base 100)
-    climat_affaires_bat     DECIMAL(6,2),       -- Climat affaires bâtiment (base 100)
-    opinion_achats          DECIMAL(6,2),       -- Opportunité achats importants (solde)
-    situation_fin_future    DECIMAL(6,2),       -- Situation financière future (solde)
-    ipi_manufacturing       DECIMAL(6,2),       -- IPI industrie manufacturière (indice)
+    -- === INSEE indicators (national, monthly) ===
+    confiance_menages       DECIMAL(6,2),       -- Synthetic index (base 100)
+    climat_affaires_indus   DECIMAL(6,2),       -- Industry business climate (base 100)
+    climat_affaires_bat     DECIMAL(6,2),       -- Construction business climate (base 100)
+    opinion_achats          DECIMAL(6,2),       -- Major purchases opportunity (balance)
+    situation_fin_future    DECIMAL(6,2),       -- Future financial situation (balance)
+    ipi_manufacturing       DECIMAL(6,2),       -- Manufacturing IPI (index)
 
-    -- === Indicateurs Eurostat (nationaux, mensuels) ===
-    ipi_hvac_c28            DECIMAL(6,2),       -- IPI machines C28 (indice base 2021)
-    ipi_hvac_c2825          DECIMAL(6,2),       -- IPI équipements clim C2825
+    -- === Eurostat indicators (national, monthly) ===
+    ipi_hvac_c28            DECIMAL(6,2),       -- IPI machinery C28 (index base 2021)
+    ipi_hvac_c2825          DECIMAL(6,2),       -- IPI HVAC equipment C2825
 
-    -- Contrainte
+    -- Constraint
     FOREIGN KEY (date_id) REFERENCES dim_time(date_id)
 );
 
 
 -- =============================================
--- INDEX pour les performances de requêtage
+-- INDEXES for query performance
 -- =============================================
 CREATE INDEX IF NOT EXISTS idx_fact_hvac_date ON fact_hvac_installations(date_id);
 CREATE INDEX IF NOT EXISTS idx_fact_hvac_geo ON fact_hvac_installations(geo_id);
@@ -154,7 +154,7 @@ CREATE INDEX IF NOT EXISTS idx_dim_geo_dept ON dim_geo(dept_code);
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_geo (8 départements AURA)
+-- REFERENCE DATA: dim_geo (96 metropolitan France departments)
 -- =============================================
 INSERT OR IGNORE INTO dim_geo (dept_code, dept_name, city_ref, latitude, longitude, region_code) VALUES
     ('01', 'Ain',           'Bourg-en-Bresse', 46.21, 5.23, '84'),
@@ -168,7 +168,7 @@ INSERT OR IGNORE INTO dim_geo (dept_code, dept_name, city_ref, latitude, longitu
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_equipment_type
+-- REFERENCE DATA: dim_equipment_type
 -- =============================================
 INSERT OR IGNORE INTO dim_equipment_type (label, categorie, energie_source, is_renewable) VALUES
     ('PAC air-air',              'mixte',          'electricite', TRUE),
@@ -184,11 +184,11 @@ INSERT OR IGNORE INTO dim_equipment_type (label, categorie, energie_source, is_r
 
 
 -- =============================================
--- DONNÉES DE RÉFÉRENCE : dim_time (2019-01 à 2025-12)
+-- REFERENCE DATA: dim_time (2019-01 to 2025-12)
 -- =============================================
--- Généré dynamiquement : 84 mois (7 ans × 12 mois)
--- is_heating = octobre à mars (mois 10,11,12,1,2,3)
--- is_cooling = juin à septembre (mois 6,7,8,9)
+-- Dynamically generated: 84 months (7 years x 12 months)
+-- is_heating = October to March (months 10,11,12,1,2,3)
+-- is_cooling = June to September (months 6,7,8,9)
 INSERT OR IGNORE INTO dim_time (date_id, year, month, quarter, is_heating, is_cooling) VALUES
     -- 2019
     (201901, 2019, 1, 1, TRUE, FALSE), (201902, 2019, 2, 1, TRUE, FALSE),
@@ -242,31 +242,31 @@ INSERT OR IGNORE INTO dim_time (date_id, year, month, quarter, is_heating, is_co
 
 
 -- =============================================
--- TABLE BRUTE : DPE (données unitaires)
+-- RAW TABLE: DPE (individual records)
 -- =============================================
--- Stockage des DPE individuels (~1.4M lignes pour AURA)
--- Grain = 1 ligne par DPE
--- Cette table est la source primaire pour calculer les agrégats
--- dans fact_hvac_installations (nb_dpe_total, nb_installations_pac, etc.)
+-- Storage of individual DPE records (metropolitan France)
+-- Grain = 1 row per DPE
+-- This table is the primary source for computing aggregates
+-- in fact_hvac_installations (nb_dpe_total, nb_installations_pac, etc.)
 CREATE TABLE IF NOT EXISTS raw_dpe (
     numero_dpe                              VARCHAR(20) PRIMARY KEY,
     date_etablissement_dpe                  DATE,
     date_visite_diagnostiqueur              DATE,
 
-    -- Localisation
+    -- Location
     code_postal_ban                         VARCHAR(5),
     code_departement_ban                    VARCHAR(3),
     code_insee_ban                          VARCHAR(5),
     nom_commune_ban                         VARCHAR(100),
 
-    -- Performance énergétique
-    etiquette_dpe                           VARCHAR(1),     -- A à G
-    etiquette_ges                           VARCHAR(1),     -- A à G
+    -- Energy performance
+    etiquette_dpe                           VARCHAR(1),     -- A to G
+    etiquette_ges                           VARCHAR(1),     -- A to G
     conso_5_usages_par_m2_ep                DECIMAL(8,2),
     conso_5_usages_par_m2_ef                DECIMAL(8,2),
     emission_ges_5_usages_par_m2            DECIMAL(8,2),
 
-    -- Bâtiment
+    -- Building
     type_batiment                           VARCHAR(30),
     annee_construction                      INTEGER,
     periode_construction                    VARCHAR(30),
@@ -274,30 +274,30 @@ CREATE TABLE IF NOT EXISTS raw_dpe (
     nombre_niveau_logement                  INTEGER,
     hauteur_sous_plafond                    DECIMAL(4,2),
 
-    -- HVAC : Chauffage
+    -- HVAC: Heating
     type_energie_principale_chauffage       VARCHAR(50),
     type_installation_chauffage             VARCHAR(80),
     type_generateur_chauffage_principal     VARCHAR(80),
 
-    -- HVAC : ECS
+    -- HVAC: Domestic hot water
     type_energie_principale_ecs             VARCHAR(50),
 
-    -- HVAC : Climatisation / Froid
+    -- HVAC: Air conditioning / Cooling
     type_generateur_froid                   VARCHAR(80),
 
-    -- Isolation
+    -- Insulation
     qualite_isolation_enveloppe             VARCHAR(30),
     qualite_isolation_murs                  VARCHAR(30),
     qualite_isolation_menuiseries           VARCHAR(30),
     qualite_isolation_plancher_haut_comble_perdu VARCHAR(30),
 
-    -- Coûts
+    -- Costs
     cout_chauffage                          DECIMAL(10,2),
     cout_ecs                                DECIMAL(10,2),
     cout_total_5_usages                     DECIMAL(10,2)
 );
 
--- Index pour les requêtes d'agrégation DPE
+-- Indexes for DPE aggregation queries
 CREATE INDEX IF NOT EXISTS idx_raw_dpe_date ON raw_dpe(date_etablissement_dpe);
 CREATE INDEX IF NOT EXISTS idx_raw_dpe_dept ON raw_dpe(code_departement_ban);
 CREATE INDEX IF NOT EXISTS idx_raw_dpe_date_dept ON raw_dpe(date_etablissement_dpe, code_departement_ban);

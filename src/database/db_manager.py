@@ -1,34 +1,34 @@
 # -*- coding: utf-8 -*-
 """
-Database Manager — Gestion de la base de données SQLite / SQL Server / PostgreSQL.
-===================================================================================
+Database Manager — SQLite / SQL Server / PostgreSQL database management.
+========================================================================
 
-Fournit une interface unifiée pour :
-- Initialiser la base de données (création des tables selon le moteur)
-- Insérer des données depuis des DataFrames
-- Importer les CSV collectés par les collecteurs (weather, insee, eurostat, etc.)
-- Requêter des données pour l'analyse et le ML
-- Construire le dataset ML-ready (jointure faits + contexte économique)
+Provides a unified interface to:
+- Initialize the database (create tables based on the engine)
+- Insert data from DataFrames
+- Import CSVs collected by collectors (weather, insee, eurostat, etc.)
+- Query data for analysis and ML
+- Build the ML-ready dataset (facts join + economic context)
 
-Architecture :
-    DatabaseManager utilise SQLAlchemy comme couche d'abstraction.
-    Le choix du moteur (SQLite, SQL Server, PostgreSQL) se fait uniquement
-    via la chaîne de connexion. Le schéma SQL est adapté automatiquement
-    (schema.sql pour SQLite, schema_mssql.sql pour SQL Server).
+Architecture:
+    DatabaseManager uses SQLAlchemy as an abstraction layer.
+    The engine choice (SQLite, SQL Server, PostgreSQL) is made solely
+    via the connection string. The SQL schema is adapted automatically
+    (schema.sql for SQLite, schema_mssql.sql for SQL Server).
 
 Usage:
     >>> from src.database.db_manager import DatabaseManager
     >>> from config.settings import config
     >>> db = DatabaseManager(config.database.connection_string)
     >>> db.init_database()
-    >>> db.import_collected_data()            # Importe tous les CSV collectés
+    >>> db.import_collected_data()            # Import all collected CSVs
     >>> df_ml = db.build_ml_dataset()
 
-Extensibilité :
-    Pour ajouter une nouvelle table ou un nouveau type de données :
-    1. Ajouter le DDL dans schema.sql ET schema_mssql.sql
-    2. Ajouter une méthode load_xxx_data() dans cette classe
-    3. Mettre à jour build_ml_dataset() si nécessaire
+Extensibility:
+    To add a new table or a new data type:
+    1. Add the DDL in schema.sql AND schema_mssql.sql
+    2. Add a load_xxx_data() method in this class
+    3. Update build_ml_dataset() if necessary
 """
 
 from __future__ import annotations
@@ -42,38 +42,38 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 
-# Chemins vers les fichiers de schéma (relatifs au module)
+# Paths to schema files (relative to the module)
 SCHEMA_SQLITE_PATH = Path(__file__).parent / "schema.sql"
 SCHEMA_MSSQL_PATH = Path(__file__).parent / "schema_mssql.sql"
 
 
 class DatabaseManager:
-    """Gestionnaire de base de données pour le projet HVAC.
+    """Database manager for the HVAC project.
 
-    Encapsule toutes les opérations CRUD et fournit des méthodes
-    spécialisées pour charger chaque type de données.
+    Encapsulates all CRUD operations and provides specialized
+    methods for loading each data type.
 
-    Le moteur SQL est détecté automatiquement depuis la chaîne de connexion.
+    The SQL engine is automatically detected from the connection string.
 
     Attributes:
-        engine: Moteur SQLAlchemy connecté à la base.
-        db_type: Type de moteur détecté ('sqlite', 'mssql', 'postgresql').
-        logger: Logger structuré pour les opérations DB.
+        engine: SQLAlchemy engine connected to the database.
+        db_type: Detected engine type ('sqlite', 'mssql', 'postgresql').
+        logger: Structured logger for DB operations.
     """
 
     def __init__(self, connection_string: str) -> None:
-        """Initialise la connexion à la base de données.
+        """Initialize the database connection.
 
-        Détecte automatiquement le type de moteur depuis l'URL de connexion.
+        Automatically detects the engine type from the connection URL.
 
         Args:
-            connection_string: URL SQLAlchemy (ex: 'sqlite:///data/hvac.db',
+            connection_string: SQLAlchemy URL (e.g., 'sqlite:///data/hvac.db',
                               'mssql+pyodbc://...', 'postgresql://...').
         """
         self.engine: Engine = create_engine(connection_string)
         self.logger = logging.getLogger("database.manager")
 
-        # Détecter le type de moteur pour adapter le comportement
+        # Detect the engine type to adapt behavior
         if connection_string.startswith("sqlite"):
             self.db_type = "sqlite"
         elif connection_string.startswith("mssql"):
@@ -83,7 +83,7 @@ class DatabaseManager:
         else:
             self.db_type = "unknown"
 
-        # Configurer le logging
+        # Configure logging
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
             "%(asctime)s | %(name)-25s | %(levelname)-8s | %(message)s",
@@ -93,55 +93,57 @@ class DatabaseManager:
         if not self.logger.handlers:
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
+        # Prevent duplicate output when root logger also has a handler
+        self.logger.propagate = False
 
         self.logger.info(
-            "Connexion BDD : moteur=%s", self.db_type,
+            "DB connection: engine=%s", self.db_type,
         )
 
     def init_database(self) -> None:
-        """Initialise la base de données en exécutant le schéma SQL approprié.
+        """Initialize the database by executing the appropriate SQL schema.
 
-        Sélectionne automatiquement schema.sql (SQLite) ou
-        schema_mssql.sql (SQL Server) selon le moteur détecté.
-        Idempotent : peut être appelé plusieurs fois sans erreur.
+        Automatically selects schema.sql (SQLite) or
+        schema_mssql.sql (SQL Server) based on the detected engine.
+        Idempotent: can be called multiple times without error.
         """
-        self.logger.info("Initialisation de la base de donnees...")
+        self.logger.info("Initializing the database...")
 
-        # Choisir le fichier de schéma selon le moteur
+        # Choose the schema file based on the engine
         if self.db_type == "mssql":
             schema_path = SCHEMA_MSSQL_PATH
         else:
-            # SQLite et PostgreSQL utilisent le même schéma
-            # (PostgreSQL supporte BOOLEAN, VARCHAR natifs)
+            # SQLite and PostgreSQL use the same schema
+            # (PostgreSQL supports native BOOLEAN, VARCHAR)
             schema_path = SCHEMA_SQLITE_PATH
 
         if not schema_path.exists():
             raise FileNotFoundError(
-                f"Fichier schema introuvable : {schema_path}"
+                f"Schema file not found: {schema_path}"
             )
 
         schema_sql = schema_path.read_text(encoding="utf-8")
 
         if self.db_type == "mssql":
-            # SQL Server : découper sur 'GO' ou ';' en fin de bloc
-            # Le schéma MSSQL utilise des blocs complets séparés par ';'
+            # SQL Server: split on 'GO' or ';' at end of block
+            # The MSSQL schema uses complete blocks separated by ';'
             self._execute_statements_mssql(schema_sql)
         else:
-            # SQLite/PostgreSQL : découper sur ';'
+            # SQLite/PostgreSQL: split on ';'
             self._execute_statements_sqlite(schema_sql)
 
-        self.logger.info("Base de donnees initialisee avec succes.")
+        self.logger.info("Database initialized successfully.")
 
     def _execute_statements_sqlite(self, schema_sql: str) -> None:
-        """Exécute les instructions SQL pour SQLite/PostgreSQL.
+        """Execute SQL statements for SQLite/PostgreSQL.
 
-        SQLite ne supporte pas l'exécution de scripts multi-instructions,
-        donc on découpe sur ';' et on exécute chaque instruction séparément.
-        Les lignes de commentaires (--) en début de bloc sont ignorées.
+        SQLite does not support multi-statement script execution,
+        so we split on ';' and execute each statement separately.
+        Comment lines (--) at the beginning of blocks are ignored.
         """
         with self.engine.begin() as conn:
             for statement in schema_sql.split(";"):
-                # Retirer les lignes de commentaires et vides en début de bloc
+                # Remove comment lines and empty lines at the beginning of the block
                 lines = statement.split("\n")
                 sql_lines = [
                     l for l in lines
@@ -154,19 +156,19 @@ class DatabaseManager:
                         conn.execute(text(clean))
                     except Exception as exc:
                         self.logger.warning(
-                            "Instruction SQL ignoree : %s",
+                            "SQL statement skipped: %s",
                             str(exc)[:120],
                         )
 
     def _execute_statements_mssql(self, schema_sql: str) -> None:
-        """Exécute les instructions SQL pour SQL Server.
+        """Execute SQL statements for SQL Server.
 
-        SQL Server supporte les blocs multi-instructions séparés par ';'.
-        On gère aussi les MERGE et CTE qui contiennent des ';' internes.
+        SQL Server supports multi-statement blocks separated by ';'.
+        Also handles MERGE and CTE that contain internal ';'.
         """
         with self.engine.begin() as conn:
-            # Pour SQL Server, exécuter le script complet
-            # en découpant sur les lignes vides doubles (séparateur de blocs)
+            # For SQL Server, execute the full script
+            # by splitting on double blank lines (block separator)
             blocks = schema_sql.split("\n\n\n")
             for block in blocks:
                 block = block.strip()
@@ -175,7 +177,7 @@ class DatabaseManager:
                         conn.execute(text(block))
                     except Exception as exc:
                         self.logger.warning(
-                            "Bloc SQL ignore : %s",
+                            "SQL block skipped: %s",
                             str(exc)[:120],
                         )
 
@@ -185,15 +187,15 @@ class DatabaseManager:
         table_name: str,
         if_exists: str = "append",
     ) -> int:
-        """Charge un DataFrame dans une table de la base.
+        """Load a DataFrame into a database table.
 
         Args:
-            df: DataFrame à charger.
-            table_name: Nom de la table cible.
-            if_exists: Comportement si la table existe ('append', 'replace', 'fail').
+            df: DataFrame to load.
+            table_name: Target table name.
+            if_exists: Behavior if the table exists ('append', 'replace', 'fail').
 
         Returns:
-            Nombre de lignes insérées.
+            Number of rows inserted.
         """
         rows_before = self._count_rows(table_name)
 
@@ -206,128 +208,147 @@ class DatabaseManager:
         inserted = rows_after - rows_before
 
         self.logger.info(
-            "Table '%s' : %d lignes inserees (total : %d)",
+            "Table '%s': %d rows inserted (total: %d)",
             table_name, inserted, rows_after,
         )
         return inserted
 
     def query(self, sql: str) -> pd.DataFrame:
-        """Exécute une requête SQL et retourne un DataFrame.
+        """Execute a SQL query and return a DataFrame.
 
         Args:
-            sql: Requête SQL SELECT.
+            sql: SQL SELECT query.
 
         Returns:
-            DataFrame avec les résultats de la requête.
+            DataFrame with the query results.
         """
         with self.engine.connect() as conn:
             return pd.read_sql(text(sql), conn)
 
     # =================================================================
-    # Import des données collectées (CSV → BDD)
+    # Import of collected data (CSV → DB)
     # =================================================================
+
+    # Registry of importable sources with metadata
+    IMPORT_SOURCES = {
+        "weather": {
+            "file": "weather/weather_france.csv",
+            "table": "fact_hvac_installations",
+            "description": "Open-Meteo daily weather -> monthly aggregation",
+            "method": "_import_weather",
+        },
+        "insee": {
+            "file": "insee/indicateurs_economiques.csv",
+            "table": "fact_economic_context",
+            "description": "INSEE confidence, business climate indicators",
+            "method": "_import_insee",
+        },
+        "eurostat": {
+            "file": "eurostat/ipi_hvac_france.csv",
+            "table": "fact_economic_context",
+            "description": "Eurostat IPI HVAC (C28, C2825)",
+            "method": "_import_eurostat",
+        },
+        "sitadel": {
+            "file": "sitadel/permis_construire_france.csv",
+            "table": "fact_hvac_installations",
+            "description": "SITADEL construction permits by dept",
+            "method": "_import_sitadel",
+        },
+        "dpe": {
+            "file": "dpe/dpe_france_all.csv",
+            "table": "raw_dpe + fact_hvac_installations",
+            "description": "ADEME DPE individual records -> aggregation",
+            "method": "_import_dpe",
+        },
+    }
 
     def import_collected_data(
         self,
         raw_data_dir: Optional[Path] = None,
+        sources: Optional[list] = None,
     ) -> dict:
-        """Importe toutes les données collectées (CSV) dans la BDD.
+        """Import collected data (CSV) into the database.
 
-        Cherche les fichiers CSV dans le répertoire raw_data_dir et
-        les charge dans les tables appropriées.
+        Searches for CSV files in the raw_data_dir directory and
+        loads them into the appropriate tables.
 
         Args:
-            raw_data_dir: Répertoire racine des données brutes.
-                          Par défaut : data/raw (depuis la config).
+            raw_data_dir: Root directory for raw data.
+                          Default: data/raw (from config).
+            sources: List of source names to import.
+                     If None, import all available sources.
+                     Valid: weather, insee, eurostat, sitadel, dpe.
 
         Returns:
-            Dictionnaire {source: nb_lignes_importées} pour le reporting.
+            Dictionary {source: nb_rows_imported} for reporting.
         """
         if raw_data_dir is None:
             raw_data_dir = Path("data/raw")
 
+        # Determine which sources to import
+        if sources is None:
+            sources_to_import = list(self.IMPORT_SOURCES.keys())
+        else:
+            sources_to_import = [s for s in sources if s in self.IMPORT_SOURCES]
+
         results = {}
 
-        # 1. Importer la météo → fact_hvac_installations (colonnes météo)
-        weather_file = raw_data_dir / "weather" / "weather_aura.csv"
-        if weather_file.exists():
-            results["weather"] = self._import_weather(weather_file)
-        else:
-            self.logger.warning("Fichier meteo introuvable : %s", weather_file)
+        for source_name in sources_to_import:
+            meta = self.IMPORT_SOURCES[source_name]
+            filepath = raw_data_dir / meta["file"]
 
-        # 2. Importer les indicateurs INSEE → fact_economic_context
-        insee_file = raw_data_dir / "insee" / "indicateurs_economiques.csv"
-        if insee_file.exists():
-            results["insee"] = self._import_insee(insee_file)
-        else:
-            self.logger.warning("Fichier INSEE introuvable : %s", insee_file)
+            if filepath.exists():
+                import_method = getattr(self, meta["method"])
+                results[source_name] = import_method(filepath)
+            else:
+                self.logger.warning("%s file not found: %s", source_name, filepath)
 
-        # 3. Importer les IPI Eurostat → fact_economic_context (colonnes IPI)
-        eurostat_file = raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
-        if eurostat_file.exists():
-            results["eurostat"] = self._import_eurostat(eurostat_file)
-        else:
-            self.logger.warning("Fichier Eurostat introuvable : %s", eurostat_file)
-
-        # 4. Importer SITADEL → fact_hvac_installations (colonnes permis)
-        sitadel_file = raw_data_dir / "sitadel" / "permis_construire_aura.csv"
-        if sitadel_file.exists():
-            results["sitadel"] = self._import_sitadel(sitadel_file)
-        else:
-            self.logger.warning("Fichier SITADEL introuvable : %s", sitadel_file)
-
-        # 5. Importer DPE → raw_dpe (données unitaires volumineuses)
-        dpe_file = raw_data_dir / "dpe" / "dpe_aura_all.csv"
-        if dpe_file.exists():
-            results["dpe"] = self._import_dpe(dpe_file)
-        else:
-            self.logger.warning("Fichier DPE introuvable : %s", dpe_file)
-
-        # Log du bilan
+        # Log the summary
         self.logger.info("=" * 50)
-        self.logger.info("Bilan import :")
+        self.logger.info("Import summary:")
         for source, count in results.items():
-            self.logger.info("  %s : %d lignes", source, count)
+            self.logger.info("  %s: %d rows", source, count)
         self.logger.info("=" * 50)
 
         return results
 
     def _import_weather(self, filepath: Path) -> int:
-        """Importe les données météo dans fact_hvac_installations.
+        """Import weather data into fact_hvac_installations.
 
-        Le CSV météo est au grain quotidien × ville.
-        On agrège par mois × département pour correspondre au grain
-        de la table de faits.
+        The weather CSV is at the daily x city grain.
+        We aggregate by month x department to match the grain
+        of the fact table.
 
         Args:
-            filepath: Chemin vers weather_aura.csv.
+            filepath: Path to weather_france.csv.
 
         Returns:
-            Nombre de lignes importées.
+            Number of rows imported.
         """
-        self.logger.info("Import meteo depuis %s ...", filepath.name)
+        self.logger.info("Importing weather from %s ...", filepath.name)
 
         df = pd.read_csv(filepath)
-        self.logger.info("  Colonnes trouvees : %s", list(df.columns))
+        self.logger.info("  Columns found: %s", list(df.columns))
 
-        # Le CSV contient : date, city, dept, temperature_2m_max, ..., hdd, cdd
-        # Identifier la colonne date
+        # The CSV contains: date, city, dept, temperature_2m_max, ..., hdd, cdd
+        # Identify the date column
         date_col = None
         for candidate in ["date", "time", "Date"]:
             if candidate in df.columns:
                 date_col = candidate
                 break
         if date_col is None:
-            self.logger.error("  Colonne date introuvable dans le CSV meteo")
+            self.logger.error("  Date column not found in weather CSV")
             return 0
 
         df[date_col] = pd.to_datetime(df[date_col])
 
-        # Créer les colonnes d'agrégation
+        # Create aggregation columns
         df["year_month"] = df[date_col].dt.to_period("M")
         df["date_id"] = df[date_col].dt.year * 100 + df[date_col].dt.month
 
-        # Identifier la colonne département
+        # Identify the department column
         dept_col = None
         for candidate in ["dept", "department", "code_dept", "dept_code"]:
             if candidate in df.columns:
@@ -335,23 +356,23 @@ class DatabaseManager:
                 break
 
         if dept_col is None:
-            self.logger.error("  Colonne departement introuvable dans le CSV meteo")
+            self.logger.error("  Department column not found in weather CSV")
             return 0
 
-        # S'assurer que dept est un string avec padding zéro
+        # Ensure dept is a string with zero padding
         df[dept_col] = df[dept_col].astype(str).str.zfill(2)
 
-        # Mapper dept → geo_id via la table dim_geo
+        # Map dept → geo_id via the dim_geo table
         geo_map = self._get_geo_mapping()
         if not geo_map:
-            self.logger.error("  Table dim_geo vide, impossible de mapper les departements")
+            self.logger.error("  Table dim_geo is empty, cannot map departments")
             return 0
 
         df["geo_id"] = df[dept_col].map(geo_map)
         df = df.dropna(subset=["geo_id"])
         df["geo_id"] = df["geo_id"].astype(int)
 
-        # Identifier les colonnes météo disponibles
+        # Identify available weather columns
         temp_mean_col = self._find_col(df, ["temperature_2m_mean", "temp_mean"])
         temp_max_col = self._find_col(df, ["temperature_2m_max", "temp_max"])
         temp_min_col = self._find_col(df, ["temperature_2m_min", "temp_min"])
@@ -359,7 +380,7 @@ class DatabaseManager:
         hdd_col = self._find_col(df, ["hdd", "heating_degree_days"])
         cdd_col = self._find_col(df, ["cdd", "cooling_degree_days"])
 
-        # Agréger par mois × département
+        # Aggregate by month x department
         agg_dict = {}
         if temp_mean_col:
             agg_dict[temp_mean_col] = "mean"
@@ -374,17 +395,18 @@ class DatabaseManager:
         if cdd_col:
             agg_dict[cdd_col] = "sum"
 
-        # Compter les jours de canicule (T > 35) et gel (T < 0)
+        # Count heatwave and frost days using configurable thresholds
+        from config.settings import config as _cfg
         if temp_max_col:
-            df["is_canicule"] = (df[temp_max_col] > 35).astype(int)
+            df["is_canicule"] = (df[temp_max_col] > _cfg.thresholds.heatwave_temp).astype(int)
             agg_dict["is_canicule"] = "sum"
         if temp_min_col:
-            df["is_gel"] = (df[temp_min_col] < 0).astype(int)
+            df["is_gel"] = (df[temp_min_col] < _cfg.thresholds.frost_temp).astype(int)
             agg_dict["is_gel"] = "sum"
 
         monthly = df.groupby(["date_id", "geo_id"]).agg(agg_dict).reset_index()
 
-        # Renommer les colonnes pour correspondre au schéma
+        # Rename columns to match the schema
         rename_map = {}
         if temp_mean_col:
             rename_map[temp_mean_col] = "temp_mean"
@@ -405,50 +427,50 @@ class DatabaseManager:
 
         monthly = monthly.rename(columns=rename_map)
 
-        # Arrondir les valeurs numériques
+        # Round numeric values
         for col in monthly.select_dtypes(include=["float64"]).columns:
             monthly[col] = monthly[col].round(2)
 
-        # Insérer dans fact_hvac_installations
-        # Utiliser replace pour cette première source (les autres feront un UPDATE)
+        # Insert into fact_hvac_installations
+        # Use replace for this first source (others will do an UPDATE)
         return self.load_dataframe(monthly, "fact_hvac_installations", if_exists="replace")
 
     def _import_insee(self, filepath: Path) -> int:
-        """Importe les indicateurs INSEE dans fact_economic_context.
+        """Import INSEE indicators into fact_economic_context.
 
-        Le CSV INSEE a des colonnes : period, confiance_menages,
+        The INSEE CSV has columns: period, confiance_menages,
         climat_affaires_industrie, climat_affaires_batiment, etc.
 
         Args:
-            filepath: Chemin vers indicateurs_economiques.csv.
+            filepath: Path to indicateurs_economiques.csv.
 
         Returns:
-            Nombre de lignes importées.
+            Number of rows imported.
         """
-        self.logger.info("Import INSEE depuis %s ...", filepath.name)
+        self.logger.info("Importing INSEE from %s ...", filepath.name)
 
         df = pd.read_csv(filepath)
-        self.logger.info("  Colonnes : %s", list(df.columns))
-        self.logger.info("  Lignes : %d", len(df))
+        self.logger.info("  Columns: %s", list(df.columns))
+        self.logger.info("  Rows: %d", len(df))
 
         if "period" not in df.columns:
-            self.logger.error("  Colonne 'period' manquante")
+            self.logger.error("  Column 'period' missing")
             return 0
 
-        # Filtrer uniquement les périodes mensuelles (YYYY-MM)
-        # Certaines séries INSEE retournent des formats trimestriels (2019Q1)
+        # Filter only monthly periods (YYYY-MM)
+        # Some INSEE series return quarterly formats (2019Q1)
         mask_monthly = df["period"].str.match(r"^\d{4}-\d{2}$")
         df = df[mask_monthly].copy()
-        self.logger.info("  Lignes mensuelles retenues : %d", len(df))
+        self.logger.info("  Monthly rows retained: %d", len(df))
 
         if len(df) == 0:
-            self.logger.error("  Aucune periode mensuelle trouvee")
+            self.logger.error("  No monthly period found")
             return 0
 
-        # Convertir period (YYYY-MM) en date_id (YYYYMM)
+        # Convert period (YYYY-MM) to date_id (YYYYMM)
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
 
-        # Mapper les colonnes INSEE vers les colonnes de la table
+        # Map INSEE columns to the table columns
         col_map = {
             "confiance_menages": "confiance_menages",
             "climat_affaires_industrie": "climat_affaires_indus",
@@ -458,7 +480,7 @@ class DatabaseManager:
             "ipi_industrie_manuf": "ipi_manufacturing",
         }
 
-        # Ne garder que les colonnes qui existent dans le CSV
+        # Keep only columns that exist in the CSV
         cols_to_keep = ["date_id"]
         for csv_col, db_col in col_map.items():
             if csv_col in df.columns:
@@ -470,43 +492,43 @@ class DatabaseManager:
         return self.load_dataframe(df_insert, "fact_economic_context", if_exists="replace")
 
     def _import_eurostat(self, filepath: Path) -> int:
-        """Importe les IPI Eurostat dans fact_economic_context.
+        """Import Eurostat IPI into fact_economic_context.
 
-        Le CSV Eurostat a des colonnes : period, nace_r2, ipi_value.
-        On pivote pour avoir une colonne par code NACE (C28, C2825).
+        The Eurostat CSV has columns: period, nace_r2, ipi_value.
+        We pivot to have one column per NACE code (C28, C2825).
 
         Args:
-            filepath: Chemin vers ipi_hvac_france.csv.
+            filepath: Path to ipi_hvac_france.csv.
 
         Returns:
-            Nombre de lignes mises à jour.
+            Number of rows updated.
         """
-        self.logger.info("Import Eurostat depuis %s ...", filepath.name)
+        self.logger.info("Importing Eurostat from %s ...", filepath.name)
 
         df = pd.read_csv(filepath)
-        self.logger.info("  Colonnes : %s", list(df.columns))
-        self.logger.info("  Lignes : %d", len(df))
+        self.logger.info("  Columns: %s", list(df.columns))
+        self.logger.info("  Rows: %d", len(df))
 
         if "period" not in df.columns:
-            self.logger.error("  Colonne 'period' manquante")
+            self.logger.error("  Column 'period' missing")
             return 0
 
-        # Filtrer uniquement les périodes mensuelles (YYYY-MM)
+        # Filter only monthly periods (YYYY-MM)
         mask_monthly = df["period"].str.match(r"^\d{4}-\d{2}$")
         df = df[mask_monthly].copy()
-        self.logger.info("  Lignes mensuelles retenues : %d", len(df))
+        self.logger.info("  Monthly rows retained: %d", len(df))
 
-        # Convertir period → date_id
+        # Convert period → date_id
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
 
-        # Pivoter : une colonne par nace_r2
+        # Pivot: one column per nace_r2
         if "nace_r2" in df.columns and "ipi_value" in df.columns:
             pivot = df.pivot_table(
                 index="date_id", columns="nace_r2",
                 values="ipi_value", aggfunc="first",
             ).reset_index()
 
-            # Renommer vers les colonnes de la table
+            # Rename to the table columns
             rename_map = {}
             if "C28" in pivot.columns:
                 rename_map["C28"] = "ipi_hvac_c28"
@@ -514,12 +536,12 @@ class DatabaseManager:
                 rename_map["C2825"] = "ipi_hvac_c2825"
             pivot = pivot.rename(columns=rename_map)
 
-            # Fusionner avec fact_economic_context existant
-            # Si la table a déjà des données INSEE, on fait un UPDATE
+            # Merge with existing fact_economic_context
+            # If the table already has INSEE data, we do an UPDATE
             existing = self._safe_read_table("fact_economic_context")
 
             if existing is not None and len(existing) > 0:
-                # Merge les colonnes Eurostat dans les données existantes
+                # Merge Eurostat columns into existing data
                 cols_eurostat = ["date_id"]
                 if "ipi_hvac_c28" in pivot.columns:
                     cols_eurostat.append("ipi_hvac_c28")
@@ -530,7 +552,7 @@ class DatabaseManager:
                     pivot[cols_eurostat], on="date_id", how="outer",
                     suffixes=("_old", ""),
                 )
-                # Prendre les nouvelles valeurs Eurostat
+                # Take the new Eurostat values
                 for col in ["ipi_hvac_c28", "ipi_hvac_c2825"]:
                     old_col = f"{col}_old"
                     if old_col in merged.columns:
@@ -547,61 +569,62 @@ class DatabaseManager:
         return 0
 
     def _import_sitadel(self, filepath: Path) -> int:
-        """Importe les permis de construire SITADEL.
+        """Import SITADEL building permits.
 
-        Le CSV SITADEL est agrégé par mois × département et fusionné
-        dans fact_hvac_installations (colonnes nb_permis_construire,
+        The SITADEL CSV is aggregated by month x department and merged
+        into fact_hvac_installations (columns nb_permis_construire,
         nb_logements_autorises).
 
         Args:
-            filepath: Chemin vers permis_construire_aura.csv.
+            filepath: Path to permis_construire_france.csv.
 
         Returns:
-            Nombre de lignes traitées.
+            Number of rows processed.
         """
-        self.logger.info("Import SITADEL depuis %s ...", filepath.name)
+        self.logger.info("Importing SITADEL from %s ...", filepath.name)
 
         df = pd.read_csv(filepath)
-        self.logger.info("  Colonnes : %s", list(df.columns))
-        self.logger.info("  Lignes : %d", len(df))
+        self.logger.info("  Columns: %s", list(df.columns))
+        self.logger.info("  Rows: %d", len(df))
 
-        # Le contenu dépend du format réel du CSV SITADEL
-        # On log les colonnes pour diagnostic mais on ne fait pas d'import
-        # erroné si le format n'est pas celui attendu
+        # The content depends on the actual CSV SITADEL format
+        # We log the columns for diagnosis but do not perform an incorrect
+        # import if the format is not as expected
         self.logger.info(
-            "  Import SITADEL : format a adapter selon les colonnes disponibles"
+            "  SITADEL import: format to be adapted based on available columns"
         )
 
         return len(df)
 
     def _import_dpe(self, filepath: Path) -> int:
-        """Importe les DPE bruts dans la table raw_dpe.
+        """Import raw DPE records into the raw_dpe table.
 
-        Le CSV DPE contient ~1.4M lignes pour la region AURA.
-        On importe par chunks pour ne pas saturer la memoire.
-        Ensuite, on agrege les DPE par mois x departement pour mettre
-        a jour fact_hvac_installations (colonnes nb_dpe_total, etc.).
+        The DPE CSV contains energy performance diagnostics for metropolitan France.
+        We import in chunks to avoid saturating memory.
+        Then, we aggregate DPEs by month x department to update
+        fact_hvac_installations (columns nb_dpe_total, etc.).
 
         Args:
-            filepath: Chemin vers dpe_aura_all.csv.
+            filepath: Path to dpe_france_all.csv.
 
         Returns:
-            Nombre de lignes importees dans raw_dpe.
+            Number of rows imported into raw_dpe.
         """
-        self.logger.info("Import DPE depuis %s ...", filepath.name)
+        self.logger.info("Importing DPE from %s ...", filepath.name)
 
-        # Compter les lignes pour le reporting
-        # (lire juste la 1ere ligne pour les colonnes)
+        # Count lines for reporting
+        # (read just the 1st line for columns)
         df_sample = pd.read_csv(filepath, nrows=2)
-        self.logger.info("  Colonnes : %s", list(df_sample.columns))
+        self.logger.info("  Columns: %s", list(df_sample.columns))
 
-        # Importer par chunks de 50 000 lignes pour limiter l'usage memoire
-        chunk_size = 50_000
+        # Import in chunks to limit memory usage
+        from config.settings import config as _cfg
+        chunk_size = _cfg.processing.dpe_import_chunk_size
         total_imported = 0
 
         for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
-            # Premier chunk : replace pour nettoyer la table
-            # Chunks suivants : append
+            # First chunk: replace to clear the table
+            # Subsequent chunks: append
             mode = "replace" if i == 0 else "append"
 
             chunk.to_sql(
@@ -612,30 +635,30 @@ class DatabaseManager:
 
             if (i + 1) % 5 == 0:
                 self.logger.info(
-                    "  DPE import : %d lignes chargees...", total_imported,
+                    "  DPE import: %d rows loaded...", total_imported,
                 )
 
         self.logger.info(
-            "  Table 'raw_dpe' : %d lignes importees", total_imported,
+            "  Table 'raw_dpe': %d rows imported", total_imported,
         )
 
-        # Agreger les DPE par mois x departement pour fact_hvac_installations
+        # Aggregate DPEs by month x department for fact_hvac_installations
         self._aggregate_dpe_to_facts()
 
         return total_imported
 
     def _aggregate_dpe_to_facts(self) -> None:
-        """Agrege les DPE bruts pour mettre a jour fact_hvac_installations.
+        """Aggregate raw DPEs to update fact_hvac_installations.
 
-        Calcule par mois x departement :
-        - nb_dpe_total : nombre total de DPE
-        - nb_installations_pac : DPE mentionnant une PAC
-        - nb_installations_clim : DPE mentionnant une climatisation
-        - nb_dpe_classe_ab : DPE de classe A ou B
+        Computes per month x department:
+        - nb_dpe_total: total number of DPEs
+        - nb_installations_pac: DPEs mentioning a heat pump
+        - nb_installations_clim: DPEs mentioning air conditioning
+        - nb_dpe_classe_ab: DPEs with class A or B
         """
-        self.logger.info("  Agregation DPE vers fact_hvac_installations...")
+        self.logger.info("  Aggregating DPE into fact_hvac_installations...")
 
-        # Lire les DPE avec les colonnes utiles pour l'agregation
+        # Read DPEs with the columns useful for aggregation
         sql = """
         SELECT
             code_departement_ban,
@@ -649,12 +672,12 @@ class DatabaseManager:
           AND code_departement_ban IS NOT NULL
         """
         df = self.query(sql)
-        self.logger.info("  DPE avec date+dept valides : %d", len(df))
+        self.logger.info("  DPE with valid date+dept: %d", len(df))
 
         if len(df) == 0:
             return
 
-        # Convertir la date en period mensuelle
+        # Convert the date to a monthly period
         df["date_etablissement_dpe"] = pd.to_datetime(
             df["date_etablissement_dpe"], errors="coerce"
         )
@@ -665,13 +688,13 @@ class DatabaseManager:
             + df["date_etablissement_dpe"].dt.month
         )
 
-        # Detecter les installations HVAC via les champs texte
-        # PAC = Pompe a chaleur dans chauffage OU dans froid (PAC air/air reversible)
+        # Detect HVAC installations via text fields
+        # PAC = Heat pump in heating OR in cooling (reversible air/air heat pump)
         pac_pattern = r"(?i)PAC |PAC$|pompe.*chaleur|thermodynamique"
 
-        # Les PAC sont presentes dans DEUX champs :
-        #   - type_generateur_chauffage_principal : PAC air/eau, PAC geothermique
-        #   - type_generateur_froid : PAC air/air (reversible, classee en froid)
+        # Heat pumps are present in TWO fields:
+        #   - type_generateur_chauffage_principal: air/water heat pump, geothermal heat pump
+        #   - type_generateur_froid: air/air heat pump (reversible, classified as cooling)
         chauffage_str = df["type_generateur_chauffage_principal"].fillna("")
         froid_str = df["type_generateur_froid"].fillna("")
 
@@ -680,19 +703,19 @@ class DatabaseManager:
             froid_str.str.contains(pac_pattern, regex=True)
         ).astype(int)
 
-        # Climatisation = tout DPE ayant un generateur froid renseigne
-        # (les PAC air/air sont aussi des clim reversibles)
+        # Air conditioning = any DPE with a cooling generator specified
+        # (air/air heat pumps are also reversible AC units)
         df["is_clim"] = (froid_str.str.len() > 0).astype(int)
 
         df["is_classe_ab"] = df["etiquette_dpe"].isin(["A", "B"]).astype(int)
 
-        # Mapper dept → geo_id
+        # Map dept → geo_id
         geo_map = self._get_geo_mapping()
         df["geo_id"] = df["code_departement_ban"].astype(str).str.zfill(2).map(geo_map)
         df = df.dropna(subset=["geo_id"])
         df["geo_id"] = df["geo_id"].astype(int)
 
-        # Agreger par mois x departement
+        # Aggregate by month x department
         agg = df.groupby(["date_id", "geo_id"]).agg(
             nb_dpe_total=("is_pac", "count"),
             nb_installations_pac=("is_pac", "sum"),
@@ -704,17 +727,17 @@ class DatabaseManager:
         agg["nb_installations_clim"] = agg["nb_installations_clim"].astype(int)
         agg["nb_dpe_classe_ab"] = agg["nb_dpe_classe_ab"].astype(int)
 
-        # Mettre a jour fact_hvac_installations avec les comptages DPE
-        # Lire l'existant (meteo deja importee) et fusionner
+        # Update fact_hvac_installations with DPE counts
+        # Read existing data (weather already imported) and merge
         existing = self._safe_read_table("fact_hvac_installations")
 
         if existing is not None and len(existing) > 0:
-            # Merge les colonnes DPE dans les donnees existantes
+            # Merge DPE columns into existing data
             dpe_cols = ["date_id", "geo_id", "nb_dpe_total",
                         "nb_installations_pac", "nb_installations_clim",
                         "nb_dpe_classe_ab"]
 
-            # Supprimer les anciennes colonnes DPE si elles existent
+            # Remove old DPE columns if they exist
             for col in ["nb_dpe_total", "nb_installations_pac",
                         "nb_installations_clim", "nb_dpe_classe_ab"]:
                 if col in existing.columns:
@@ -732,30 +755,30 @@ class DatabaseManager:
             )
 
         self.logger.info(
-            "  Agregation DPE terminee : %d lignes mois x dept", len(agg),
+            "  DPE aggregation complete: %d month x dept rows", len(agg),
         )
 
     # =================================================================
-    # Dataset ML
+    # ML Dataset
     # =================================================================
 
     def build_ml_dataset(self) -> pd.DataFrame:
-        """Construit le dataset ML-ready par jointure des tables de faits.
+        """Build the ML-ready dataset by joining fact tables.
 
-        Effectue la jointure entre :
-        - fact_hvac_installations (grain = mois x departement)
-        - fact_economic_context (grain = mois seulement)
-        - dim_time (features temporelles)
-        - dim_geo (metadonnees geographiques)
+        Performs the join between:
+        - fact_hvac_installations (grain = month x department)
+        - fact_economic_context (grain = month only)
+        - dim_time (temporal features)
+        - dim_geo (geographic metadata)
 
-        Le résultat est un DataFrame prêt pour le feature engineering.
+        The result is a DataFrame ready for feature engineering.
 
         Returns:
-            DataFrame avec toutes les features et la variable cible.
+            DataFrame with all features and the target variable.
         """
         sql = """
         SELECT
-            -- Dimensions temporelles
+            -- Temporal dimensions
             t.date_id,
             t.year,
             t.month,
@@ -763,18 +786,18 @@ class DatabaseManager:
             t.is_heating,
             t.is_cooling,
 
-            -- Dimensions géographiques
+            -- Geographic dimensions
             g.dept_code,
             g.dept_name,
             g.city_ref,
 
-            -- Variable cible (installations HVAC)
+            -- Target variable (HVAC installations)
             f.nb_dpe_total,
             f.nb_installations_pac,
             f.nb_installations_clim,
             f.nb_dpe_classe_ab,
 
-            -- Features météo (locales)
+            -- Weather features (local)
             f.temp_mean,
             f.heating_degree_days,
             f.cooling_degree_days,
@@ -782,11 +805,11 @@ class DatabaseManager:
             f.nb_jours_canicule,
             f.nb_jours_gel,
 
-            -- Features immobilier (locales)
+            -- Real estate features (local)
             f.nb_permis_construire,
             f.nb_logements_autorises,
 
-            -- Features économiques (nationales)
+            -- Economic features (national)
             e.confiance_menages,
             e.climat_affaires_indus,
             e.climat_affaires_bat,
@@ -806,69 +829,87 @@ class DatabaseManager:
 
         df = self.query(sql)
         self.logger.info(
-            "Dataset ML construit : %d lignes x %d colonnes",
+            "ML dataset built: %d rows x %d columns",
             len(df), len(df.columns),
         )
         return df
 
     # =================================================================
-    # Utilitaires
+    # Utilities
     # =================================================================
 
     def _count_rows(self, table_name: str) -> int:
-        """Compte le nombre de lignes dans une table.
+        """Count the number of rows in a table.
 
         Args:
-            table_name: Nom de la table.
+            table_name: Table name.
 
         Returns:
-            Nombre de lignes (0 si la table n'existe pas).
+            Number of rows (0 if the table does not exist).
         """
+        # Whitelist to prevent SQL injection on dynamic table names
+        allowed = {
+            "dim_time", "dim_geo", "dim_equipment_type",
+            "fact_hvac_installations", "fact_economic_context", "raw_dpe",
+        }
+        if table_name not in allowed:
+            self.logger.warning("Rejected unknown table name: %s", table_name)
+            return 0
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(
                     text(f"SELECT COUNT(*) FROM {table_name}")
                 )
                 return result.scalar() or 0
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Count failed for '%s': %s", table_name, exc)
             return 0
 
     def _safe_read_table(self, table_name: str) -> Optional[pd.DataFrame]:
-        """Lit une table entière, retourne None si la table est vide ou inexistante.
+        """Read an entire table, return None if the table is empty or does not exist.
 
         Args:
-            table_name: Nom de la table.
+            table_name: Table name.
 
         Returns:
-            DataFrame ou None.
+            DataFrame or None.
         """
+        allowed = {
+            "dim_time", "dim_geo", "dim_equipment_type",
+            "fact_hvac_installations", "fact_economic_context", "raw_dpe",
+        }
+        if table_name not in allowed:
+            self.logger.warning("Rejected unknown table name: %s", table_name)
+            return None
         try:
             df = self.query(f"SELECT * FROM {table_name}")
             return df if len(df) > 0 else None
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Read failed for '%s': %s", table_name, exc)
             return None
 
     def _get_geo_mapping(self) -> dict:
-        """Retourne le mapping dept_code → geo_id depuis dim_geo.
+        """Return the dept_code → geo_id mapping from dim_geo.
 
         Returns:
-            Dictionnaire {dept_code: geo_id} (ex: {'69': 6}).
+            Dictionary {dept_code: geo_id} (e.g., {'69': 6}).
         """
         try:
             df = self.query("SELECT geo_id, dept_code FROM dim_geo")
             return dict(zip(df["dept_code"].astype(str), df["geo_id"]))
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("Geo mapping failed: %s", exc)
             return {}
 
     def _find_col(self, df: pd.DataFrame, candidates: list) -> Optional[str]:
-        """Trouve la première colonne correspondant à une liste de candidats.
+        """Find the first column matching a list of candidates.
 
         Args:
-            df: DataFrame à inspecter.
-            candidates: Noms de colonnes possibles (par ordre de priorité).
+            df: DataFrame to inspect.
+            candidates: Possible column names (in order of priority).
 
         Returns:
-            Nom de la colonne trouvée, ou None.
+            Name of the found column, or None.
         """
         for col in candidates:
             if col in df.columns:
@@ -876,10 +917,10 @@ class DatabaseManager:
         return None
 
     def get_table_info(self) -> pd.DataFrame:
-        """Retourne un résumé de toutes les tables et leur nombre de lignes.
+        """Return a summary of all tables and their row counts.
 
         Returns:
-            DataFrame avec colonnes [table_name, row_count].
+            DataFrame with columns [table_name, row_count].
         """
         tables = [
             "dim_time", "dim_geo", "dim_equipment_type",

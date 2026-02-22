@@ -1,0 +1,155 @@
+# -*- coding: utf-8 -*-
+"""ML predictions page."""
+
+import streamlit as st
+import pandas as pd
+import numpy as np
+import plotly.express as px
+import plotly.graph_objects as go
+from pathlib import Path
+import pickle
+import json
+
+
+def render():
+    st.title("Predictions ML")
+
+    # --- Load evaluation results ---
+    from config.settings import config as cfg
+    eval_dir = cfg.models_dir
+    results_file = cfg.evaluation_results_path
+    models_dir = eval_dir
+
+    if not eval_dir.exists():
+        st.warning("No trained model. Run training first.")
+        st.code("python -m src.pipeline train", language="bash")
+        return
+
+    # --- Load the dataset ---
+    features_path = cfg.features_dataset_path
+    if not features_path.exists():
+        st.warning("Features dataset not available.")
+        return
+
+    df = pd.read_csv(features_path, low_memory=False)
+    st.success(f"Dataset loaded: {len(df):,} rows x {len(df.columns)} columns")
+
+    # --- Target variable selection ---
+    target_cols = [c for c in df.columns if c.startswith("nb_") or c.startswith("pct_")]
+    if not target_cols:
+        st.error("No target variable found in the dataset.")
+        return
+
+    target = st.selectbox("Target Variable", target_cols, index=0)
+
+    # --- Load results ---
+    if results_file.exists():
+        with open(results_file) as f:
+            eval_results = json.load(f)
+        _display_eval_results(eval_results)
+
+    # --- Visualize predictions ---
+    st.subheader("Predictions vs Actual")
+
+    # Look for prediction files
+    pred_files = list(eval_dir.glob("predictions_*.csv"))
+    if pred_files:
+        selected_pred = st.selectbox(
+            "Predictions File",
+            [f.name for f in pred_files],
+        )
+        df_pred = pd.read_csv(eval_dir / selected_pred)
+
+        if "y_true" in df_pred.columns and "y_pred" in df_pred.columns:
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=df_pred["y_true"],
+                y=df_pred["y_pred"],
+                mode="markers",
+                name="Predictions",
+                marker=dict(opacity=0.5),
+            ))
+            # Perfect line
+            min_val = min(df_pred["y_true"].min(), df_pred["y_pred"].min())
+            max_val = max(df_pred["y_true"].max(), df_pred["y_pred"].max())
+            fig.add_trace(go.Scatter(
+                x=[min_val, max_val],
+                y=[min_val, max_val],
+                mode="lines",
+                name="Perfect",
+                line=dict(dash="dash", color="red"),
+            ))
+            fig.update_layout(
+                title="Predictions vs Actual Values",
+                xaxis_title="Actual Values",
+                yaxis_title="Predictions",
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Residuals
+            df_pred["residual"] = df_pred["y_true"] - df_pred["y_pred"]
+            fig_res = px.histogram(
+                df_pred, x="residual", nbins=50,
+                title="Residuals Distribution",
+                marginal="box",
+            )
+            st.plotly_chart(fig_res, use_container_width=True)
+    else:
+        st.info("No predictions file. Run evaluation.")
+
+    # --- Feature Importance ---
+    st.subheader("Feature Importance")
+    fi_files = list(eval_dir.glob("feature_importance_*.csv"))
+    if fi_files:
+        selected_fi = st.selectbox(
+            "Model",
+            [f.stem.replace("feature_importance_", "") for f in fi_files],
+        )
+        fi_path = eval_dir / f"feature_importance_{selected_fi}.csv"
+        if fi_path.exists():
+            df_fi = pd.read_csv(fi_path)
+            if "feature" in df_fi.columns and "importance" in df_fi.columns:
+                df_fi = df_fi.sort_values("importance", ascending=True).tail(20)
+                fig = px.barh(
+                    df_fi, x="importance", y="feature",
+                    title=f"Top 20 Features ({selected_fi})",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+    else:
+        # Try to load importances from SHAP
+        shap_dir = eval_dir / "shap"
+        if shap_dir.exists():
+            shap_files = list(shap_dir.glob("*.png"))
+            if shap_files:
+                for img_file in shap_files[:3]:
+                    st.image(str(img_file), caption=img_file.stem)
+        else:
+            st.info("No feature importance available.")
+
+
+def _display_eval_results(results: dict):
+    """Display evaluation metrics."""
+    st.subheader("Evaluation Metrics")
+
+    if isinstance(results, dict):
+        metrics_data = []
+        for model_name, metrics in results.items():
+            if isinstance(metrics, dict):
+                row = {"Model": model_name}
+                row.update(metrics)
+                metrics_data.append(row)
+
+        if metrics_data:
+            df_metrics = pd.DataFrame(metrics_data)
+            st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+
+            # Comparison chart
+            metric_cols = [c for c in df_metrics.columns if c != "Model"]
+            if metric_cols:
+                selected_metric = st.selectbox("Metric to compare", metric_cols)
+                fig = px.bar(
+                    df_metrics, x="Model", y=selected_metric,
+                    title=f"Comparison: {selected_metric}",
+                    color="Model",
+                )
+                st.plotly_chart(fig, use_container_width=True)

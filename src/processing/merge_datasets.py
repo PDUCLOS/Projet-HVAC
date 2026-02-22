@@ -1,40 +1,40 @@
 # -*- coding: utf-8 -*-
 """
-Fusion multi-sources — Construction du dataset ML-ready (Phase 2.4).
-====================================================================
+Multi-source merging — Building the ML-ready dataset (Phase 2.4).
+==================================================================
 
-Ce module fusionne les données nettoyées de toutes les sources en un
-dataset unique prêt pour le feature engineering et la modélisation ML.
+This module merges cleaned data from all sources into a single
+dataset ready for feature engineering and ML modeling.
 
-Le dataset final a le grain : **mois × département** (8 départements AURA).
-Pour chaque couple (mois, département), on a :
+The final dataset granularity is: **month x department** (96 metropolitan France departments).
+For each (month, department) pair, we have:
 
-    - Variables cibles (Y) : nb_dpe_total, nb_installations_pac, etc.
-      → Source : DPE ADEME agrégés
-    - Features météo : temp_mean, HDD, CDD, précipitations, jours extrêmes
-      → Source : Open-Meteo agrégé par mois × département
-    - Features économiques : confiance_menages, climat_affaires, IPI
-      → Source : INSEE + Eurostat (nationales → dupliquées par département)
+    - Target variables (Y): nb_dpe_total, nb_installations_pac, etc.
+      -> Source: ADEME DPE aggregated
+    - Weather features: temp_mean, HDD, CDD, precipitation, extreme days
+      -> Source: Open-Meteo aggregated by month x department
+    - Economic features: confiance_menages, climat_affaires, IPI
+      -> Source: INSEE + Eurostat (national -> duplicated per department)
 
-Architecture de jointure :
-    DPE (agrégé mois × dept)
-    LEFT JOIN Météo (agrégé mois × dept)    ON date_id + dept
-    LEFT JOIN INSEE (mois)                   ON date_id
-    LEFT JOIN Eurostat (mois × nace)         ON date_id
-    JOIN dim_time                             ON date_id
-    JOIN dim_geo                              ON dept
+Join architecture:
+    DPE (aggregated month x dept)
+    LEFT JOIN Weather (aggregated month x dept)    ON date_id + dept
+    LEFT JOIN INSEE (month)                        ON date_id
+    LEFT JOIN Eurostat (month x nace)              ON date_id
+    JOIN dim_time                                  ON date_id
+    JOIN dim_geo                                   ON dept
 
-Usage :
+Usage:
     >>> from src.processing.merge_datasets import DatasetMerger
     >>> merger = DatasetMerger(config)
     >>> df_ml = merger.build_ml_dataset()
     >>> df_ml.to_csv("data/features/hvac_ml_dataset.csv", index=False)
 
-Extensibilité :
-    Pour ajouter une nouvelle source au dataset ML :
-    1. Ajouter une méthode _prepare_xxx() qui retourne un DataFrame
-       avec date_id (+ dept si données locales)
-    2. L'intégrer dans build_ml_dataset() via merge/join
+Extensibility:
+    To add a new source to the ML dataset:
+    1. Add a _prepare_xxx() method that returns a DataFrame
+       with date_id (+ dept if local data)
+    2. Integrate it into build_ml_dataset() via merge/join
 """
 
 from __future__ import annotations
@@ -46,76 +46,90 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
-from config.settings import ProjectConfig
+from config.settings import DEPT_NAMES, ProjectConfig
 
 
 class DatasetMerger:
-    """Fusionne les données nettoyées en dataset ML-ready.
+    """Merges cleaned data into an ML-ready dataset.
 
-    Le grain final est mois × département. On ne garde que les mois
-    où la variable cible (DPE) est disponible (≥ juillet 2021).
+    The final granularity is month x department. Only months where
+    the target variable (DPE) is available are kept (>= July 2021).
 
     Attributes:
-        config: Configuration du projet.
-        logger: Logger structuré.
+        config: Project configuration.
+        logger: Structured logger.
     """
 
     def __init__(self, config: ProjectConfig) -> None:
-        """Initialise le merger avec la configuration projet.
+        """Initialize the merger with the project configuration.
 
         Args:
-            config: Configuration centralisée du projet.
+            config: Centralized project configuration.
         """
         self.config = config
         self.logger = logging.getLogger("processing.merge")
 
     def build_ml_dataset(self) -> pd.DataFrame:
-        """Construit le dataset ML-ready complet.
+        """Build the complete ML-ready dataset.
 
-        Étapes :
-        1. Préparer les DPE agrégés (variable cible + volume)
-        2. Préparer la météo agrégée par mois × département
-        3. Préparer les indicateurs économiques (INSEE + Eurostat)
-        4. Fusionner toutes les sources sur date_id + dept
-        5. Ajouter les métadonnées temporelles et géographiques
-        6. Filtrer la période d'intérêt (DPE v2 : ≥ 2021-07)
-        7. Sauvegarder le dataset final
+        Steps:
+        1. Prepare aggregated DPE (target variable + volume)
+        2. Prepare weather aggregated by month x department
+        3. Prepare economic indicators (INSEE + Eurostat)
+        4. Merge all sources on date_id + dept
+        5. Add temporal and geographic metadata
+        6. Filter the period of interest (DPE v2: >= 2021-07)
+        7. Save the final dataset
 
         Returns:
-            DataFrame ML-ready avec toutes les features et variables cibles.
+            ML-ready DataFrame with all features and target variables.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  PHASE 2.4 — Fusion multi-sources → Dataset ML")
+        self.logger.info("  PHASE 2.4 — Multi-source Merge → ML Dataset")
         self.logger.info("=" * 60)
 
-        # 1. Variable cible : DPE agrégés par mois × département
+        # 1. Target variable: DPE aggregated by month x department
         df_dpe = self._prepare_dpe_target()
         if df_dpe is None or df_dpe.empty:
-            self.logger.error("Impossible de construire le dataset : DPE manquants")
+            self.logger.error("Cannot build dataset: DPE data missing")
             return pd.DataFrame()
         self.logger.info(
-            "  DPE cible : %d lignes (mois × dept)", len(df_dpe),
+            "  DPE target: %d rows (month × dept)", len(df_dpe),
         )
 
-        # 2. Features météo (mois × département)
+        # 2. Weather features (month x department)
         df_meteo = self._prepare_weather_features()
         if df_meteo is not None:
             self.logger.info(
-                "  Météo features : %d lignes", len(df_meteo),
+                "  Weather features: %d rows", len(df_meteo),
             )
 
-        # 3. Features économiques (mois, nationales)
+        # 3. Economic features (month, national)
         df_eco = self._prepare_economic_features()
         if df_eco is not None:
             self.logger.info(
-                "  Économie features : %d lignes", len(df_eco),
+                "  Economic features: %d rows", len(df_eco),
             )
 
-        # 4. Fusion progressive
-        # Base = DPE (contient date_id + dept)
+        # 4. SITADEL construction permits (month x department)
+        df_sitadel = self._prepare_sitadel_features()
+        if df_sitadel is not None:
+            self.logger.info(
+                "  SITADEL features: %d rows", len(df_sitadel),
+            )
+
+        # 5. Department reference data (static: income, price/m2, housing stock)
+        df_ref = self._prepare_reference_features()
+        if df_ref is not None:
+            self.logger.info(
+                "  Reference features: %d departments", len(df_ref),
+            )
+
+        # 6. Progressive merging
+        # Base = DPE (contains date_id + dept)
         df = df_dpe.copy()
 
-        # Joindre météo (même grain : date_id + dept)
+        # Join weather (same granularity: date_id + dept)
         if df_meteo is not None:
             df = df.merge(
                 df_meteo,
@@ -124,11 +138,11 @@ class DatasetMerger:
                 suffixes=("", "_meteo"),
             )
             self.logger.info(
-                "  Après fusion météo : %d lignes × %d colonnes",
+                "  After weather merge: %d rows × %d columns",
                 len(df), len(df.columns),
             )
 
-        # Joindre économie (grain = date_id seul → broadcast sur les départements)
+        # Join economics (granularity = date_id only -> broadcast across departments)
         if df_eco is not None:
             df = df.merge(
                 df_eco,
@@ -137,98 +151,124 @@ class DatasetMerger:
                 suffixes=("", "_eco"),
             )
             self.logger.info(
-                "  Après fusion économie : %d lignes × %d colonnes",
+                "  After economic merge: %d rows × %d columns",
                 len(df), len(df.columns),
             )
 
-        # 5. Ajouter les métadonnées temporelles
+        # Join SITADEL (same granularity: date_id + dept)
+        if df_sitadel is not None:
+            df = df.merge(
+                df_sitadel,
+                on=["date_id", "dept"],
+                how="left",
+                suffixes=("", "_sitadel"),
+            )
+            self.logger.info(
+                "  After SITADEL merge: %d rows × %d columns",
+                len(df), len(df.columns),
+            )
+
+        # Join reference features (granularity = dept only -> broadcast across months)
+        if df_ref is not None:
+            df = df.merge(
+                df_ref,
+                on="dept",
+                how="left",
+                suffixes=("", "_ref"),
+            )
+            self.logger.info(
+                "  After reference merge: %d rows × %d columns",
+                len(df), len(df.columns),
+            )
+
+        # 7. Add temporal metadata
         df = self._add_time_features(df)
 
-        # 6. Ajouter les métadonnées géographiques
+        # 8. Add geographic metadata
         df = self._add_geo_features(df)
 
-        # 7. Filtrer la période DPE v2 (≥ 2021-07)
+        # 7. Filter DPE v2 period (>= 2021-07)
         dpe_start = int(
             self.config.time.dpe_start_date[:4]
             + self.config.time.dpe_start_date[5:7]
         )
         df = df[df["date_id"] >= dpe_start].copy()
         self.logger.info(
-            "  Après filtre DPE v2 (>= %d) : %d lignes", dpe_start, len(df),
+            "  After DPE v2 filter (>= %d): %d rows", dpe_start, len(df),
         )
 
-        # 8. Tri final
+        # 8. Final sort
         df = df.sort_values(["date_id", "dept"]).reset_index(drop=True)
 
-        # 9. Log du dataset final
+        # 9. Log the final dataset
         self.logger.info("=" * 60)
         self.logger.info("  DATASET ML-READY")
-        self.logger.info("  Dimensions : %d lignes × %d colonnes", len(df), len(df.columns))
-        self.logger.info("  Colonnes : %s", list(df.columns))
-        self.logger.info("  Période : %d → %d", df["date_id"].min(), df["date_id"].max())
+        self.logger.info("  Dimensions: %d rows × %d columns", len(df), len(df.columns))
+        self.logger.info("  Columns: %s", list(df.columns))
+        self.logger.info("  Period: %d → %d", df["date_id"].min(), df["date_id"].max())
         self.logger.info(
-            "  Départements : %s",
+            "  Departments: %s",
             sorted(df["dept"].unique().tolist()),
         )
 
-        # Stats NaN
+        # NaN statistics
         null_pct = df.isna().mean() * 100
         cols_with_nulls = null_pct[null_pct > 0].sort_values(ascending=False)
         if len(cols_with_nulls) > 0:
-            self.logger.info("  Colonnes avec NaN :")
+            self.logger.info("  Columns with NaN:")
             for col, pct in cols_with_nulls.items():
                 self.logger.info("    %-30s : %.1f%% NaN", col, pct)
         else:
-            self.logger.info("  Aucun NaN dans le dataset ✓")
+            self.logger.info("  No NaN in dataset ✓")
         self.logger.info("=" * 60)
 
-        # 10. Sauvegarder
+        # 10. Save
         output_path = self._save_ml_dataset(df)
-        self.logger.info("  ✓ Dataset ML sauvegardé → %s", output_path)
+        self.logger.info("  ✓ ML dataset saved → %s", output_path)
 
         return df
 
     # ==================================================================
-    # Préparation de chaque source
+    # Preparation of each source
     # ==================================================================
 
     def _prepare_dpe_target(self) -> Optional[pd.DataFrame]:
-        """Prépare la variable cible : DPE agrégés par mois × département.
+        """Prepare the target variable: DPE aggregated by month x department.
 
-        Agrège les DPE nettoyés pour calculer par mois × département :
-        - nb_dpe_total : nombre total de DPE
-        - nb_installations_pac : DPE avec PAC détectée
-        - nb_installations_clim : DPE avec climatisation
-        - nb_dpe_classe_ab : DPE classe A ou B
-        - pct_pac : pourcentage de PAC parmi les DPE
-        - pct_clim : pourcentage de climatisation
+        Aggregates cleaned DPE to compute per month x department:
+        - nb_dpe_total: total number of DPE
+        - nb_installations_pac: DPE with detected heat pump
+        - nb_installations_clim: DPE with air conditioning
+        - nb_dpe_classe_ab: DPE class A or B
+        - pct_pac: percentage of heat pumps among DPE
+        - pct_clim: percentage of air conditioning
 
         Returns:
-            DataFrame agrégé, ou None si le fichier est manquant.
+            Aggregated DataFrame, or None if the file is missing.
         """
-        # Chercher d'abord le fichier nettoyé, sinon le brut
-        clean_path = self.config.processed_data_dir / "dpe" / "dpe_aura_clean.csv"
-        raw_path = self.config.raw_data_dir / "dpe" / "dpe_aura_all.csv"
+        # Look for the cleaned file first, otherwise the raw one
+        clean_path = self.config.processed_data_dir / "dpe" / "dpe_france_clean.csv"
+        raw_path = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():
-            self.logger.error("Fichier DPE introuvable : ni %s ni %s", clean_path, raw_path)
+            self.logger.error("DPE file not found: neither %s nor %s", clean_path, raw_path)
             return None
 
-        self.logger.info("  Lecture DPE depuis %s...", filepath.name)
+        self.logger.info("  Reading DPE from %s...", filepath.name)
 
-        # Détecter si le fichier contient les colonnes pré-calculées
-        # (fichier nettoyé les a, le brut non)
+        # Detect if the file contains pre-computed columns
+        # (cleaned file has them, raw file does not)
         sample = pd.read_csv(filepath, nrows=2)
         has_precalc = "is_pac" in sample.columns
         self.logger.info(
-            "  Colonnes pré-calculées : %s", "oui" if has_precalc else "non",
+            "  Pre-computed columns: %s", "yes" if has_precalc else "no",
         )
 
-        # Lecture par chunks (low_memory=False pour éviter les DtypeWarning)
+        # Read in chunks (low_memory=False to avoid DtypeWarning)
         chunks_agg = []
         for chunk in pd.read_csv(filepath, chunksize=200_000, low_memory=False):
-            # Si les colonnes dérivées n'existent pas, les calculer
+            # If derived columns do not exist, compute them
             if "date_id" not in chunk.columns:
                 chunk["date_etablissement_dpe"] = pd.to_datetime(
                     chunk["date_etablissement_dpe"], errors="coerce"
@@ -250,12 +290,12 @@ class DatasetMerger:
                 chunk["is_clim"] = (froid_str.str.len() > 0).astype(int)
                 chunk["is_classe_ab"] = chunk["etiquette_dpe"].isin(["A", "B"]).astype(int)
 
-            # Préparer la colonne département
+            # Prepare the department column
             chunk["dept"] = (
                 chunk["code_departement_ban"].astype(str).str.zfill(2)
             )
 
-            # Agréger le chunk
+            # Aggregate the chunk
             agg = chunk.groupby(["date_id", "dept"]).agg(
                 nb_dpe_total=("is_pac", "count"),
                 nb_installations_pac=("is_pac", "sum"),
@@ -265,10 +305,10 @@ class DatasetMerger:
 
             chunks_agg.append(agg)
 
-        # Fusionner tous les chunks agrégés
+        # Merge all aggregated chunks
         df_agg = pd.concat(chunks_agg, ignore_index=True)
 
-        # Re-agréger (somme) car un même mois×dept peut apparaître dans plusieurs chunks
+        # Re-aggregate (sum) because the same month x dept may appear in multiple chunks
         df_agg = df_agg.groupby(["date_id", "dept"]).agg({
             "nb_dpe_total": "sum",
             "nb_installations_pac": "sum",
@@ -276,12 +316,12 @@ class DatasetMerger:
             "nb_dpe_classe_ab": "sum",
         }).reset_index()
 
-        # Convertir en int
+        # Convert to int
         for col in ["nb_dpe_total", "nb_installations_pac",
                      "nb_installations_clim", "nb_dpe_classe_ab"]:
             df_agg[col] = df_agg[col].astype(int)
 
-        # Pourcentages dérivés (features utiles pour le ML)
+        # Derived percentages (useful features for ML)
         df_agg["pct_pac"] = (
             100 * df_agg["nb_installations_pac"] / df_agg["nb_dpe_total"].clip(lower=1)
         ).round(2)
@@ -295,30 +335,30 @@ class DatasetMerger:
         return df_agg
 
     def _prepare_weather_features(self) -> Optional[pd.DataFrame]:
-        """Prépare les features météo agrégées par mois × département.
+        """Prepare weather features aggregated by month x department.
 
-        Agrège les données météo quotidiennes en métriques mensuelles :
-        - temp_mean, temp_max, temp_min : statistiques de température
-        - hdd_sum, cdd_sum : degrés-jours cumulés
-        - precipitation_sum : précipitations mensuelles
-        - nb_jours_canicule : jours avec T > 35°C
-        - nb_jours_gel : jours avec T < 0°C
-        - wind_max : vitesse max de vent
+        Aggregates daily weather data into monthly metrics:
+        - temp_mean, temp_max, temp_min: temperature statistics
+        - hdd_sum, cdd_sum: cumulative degree-days
+        - precipitation_sum: monthly precipitation
+        - nb_jours_canicule: days with T > 35°C
+        - nb_jours_gel: days with T < 0°C
+        - wind_max: maximum wind speed
 
         Returns:
-            DataFrame agrégé, ou None si le fichier est manquant.
+            Aggregated DataFrame, or None if the file is missing.
         """
-        clean_path = self.config.processed_data_dir / "weather" / "weather_aura.csv"
-        raw_path = self.config.raw_data_dir / "weather" / "weather_aura.csv"
+        clean_path = self.config.processed_data_dir / "weather" / "weather_france.csv"
+        raw_path = self.config.raw_data_dir / "weather" / "weather_france.csv"
 
         filepath = clean_path if clean_path.exists() else raw_path
         if not filepath.exists():
-            self.logger.warning("Fichier météo introuvable")
+            self.logger.warning("Weather file not found")
             return None
 
         df = pd.read_csv(filepath)
 
-        # Identifier les colonnes
+        # Identify columns
         date_col = "time" if "time" in df.columns else "date"
         df[date_col] = pd.to_datetime(df[date_col])
 
@@ -328,10 +368,10 @@ class DatasetMerger:
         if "dept" in df.columns:
             df["dept"] = df["dept"].astype(str).str.zfill(2)
         else:
-            self.logger.error("  Colonne 'dept' manquante dans météo")
+            self.logger.error("  Column 'dept' missing in weather data")
             return None
 
-        # Colonnes d'agrégation
+        # Aggregation columns
         agg_dict = {}
 
         col_map = {
@@ -348,18 +388,18 @@ class DatasetMerger:
             if src_col in df.columns:
                 agg_dict[src_col] = agg_func
 
-        # Indicateurs binaires à compter
+        # Binary indicators to count (thresholds from config)
         if "temperature_2m_max" in df.columns:
-            df["_canicule"] = (df["temperature_2m_max"] > 35).astype(int)
+            df["_canicule"] = (df["temperature_2m_max"] > self.config.thresholds.heatwave_temp).astype(int)
             agg_dict["_canicule"] = "sum"
         if "temperature_2m_min" in df.columns:
-            df["_gel"] = (df["temperature_2m_min"] < 0).astype(int)
+            df["_gel"] = (df["temperature_2m_min"] < self.config.thresholds.frost_temp).astype(int)
             agg_dict["_gel"] = "sum"
 
-        # Agrégation mois × département
+        # Aggregation by month x department
         monthly = df.groupby(["date_id", "dept"]).agg(agg_dict).reset_index()
 
-        # Renommer les colonnes
+        # Rename columns
         rename = {}
         for src_col, (dst_col, _) in col_map.items():
             if src_col in monthly.columns:
@@ -371,22 +411,22 @@ class DatasetMerger:
 
         monthly = monthly.rename(columns=rename)
 
-        # Arrondir
+        # Round
         float_cols = monthly.select_dtypes(include=["float64"]).columns
         monthly[float_cols] = monthly[float_cols].round(2)
 
         return monthly
 
     def _prepare_economic_features(self) -> Optional[pd.DataFrame]:
-        """Prépare les features économiques (INSEE + Eurostat).
+        """Prepare economic features (INSEE + Eurostat).
 
-        Les indicateurs économiques sont nationaux (pas départementaux).
-        On les fusionne en un seul DataFrame au grain mensuel (date_id).
-        Lors de la jointure avec le dataset principal, ils seront
-        broadcast sur tous les départements.
+        Economic indicators are national (not departmental).
+        They are merged into a single DataFrame at monthly granularity (date_id).
+        When joining with the main dataset, they will be
+        broadcast across all departments.
 
         Returns:
-            DataFrame économique, ou None si les fichiers sont manquants.
+            Economic DataFrame, or None if files are missing.
         """
         df_eco = None
 
@@ -398,7 +438,7 @@ class DatasetMerger:
         if insee_path.exists():
             df_insee = pd.read_csv(insee_path)
 
-            # Filtrer les périodes mensuelles
+            # Filter monthly periods
             if "period" in df_insee.columns:
                 mask = df_insee["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
                 df_insee = df_insee[mask].copy()
@@ -406,7 +446,7 @@ class DatasetMerger:
             if "date_id" not in df_insee.columns:
                 df_insee["date_id"] = df_insee["period"].str.replace("-", "").astype(int)
 
-            # Renommer les colonnes pour le ML
+            # Rename columns for ML
             col_map = {
                 "confiance_menages": "confiance_menages",
                 "climat_affaires_industrie": "climat_affaires_indus",
@@ -419,7 +459,7 @@ class DatasetMerger:
                 if old in df_insee.columns and old != new:
                     df_insee = df_insee.rename(columns={old: new})
 
-            # Garder uniquement les colonnes utiles
+            # Keep only useful columns
             keep_cols = ["date_id"] + [v for v in col_map.values() if v in df_insee.columns]
             df_eco = df_insee[keep_cols].copy()
 
@@ -438,7 +478,7 @@ class DatasetMerger:
             if "date_id" not in df_euro.columns:
                 df_euro["date_id"] = df_euro["period"].str.replace("-", "").astype(int)
 
-            # Pivoter : une colonne par code NACE
+            # Pivot: one column per NACE code
             if "nace_r2" in df_euro.columns and "ipi_value" in df_euro.columns:
                 pivot = df_euro.pivot_table(
                     index="date_id", columns="nace_r2",
@@ -452,7 +492,7 @@ class DatasetMerger:
                     rename_map["C2825"] = "ipi_hvac_c2825"
                 pivot = pivot.rename(columns=rename_map)
 
-                # Fusionner avec INSEE
+                # Merge with INSEE
                 if df_eco is not None:
                     euro_cols = ["date_id"]
                     if "ipi_hvac_c28" in pivot.columns:
@@ -471,58 +511,145 @@ class DatasetMerger:
         if df_eco is not None:
             df_eco = df_eco.sort_values("date_id").reset_index(drop=True)
 
-            # Arrondir
+            # Round
             float_cols = df_eco.select_dtypes(include=["float64"]).columns
             df_eco[float_cols] = df_eco[float_cols].round(2)
 
         return df_eco
 
     # ==================================================================
-    # Enrichissement
+    # SITADEL & Reference features
+    # ==================================================================
+
+    def _prepare_sitadel_features(self) -> Optional[pd.DataFrame]:
+        """Prepare SITADEL construction permits aggregated by month x department.
+
+        Features produced:
+        - nb_logements_autorises: total housing units authorized
+        - nb_logements_individuels: individual houses authorized
+        - nb_logements_collectifs: collective housing authorized
+        - surface_autorisee_m2: total surface authorized
+
+        Returns:
+            Aggregated DataFrame, or None if the file is missing.
+        """
+        filepath = self.config.raw_data_dir / "sitadel" / "permis_construire_france.csv"
+        if not filepath.exists():
+            self.logger.warning("SITADEL file not found: %s", filepath)
+            return None
+
+        df = pd.read_csv(filepath)
+
+        # Build date_id from DATE_PRISE_EN_COMPTE (format YYYY-MM)
+        if "DATE_PRISE_EN_COMPTE" in df.columns:
+            df["date_id"] = (
+                df["DATE_PRISE_EN_COMPTE"]
+                .str.replace("-", "")
+                .astype(int)
+            )
+        else:
+            self.logger.warning("  SITADEL: DATE_PRISE_EN_COMPTE column missing")
+            return None
+
+        # Department code
+        if "DEP" in df.columns:
+            df["dept"] = df["DEP"].astype(str).str.zfill(2)
+        else:
+            self.logger.warning("  SITADEL: DEP column missing")
+            return None
+
+        # Rename and select relevant columns
+        rename_map = {
+            "NB_LGT_TOT_CREES": "nb_logements_autorises",
+            "NB_LGT_IND_CREES": "nb_logements_individuels",
+            "NB_LGT_COLL_CREES": "nb_logements_collectifs",
+            "SURF_TOT_M2": "surface_autorisee_m2",
+        }
+        available = {k: v for k, v in rename_map.items() if k in df.columns}
+        df = df.rename(columns=available)
+
+        keep_cols = ["date_id", "dept"] + list(available.values())
+        df = df[keep_cols]
+
+        # Aggregate (sum) per month x department
+        df = df.groupby(["date_id", "dept"]).sum().reset_index()
+
+        return df
+
+    def _prepare_reference_features(self) -> Optional[pd.DataFrame]:
+        """Load department-level reference features (static per department).
+
+        Loads socioeconomic reference data from INSEE:
+        - revenu_median: median household income (Filosofi)
+        - prix_m2_median: median property price per m2 (DVF/Notaires)
+        - nb_logements_total: total housing stock (Recensement)
+        - pct_maisons: percentage of houses (vs apartments)
+
+        Returns:
+            DataFrame with one row per department, or None if missing.
+        """
+        filepath = self.config.raw_data_dir / "insee" / "reference_departements.csv"
+        if not filepath.exists():
+            self.logger.warning("Reference file not found: %s", filepath)
+            return None
+
+        df = pd.read_csv(filepath, dtype={"dept": str})
+        df["dept"] = df["dept"].astype(str).str.zfill(2)
+
+        # Keep only numeric features (drop dept_name which is metadata)
+        keep_cols = ["dept"]
+        for col in ["revenu_median", "prix_m2_median", "nb_logements_total", "pct_maisons"]:
+            if col in df.columns:
+                keep_cols.append(col)
+
+        return df[keep_cols]
+
+    # ==================================================================
+    # Enrichment
     # ==================================================================
 
     def _add_time_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les features temporelles au dataset.
+        """Add temporal features to the dataset.
 
-        Features ajoutées :
+        Features added:
         - year, month, quarter
-        - is_heating : saison de chauffage (octobre-mars)
-        - is_cooling : saison de climatisation (juin-septembre)
-        - month_sin, month_cos : encoding cyclique du mois
+        - is_heating: heating season (October-March)
+        - is_cooling: cooling season (June-September)
+        - month_sin, month_cos: cyclic encoding of the month
 
         Args:
-            df: DataFrame avec colonne date_id.
+            df: DataFrame with date_id column.
 
         Returns:
-            DataFrame enrichi.
+            Enriched DataFrame.
         """
         df["year"] = df["date_id"] // 100
         df["month"] = df["date_id"] % 100
         df["quarter"] = ((df["month"] - 1) // 3) + 1
 
-        # Saisons HVAC
+        # HVAC seasons
         df["is_heating"] = df["month"].isin([1, 2, 3, 10, 11, 12]).astype(int)
         df["is_cooling"] = df["month"].isin([6, 7, 8, 9]).astype(int)
 
-        # Encoding cyclique (capture la continuité décembre ↔ janvier)
+        # Cyclic encoding (captures the December <-> January continuity)
         df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12).round(4)
         df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12).round(4)
 
         return df
 
     def _add_geo_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Ajoute les métadonnées géographiques.
+        """Add geographic metadata.
 
-        Features ajoutées :
-        - dept_name : nom du département
-        - city_ref : ville de référence météo
-        - latitude, longitude : coordonnées de la ville de référence
+        Features added:
+        - dept_name: department name
+        - city_ref: weather reference city
+        - latitude, longitude: reference city coordinates
 
         Args:
-            df: DataFrame avec colonne dept.
+            df: DataFrame with dept column.
 
         Returns:
-            DataFrame enrichi.
+            Enriched DataFrame.
         """
         geo_data = []
         for city, info in self.config.geo.cities.items():
@@ -540,40 +667,30 @@ class DatasetMerger:
 
     @staticmethod
     def _dept_name(code: str) -> str:
-        """Retourne le nom d'un département AURA à partir de son code.
+        """Return the name of a department from its code.
 
         Args:
-            code: Code département (01, 07, etc.).
+            code: Department code (01, 07, etc.).
 
         Returns:
-            Nom du département.
+            Department name.
         """
-        names = {
-            "01": "Ain",
-            "07": "Ardèche",
-            "26": "Drôme",
-            "38": "Isère",
-            "42": "Loire",
-            "69": "Rhône",
-            "73": "Savoie",
-            "74": "Haute-Savoie",
-        }
-        return names.get(code, f"Dept-{code}")
+        return DEPT_NAMES.get(code, f"Dept-{code}")
 
     # ==================================================================
-    # Sauvegarde
+    # Save
     # ==================================================================
 
     def _save_ml_dataset(self, df: pd.DataFrame) -> Path:
-        """Sauvegarde le dataset ML final.
+        """Save the final ML dataset.
 
-        Le fichier est sauvegardé dans data/features/ (répertoire ML).
+        The file is saved in data/features/ (ML directory).
 
         Args:
-            df: Dataset ML-ready complet.
+            df: Complete ML-ready dataset.
 
         Returns:
-            Chemin du fichier sauvegardé.
+            Path of the saved file.
         """
         output_dir = self.config.features_data_dir
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -582,7 +699,7 @@ class DatasetMerger:
         df.to_csv(output_path, index=False)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         self.logger.info(
-            "Dataset ML : %d lignes × %d cols → %s (%.1f Mo)",
+            "ML dataset: %d rows × %d cols → %s (%.1f MB)",
             len(df), len(df.columns), output_path, size_mb,
         )
         return output_path

@@ -1,38 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-Generateur de documentation Word pour le projet HVAC Market Analysis.
-=====================================================================
+Word documentation generator for the HVAC Market Analysis project.
+===================================================================
 
-Genere deux documents :
-1. documentation_technique.docx — Architecture, processus, methodologie
-2. guide_utilisation.docx — Installation, commandes, utilisation quotidienne
+Generates two comprehensive documents:
+1. documentation_technique.docx — Full technical architecture & methodology
+2. guide_utilisation.docx — Installation, configuration, accounts & deployment
 
-Usage :
+Usage:
     python docs/generate_docs.py
 """
 
 from docx import Document
-from docx.shared import Inches, Pt, Cm, RGBColor
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.enum.style import WD_STYLE_TYPE
 import os
 
 
-def set_doc_styles(doc):
-    """Configure les styles du document."""
-    style = doc.styles["Normal"]
-    font = style.font
-    font.name = "Calibri"
-    font.size = Pt(11)
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
+def set_doc_styles(doc):
+    """Configure document styles (Calibri 11, blue headings)."""
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
     for level in range(1, 5):
-        heading_style = doc.styles[f"Heading {level}"]
-        heading_style.font.color.rgb = RGBColor(0, 51, 102)
+        doc.styles[f"Heading {level}"].font.color.rgb = RGBColor(0, 51, 102)
 
 
 def add_cover_page(doc, title, subtitle):
-    """Ajoute une page de couverture."""
+    """Add a formatted cover page with project info."""
     for _ in range(6):
         doc.add_paragraph("")
 
@@ -52,13 +52,17 @@ def add_cover_page(doc, title, subtitle):
     doc.add_paragraph("")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("Projet HVAC Market Analysis\nAuvergne-Rhone-Alpes")
+    run = p.add_run("HVAC Market Analysis Project\nMetropolitan France")
     run.font.size = Pt(14)
 
     doc.add_paragraph("")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("Patrice DUCLOS\nData Analyst Senior\nFevrier 2026")
+    run = p.add_run(
+        "Patrice DUCLOS\nSenior Data Analyst\n"
+        "Data Science Lead Program — Jedha Bootcamp (Master's level)\n"
+        "February 2026"
+    )
     run.font.size = Pt(12)
     run.font.color.rgb = RGBColor(100, 100, 100)
 
@@ -66,12 +70,11 @@ def add_cover_page(doc, title, subtitle):
 
 
 def add_table(doc, headers, rows):
-    """Ajoute un tableau formate."""
+    """Add a formatted table with headers and data rows."""
     table = doc.add_table(rows=1 + len(rows), cols=len(headers))
     table.style = "Light Grid Accent 1"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
 
-    # En-tetes
     for i, header in enumerate(headers):
         cell = table.rows[0].cells[i]
         cell.text = header
@@ -79,7 +82,6 @@ def add_table(doc, headers, rows):
             for run in paragraph.runs:
                 run.bold = True
 
-    # Donnees
     for r, row in enumerate(rows):
         for c, val in enumerate(row):
             table.rows[r + 1].cells[c].text = str(val)
@@ -88,1078 +90,1194 @@ def add_table(doc, headers, rows):
     return table
 
 
+def add_bullets(doc, items):
+    """Add a bulleted list."""
+    for item in items:
+        doc.add_paragraph(item, style="List Bullet")
+
+
+def add_numbered(doc, items):
+    """Add a numbered list."""
+    for i, item in enumerate(items, 1):
+        doc.add_paragraph(f"{i}. {item}")
+
+
 # ================================================================
-# DOCUMENT 1 : Documentation Technique
+# DOCUMENT 1 : Technical Documentation
 # ================================================================
 
 def generate_technical_doc():
-    """Genere la documentation technique complete."""
+    """Generate the complete technical documentation."""
     doc = Document()
     set_doc_styles(doc)
     add_cover_page(
         doc,
-        "Documentation Technique",
-        "Architecture, Processus et Methodologie"
+        "Technical Documentation",
+        "Architecture, Data Pipeline and ML Methodology"
     )
 
-    # --- TABLE DES MATIERES ---
-    doc.add_heading("Table des matieres", level=1)
-    toc_items = [
-        "1. Vue d'ensemble du projet",
-        "2. Architecture technique",
-        "3. Sources de donnees",
-        "4. Pipeline de collecte (Phase 1)",
-        "5. Traitement des donnees (Phase 2)",
+    # --- TABLE OF CONTENTS ---
+    doc.add_heading("Table of Contents", level=1)
+    toc = [
+        "1. Project Overview",
+        "2. Technical Architecture",
+        "3. Data Sources",
+        "4. Collection Pipeline",
+        "5. Data Processing",
         "6. Feature Engineering",
-        "7. Schema de base de donnees",
-        "8. Modelisation ML (Phase 4)",
-        "9. Analyse de l'auto-correlation Ridge",
-        "10. Evaluation des modeles",
-        "11. Tests unitaires",
-        "12. Configuration et parametrage",
+        "7. Database Schema",
+        "8. ML Modeling",
+        "9. Ridge Auto-correlation Analysis",
+        "10. REST API (FastAPI)",
+        "11. Streamlit Dashboard",
+        "12. Deployment (Docker / Kubernetes)",
+        "13. Orchestration (Airflow)",
+        "14. Reinforcement Learning (demo)",
+        "15. Unit Tests",
+        "16. Training Modules Coverage",
     ]
-    for item in toc_items:
+    for item in toc:
         doc.add_paragraph(item, style="List Number")
     doc.add_page_break()
 
-    # === 1. VUE D'ENSEMBLE ===
-    doc.add_heading("1. Vue d'ensemble du projet", level=1)
+    # =================================================================
+    # 1. PROJECT OVERVIEW
+    # =================================================================
+    doc.add_heading("1. Project Overview", level=1)
 
-    doc.add_heading("1.1 Objectif", level=2)
+    doc.add_heading("1.1 Objective", level=2)
     doc.add_paragraph(
-        "Ce projet construit un pipeline data complet pour analyser et predire "
-        "les installations d'equipements HVAC (pompes a chaleur, climatisation) "
-        "dans les 8 departements de la region Auvergne-Rhone-Alpes (AURA)."
+        "This project builds a complete data pipeline to analyze and predict "
+        "HVAC equipment installations (heat pumps, air conditioning) "
+        "across all 96 departments of Metropolitan France."
     )
     doc.add_paragraph(
-        "Il s'agit d'un projet portfolio Data Analyst demonstrant la maitrise "
-        "de la chaine complete : collecte de donnees ouvertes, nettoyage, "
-        "modelisation en etoile, feature engineering, modelisation ML et evaluation."
+        "This is a Data Science Lead portfolio project (Master's level) demonstrating "
+        "mastery of the complete chain: open data collection, "
+        "cleaning, star schema modeling, feature engineering, ML modeling, "
+        "REST API, interactive dashboard, Docker/Kubernetes deployment and "
+        "Airflow orchestration."
     )
 
-    doc.add_heading("1.2 Strategie proxy", level=2)
+    doc.add_heading("1.2 Proxy Strategy", level=2)
     doc.add_paragraph(
-        "Aucune donnee directe de ventes HVAC n'est disponible en open data. "
-        "Le projet utilise les Diagnostics de Performance Energetique (DPE) "
-        "de l'ADEME comme proxy : chaque DPE mentionne le type de chauffage "
-        "et climatisation installe. En filtrant les DPE mentionnant une pompe "
-        "a chaleur (PAC) ou une climatisation, on obtient un indicateur fiable "
-        "du volume d'installations."
+        "No direct HVAC sales data is available as open data. "
+        "The project uses Energy Performance Diagnostics (DPE) "
+        "from ADEME as a proxy: each DPE mentions the type of heating "
+        "and air conditioning installed. By filtering DPEs mentioning a heat "
+        "pump (PAC) or air conditioning, we obtain a reliable indicator "
+        "of installation volume."
     )
 
-    doc.add_heading("1.3 Perimetre", level=2)
+    doc.add_heading("1.3 Scope", level=2)
     add_table(doc,
-        ["Parametre", "Valeur"],
+        ["Parameter", "Value"],
         [
-            ["Region", "Auvergne-Rhone-Alpes (code 84)"],
-            ["Departements", "01, 07, 26, 38, 42, 69, 73, 74"],
-            ["Periode", "Juillet 2021 - Fevrier 2026 (55 mois)"],
-            ["Grain", "Mois x Departement (8 depts = 440 observations)"],
-            ["Volume DPE", "~1.4 million de diagnostics"],
-            ["PAC detectees", "~95 140 (6.9% des DPE)"],
-            ["Features ML", "~90 features engineerees"],
+            ["Scope", "Metropolitan France (96 departments)"],
+            ["Period", "July 2021 — February 2026 (~55 months)"],
+            ["Granularity", "Month x Department"],
+            ["DPE Volume", "Several million diagnostics"],
+            ["ML Features", "~90 engineered features"],
+            ["API", "6 REST endpoints (FastAPI)"],
+            ["Dashboard", "6 interactive pages (Streamlit)"],
+            ["Tests", "119 unit tests (pytest)"],
         ]
     )
 
-    doc.add_heading("1.4 Resultats cles", level=2)
+    doc.add_heading("1.4 Key Results", level=2)
     add_table(doc,
-        ["Modele", "Val RMSE", "Val R2", "Test RMSE", "Test R2"],
+        ["Model", "Val RMSE", "Val R2", "Test RMSE", "Test R2"],
         [
-            ["Ridge (avec lags)", "1.09", "0.9975", "0.96", "0.9982"],
-            ["Ridge (exogenes)", "-", "-", "-", "-"],
+            ["Ridge (with lags)", "1.09", "0.9975", "0.96", "0.9982"],
+            ["Ridge (exogenous)", "—", "—", "—", "—"],
             ["LightGBM", "5.45", "0.937", "8.37", "0.865"],
             ["Prophet", "13.75", "0.599", "12.05", "0.719"],
         ]
     )
     doc.add_paragraph(
-        "Note : Le R2 tres eleve de Ridge est principalement du a l'auto-correlation "
-        "de la variable cible via les features lag. Le modele 'Ridge exogenes' "
-        "permet d'evaluer la vraie contribution des features meteo et economiques "
-        "(voir section 9)."
+        "Note: The very high Ridge R2 is due to auto-correlation "
+        "via lag features. The 'Ridge exogenous' model evaluates the true "
+        "contribution of weather and economic features (see section 9)."
     )
-
     doc.add_page_break()
 
-    # === 2. ARCHITECTURE TECHNIQUE ===
-    doc.add_heading("2. Architecture technique", level=1)
+    # =================================================================
+    # 2. TECHNICAL ARCHITECTURE
+    # =================================================================
+    doc.add_heading("2. Technical Architecture", level=1)
 
-    doc.add_heading("2.1 Structure du projet", level=2)
-    doc.add_paragraph(
-        "Le projet suit une architecture modulaire en couches :"
-    )
+    doc.add_heading("2.1 Project Structure", level=2)
     add_table(doc,
-        ["Couche", "Repertoire", "Responsabilite"],
+        ["Layer", "Directory", "Responsibility"],
         [
-            ["Configuration", "config/settings.py", "Parametres centralises (dataclasses frozen)"],
-            ["Collecte", "src/collectors/", "5 collecteurs plugins (auto-enregistrement)"],
-            ["Traitement", "src/processing/", "Nettoyage, fusion, feature engineering"],
-            ["Base de donnees", "src/database/", "Schema en etoile, import CSV"],
-            ["Analyse", "src/analysis/", "EDA automatisee, correlations"],
-            ["Modelisation", "src/models/", "Ridge, LightGBM, Prophet, LSTM"],
-            ["Orchestration", "src/pipeline.py", "CLI avec 10 etapes + mode 'all'"],
-            ["Tests", "tests/", "57 tests unitaires (pytest)"],
+            ["Configuration", "config/settings.py", "Centralized parameters (frozen dataclasses)"],
+            ["Collection", "src/collectors/", "5 plugin collectors (auto-registration)"],
+            ["Processing", "src/processing/", "Cleaning, merging, feature engineering, outliers"],
+            ["Database", "src/database/", "Star schema, CSV import → SQLite/PostgreSQL"],
+            ["Analysis", "src/analysis/", "Automated EDA, correlations"],
+            ["Modeling", "src/models/", "Ridge, LightGBM, Prophet, LSTM, RL demo"],
+            ["REST API", "api/", "FastAPI — 6 prediction/monitoring endpoints"],
+            ["Dashboard", "app/", "Streamlit — 6 interactive pages"],
+            ["Orchestration", "airflow/dags/", "Airflow DAG complete pipeline"],
+            ["Deployment", "kubernetes/, Dockerfile", "Docker multi-stage, K8s, Render"],
+            ["Tests", "tests/", "119 unit tests (pytest)"],
         ]
     )
 
-    doc.add_heading("2.2 Patterns architecturaux", level=2)
+    doc.add_heading("2.2 Architecture Patterns", level=2)
 
-    doc.add_heading("Plugin Registry (Collecteurs)", level=3)
+    doc.add_heading("Plugin Registry (Collectors)", level=3)
     doc.add_paragraph(
-        "Les collecteurs utilisent un systeme de plugins base sur __init_subclass__. "
-        "Chaque sous-classe concrete de BaseCollector est automatiquement enregistree "
-        "dans le CollectorRegistry. Pour ajouter une nouvelle source de donnees, "
-        "il suffit de creer un fichier dans src/collectors/ avec une classe heritant "
-        "de BaseCollector — aucune configuration manuelle n'est requise."
+        "Collectors use a plugin system based on __init_subclass__. "
+        "Each concrete subclass of BaseCollector is automatically registered "
+        "in the CollectorRegistry. To add a new data source, "
+        "simply create a file in src/collectors/ with a class inheriting "
+        "from BaseCollector — no manual configuration is required."
     )
 
-    doc.add_heading("Dataclasses frozen", level=3)
+    doc.add_heading("Frozen Dataclasses", level=3)
     doc.add_paragraph(
-        "Toute la configuration est definie via des dataclasses frozen (immutables). "
-        "Cela garantit que la configuration ne peut pas etre modifiee accidentellement "
-        "pendant l'execution. Les valeurs sont chargees depuis le fichier .env "
-        "via python-dotenv."
+        "All configuration is defined via frozen (immutable) dataclasses. "
+        "Values are loaded from the .env file via python-dotenv."
     )
 
-    doc.add_heading("Pipeline idempotent", level=3)
+    doc.add_heading("Idempotent Pipeline", level=3)
     doc.add_paragraph(
-        "Chaque etape du pipeline peut etre relancee sans risque. Les fichiers "
-        "de sortie sont simplement ecrases. Les doublons sont geres en amont "
-        "(deduplication dans le save et le clean)."
+        "Each pipeline step can be re-run safely. Output files "
+        "are overwritten. Duplicates are handled upstream."
     )
 
     doc.add_heading("2.3 Technologies", level=2)
     add_table(doc,
-        ["Categorie", "Technologies"],
+        ["Category", "Technologies"],
         [
-            ["Langage", "Python 3.10+"],
+            ["Language", "Python 3.10+"],
             ["Data", "pandas, numpy, SQLAlchemy"],
             ["ML", "scikit-learn (Ridge, StandardScaler, TimeSeriesSplit)"],
-            ["Gradient Boosting", "LightGBM (regularise pour petit dataset)"],
-            ["Series temporelles", "Prophet (Meta/Facebook)"],
-            ["Deep Learning", "PyTorch (LSTM, exploratoire)"],
-            ["Interpretabilite", "SHAP"],
-            ["Visualisation", "matplotlib, seaborn, plotly"],
-            ["BDD", "SQLite (defaut), SQL Server, PostgreSQL"],
+            ["Gradient Boosting", "LightGBM"],
+            ["Time Series", "Prophet (Meta)"],
+            ["Deep Learning", "PyTorch (LSTM, exploratory)"],
+            ["Reinforcement Learning", "Gymnasium, Q-Learning"],
+            ["Interpretability", "SHAP"],
+            ["Visualization", "matplotlib, seaborn, plotly"],
+            ["API", "FastAPI, Pydantic v2, uvicorn"],
+            ["Dashboard", "Streamlit"],
+            ["Database", "SQLite (default), PostgreSQL, SQL Server"],
+            ["Containerization", "Docker (multi-stage), Docker Compose"],
+            ["K8s Orchestration", "Kubernetes (Deployment, Ingress, CronJob)"],
+            ["CI/CD", "Render (PaaS), deploy.sh"],
             ["Tests", "pytest"],
-            ["HTTP", "requests (retry automatique via urllib3)"],
-            ["XML", "lxml (parsing SDMX pour INSEE)"],
+            ["HTTP", "requests (automatic retry)"],
         ]
     )
-
     doc.add_page_break()
 
-    # === 3. SOURCES DE DONNEES ===
-    doc.add_heading("3. Sources de donnees", level=1)
-
+    # =================================================================
+    # 3. DATA SOURCES
+    # =================================================================
+    doc.add_heading("3. Data Sources", level=1)
     doc.add_paragraph(
-        "Toutes les sources sont Open Data — aucune cle API n'est requise."
+        "All sources are Open Data — no API key is required."
     )
 
-    doc.add_heading("3.1 DPE ADEME (variable cible)", level=2)
+    doc.add_heading("3.1 DPE ADEME (target variable)", level=2)
     add_table(doc,
-        ["Parametre", "Valeur"],
+        ["Parameter", "Value"],
         [
-            ["Source", "data.ademe.fr (API JSON paginee)"],
-            ["Volume", "~1.4 million de DPE pour AURA"],
-            ["Periode", "Juillet 2021+ (DPE v2)"],
-            ["Grain", "1 ligne par diagnostic"],
-            ["Champs cles", "numero_dpe, date_etablissement, etiquette_dpe, "
-             "type_generateur_chauffage_principal, type_generateur_froid"],
-            ["Detection PAC", "Regex sur chauffage/froid : PAC, pompe a chaleur, thermodynamique"],
-            ["Collecteur", "DpeCollector (src/collectors/dpe.py)"],
+            ["Source", "data.ademe.fr (paginated JSON API)"],
+            ["Scope", "96 departments of Metropolitan France"],
+            ["Period", "July 2021+ (DPE v2)"],
+            ["Granularity", "1 row per diagnostic"],
+            ["Heat pump detection", "Regex on heating/cooling: PAC, heat pump, thermodynamic"],
+            ["Collector", "DpeCollector (src/collectors/dpe.py)"],
         ]
     )
-    doc.add_paragraph(
-        "La collecte DPE prend environ 30-60 minutes en raison de la pagination "
-        "API (1000 resultats par page, ~1400 pages)."
-    )
 
-    doc.add_heading("3.2 Open-Meteo (features meteo)", level=2)
+    doc.add_heading("3.2 Open-Meteo (weather features)", level=2)
     add_table(doc,
-        ["Parametre", "Valeur"],
+        ["Parameter", "Value"],
         [
             ["Source", "archive-api.open-meteo.com"],
-            ["Volume", "~20 000 lignes (8 villes x ~2500 jours)"],
-            ["Variables", "temperature max/min/mean, precipitations, vent"],
-            ["Derivees", "HDD (Heating Degree Days), CDD (Cooling Degree Days)"],
-            ["Base HDD/CDD", "18 degres Celsius"],
-            ["Collecteur", "WeatherCollector (src/collectors/weather.py)"],
+            ["Scope", "96 reference cities (prefectures)"],
+            ["Variables", "temperature max/min/mean, precipitation, wind"],
+            ["Derived", "HDD (Heating Degree Days), CDD (Cooling Degree Days)"],
+            ["Collector", "WeatherCollector (src/collectors/weather.py)"],
         ]
     )
 
-    doc.add_heading("3.3 INSEE BDM (features economiques)", level=2)
+    doc.add_heading("3.3 INSEE BDM (economic features)", level=2)
     add_table(doc,
-        ["Serie", "idbank", "Description"],
+        ["Series", "idbank", "Description"],
         [
-            ["confiance_menages", "001759970", "Indicateur synthetique de confiance des menages"],
-            ["climat_affaires_industrie", "001565530", "Climat des affaires tous secteurs"],
-            ["climat_affaires_batiment", "001586808", "Climat des affaires batiment"],
-            ["opinion_achats_importants", "001759974", "Opportunite achats importants"],
-            ["situation_financiere_future", "001759972", "Situation financiere future menages"],
-            ["ipi_industrie_manuf", "010768261", "IPI industrie manufacturiere"],
+            ["confiance_menages", "001759970", "Synthetic confidence indicator"],
+            ["climat_affaires_industrie", "001565530", "Business climate all sectors"],
+            ["climat_affaires_batiment", "001586808", "Business climate construction"],
+            ["opinion_achats_importants", "001759974", "Major purchases opportunity"],
+            ["situation_financiere_future", "001759972", "Future financial situation"],
+            ["ipi_industrie_manuf", "010768261", "Manufacturing industry IPI"],
         ]
-    )
-    doc.add_paragraph(
-        "Format : XML SDMX 2.1 (StructureSpecific). Les idbanks ont ete verifies "
-        "et corriges lors de l'audit de fevrier 2026."
     )
 
     doc.add_heading("3.4 Eurostat (IPI HVAC)", level=2)
     add_table(doc,
-        ["Parametre", "Valeur"],
+        ["Parameter", "Value"],
         [
-            ["Dataset", "sts_inpr_m (Short-term statistics, Industrial Production)"],
-            ["Codes NACE", "C28 (machines), C2825 (equipements clim)"],
-            ["Filtre geo", "France (FR)"],
-            ["Unite", "I21 (indice base 2021)"],
-            ["Ajustement", "SCA (CVS-CJO)"],
-            ["Collecteur", "EurostatCollector (src/collectors/eurostat_col.py)"],
+            ["Dataset", "sts_inpr_m (Industrial Production)"],
+            ["NACE Codes", "C28 (machinery), C2825 (AC equipment)"],
+            ["Geo filter", "France (FR)"],
+            ["Collector", "EurostatCollector (src/collectors/eurostat_col.py)"],
         ]
     )
 
-    doc.add_heading("3.5 SITADEL (permis de construire)", level=2)
+    doc.add_heading("3.5 SITADEL (building permits)", level=2)
     doc.add_paragraph(
-        "Source en cours de migration vers l'API DiDo du SDES. "
-        "Le collecteur SitadelCollector existe mais n'est pas pleinement fonctionnel."
+        "Source currently being migrated to the SDES DiDo API. "
+        "The SitadelCollector exists but is not fully functional."
     )
-
     doc.add_page_break()
 
-    # === 4. PIPELINE DE COLLECTE ===
-    doc.add_heading("4. Pipeline de collecte (Phase 1)", level=1)
+    # =================================================================
+    # 4. COLLECTION PIPELINE
+    # =================================================================
+    doc.add_heading("4. Collection Pipeline", level=1)
 
-    doc.add_heading("4.1 Architecture BaseCollector", level=2)
-    doc.add_paragraph(
-        "Tous les collecteurs heritent de BaseCollector (classe abstraite) qui fournit :"
-    )
-    bullets = [
-        "Session HTTP avec retry automatique (codes 429, 500-504)",
+    doc.add_heading("4.1 BaseCollector Architecture", level=2)
+    doc.add_paragraph("All collectors inherit from BaseCollector:")
+    add_bullets(doc, [
+        "HTTP session with automatic retry (codes 429, 500-504)",
         "Helpers fetch_json(), fetch_xml(), fetch_bytes()",
-        "Cycle de vie orchestre : collect() -> validate() -> save()",
-        "Logging structure avec horodatage",
-        "Auto-enregistrement dans CollectorRegistry via __init_subclass__",
-        "Pause de politesse entre appels API (rate_limit_delay)",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
+        "Lifecycle: collect() → validate() → save()",
+        "Auto-registration in CollectorRegistry via __init_subclass__",
+        "Politeness pause between API calls (rate_limit_delay)",
+    ])
 
-    doc.add_heading("4.2 Cycle de vie d'une collecte", level=2)
-    doc.add_paragraph(
-        "La methode run() orchestre le cycle complet :"
-    )
-    steps = [
-        "Log de demarrage avec parametres (periode, departements)",
-        "collect() — Recuperation des donnees brutes (specifique a chaque source)",
-        "validate() — Verification qualite (colonnes, types, plages de valeurs)",
-        "save() — Persistance CSV dans data/raw/ + copie dans data/processed/",
-        "Log de fin avec bilan (lignes collectees, duree, statut)",
-    ]
-    for i, s in enumerate(steps, 1):
-        doc.add_paragraph(f"{i}. {s}")
+    doc.add_heading("4.2 Collection Lifecycle", level=2)
+    add_numbered(doc, [
+        "Startup log with parameters",
+        "collect() — Raw data retrieval",
+        "validate() — Quality check (columns, types)",
+        "save() — CSV persistence in data/raw/",
+        "End log with summary (rows, duration, status)",
+    ])
 
     doc.add_heading("4.3 Resilience", level=2)
-    doc.add_paragraph(
-        "Le systeme est concu pour etre tolerant aux pannes :"
-    )
-    bullets = [
-        "Si une ville echoue (meteo), les autres sont quand meme collectees",
-        "Si une serie echoue (INSEE), les autres sont fusionnees",
-        "Le retry HTTP est automatique avec backoff exponentiel",
-        "Le statut PARTIAL est retourne si certains elements ont echoue",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
-
+    add_bullets(doc, [
+        "If a city fails (weather), the others are still collected",
+        "If a series fails (INSEE), the others are still merged",
+        "Automatic HTTP retry with exponential backoff",
+        "PARTIAL status if some elements failed",
+    ])
     doc.add_page_break()
 
-    # === 5. TRAITEMENT DES DONNEES ===
-    doc.add_heading("5. Traitement des donnees (Phase 2)", level=1)
+    # =================================================================
+    # 5. DATA PROCESSING
+    # =================================================================
+    doc.add_heading("5. Data Processing", level=1)
 
-    doc.add_heading("5.1 Nettoyage (DataCleaner)", level=2)
+    doc.add_heading("5.1 Cleaning (DataCleaner)", level=2)
     doc.add_paragraph(
-        "Le module clean_data.py applique des regles de nettoyage specifiques "
-        "a chaque source. Le nettoyage est idempotent."
+        "The clean_data.py module applies source-specific cleaning rules. "
+        "Cleaning is idempotent."
     )
 
-    doc.add_heading("Meteo", level=3)
-    bullets = [
-        "Conversion dates en datetime",
-        "Suppression doublons (date x ville)",
-        "Clipping : temperature [-30, 50], precipitations [0, 300], vent [0, 200]",
-        "Recalcul HDD/CDD (base 18 degres)",
-        "Ajout colonnes derivees : year, month, date_id",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
-
-    doc.add_heading("INSEE", level=3)
-    bullets = [
-        "Filtrage periodes mensuelles (exclusion trimestrielles)",
-        "Interpolation lineaire des gaps courts (max 3 mois consecutifs)",
-        "Conversion date_id (YYYYMM)",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
+    doc.add_heading("Weather", level=3)
+    add_bullets(doc, [
+        "Date conversion to datetime",
+        "Duplicate removal (date x city)",
+        "Clipping: temperature [-30, 50], precipitation [0, 300], wind [0, 200]",
+        "HDD/CDD recalculation (base 18 degrees)",
+    ])
 
     doc.add_heading("DPE", level=3)
-    bullets = [
-        "Traitement par chunks de 200 000 lignes (gestion memoire)",
-        "Deduplication sur numero_dpe",
-        "Validation dates (>= 2021-07-01, <= aujourd'hui)",
-        "Validation etiquettes DPE (A-G uniquement)",
-        "Clipping : surface [5, 1000], conso [0, 1000], cout [0, 50000]",
-        "Detection PAC : regex sur type_generateur_chauffage et type_generateur_froid",
-        "Detection climatisation : generateur froid renseigne",
-        "Detection classe A-B : batiment performant",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
+    add_bullets(doc, [
+        "Processing in chunks of 200,000 rows (memory management)",
+        "Deduplication on numero_dpe",
+        "Date validation (>= 2021-07-01)",
+        "DPE label validation (A-G)",
+        "Clipping: surface [5, 1000], consumption [0, 1000], cost [0, 50000]",
+        "Heat pump detection: regex on heating and cooling generator type",
+        "AC detection: cooling generator field populated",
+    ])
 
-    doc.add_heading("5.2 Fusion (DatasetMerger)", level=2)
+    doc.add_heading("5.2 Merging (DatasetMerger)", level=2)
     doc.add_paragraph(
-        "Le DatasetMerger fusionne toutes les sources en un dataset unique "
-        "au grain mois x departement :"
+        "DPE (aggregated month x dept) "
+        "LEFT JOIN Weather (aggregated month x dept) ON date_id + dept "
+        "LEFT JOIN INSEE (month) ON date_id "
+        "LEFT JOIN Eurostat (month) ON date_id"
     )
     doc.add_paragraph(
-        "DPE (agrege mois x dept) "
-        "LEFT JOIN Meteo (agrege mois x dept) ON date_id + dept "
-        "LEFT JOIN INSEE (mois) ON date_id "
-        "LEFT JOIN Eurostat (mois x NACE) ON date_id"
-    )
-    doc.add_paragraph(
-        "Les indicateurs economiques (INSEE, Eurostat) sont nationaux — "
-        "ils sont broadcast sur tous les departements lors de la jointure. "
-        "Le dataset final contient ~35 colonnes et ~440 lignes."
+        "Economic indicators (INSEE, Eurostat) are national — "
+        "they are broadcast to all departments during the join."
     )
 
+    doc.add_heading("5.3 Outlier Detection", level=2)
+    doc.add_paragraph(
+        "The outlier_detection.py module provides several methods: "
+        "IQR, Z-score, Isolation Forest, LOF. Outliers are "
+        "reported but not removed by default (conservative approach)."
+    )
     doc.add_page_break()
 
-    # === 6. FEATURE ENGINEERING ===
+    # =================================================================
+    # 6. FEATURE ENGINEERING
+    # =================================================================
     doc.add_heading("6. Feature Engineering", level=1)
-
     doc.add_paragraph(
-        "Le FeatureEngineer transforme le dataset de ~35 colonnes en ~90 features. "
-        "Toutes les operations temporelles (lags, rolling) sont faites PAR DEPARTEMENT "
-        "(groupby dept) pour eviter les fuites inter-departements."
+        "The FeatureEngineer transforms the dataset into ~90 features. "
+        "All temporal operations are performed PER DEPARTMENT "
+        "(groupby dept) to avoid cross-department leakage."
     )
 
-    doc.add_heading("6.1 Lags temporels", level=2)
-    add_table(doc,
-        ["Feature", "Description", "Colonnes source"],
-        [
-            ["*_lag_1m", "Valeur du mois precedent", "nb_dpe_total, nb_installations_pac, "
-             "nb_installations_clim, temp_mean, hdd_sum, cdd_sum, confiance_menages"],
-            ["*_lag_3m", "Valeur de 3 mois avant", "Memes colonnes"],
-            ["*_lag_6m", "Valeur de 6 mois avant", "Memes colonnes"],
-        ]
-    )
-    doc.add_paragraph(
-        "Les lags creent des NaN en debut de serie. Ces NaN sont geres par "
-        "imputation median lors de l'entrainement."
-    )
-
-    doc.add_heading("6.2 Rolling windows", level=2)
+    doc.add_heading("6.1 Temporal Lags", level=2)
     add_table(doc,
         ["Feature", "Description"],
         [
-            ["*_rmean_3m", "Moyenne glissante sur 3 mois (min_periods=1)"],
-            ["*_rmean_6m", "Moyenne glissante sur 6 mois"],
-            ["*_rstd_3m", "Ecart-type glissant sur 3 mois (min_periods=2)"],
-            ["*_rstd_6m", "Ecart-type glissant sur 6 mois"],
+            ["*_lag_1m", "Previous month value"],
+            ["*_lag_3m", "Value from 3 months ago"],
+            ["*_lag_6m", "Value from 6 months ago"],
         ]
     )
 
-    doc.add_heading("6.3 Variations", level=2)
+    doc.add_heading("6.2 Rolling Windows", level=2)
     add_table(doc,
         ["Feature", "Description"],
         [
-            ["*_diff_1m", "Difference absolue avec le mois precedent"],
-            ["*_pct_1m", "Variation relative en % (clippee [-200, +500])"],
+            ["*_rmean_3m / *_rmean_6m", "Rolling mean over 3/6 months"],
+            ["*_rstd_3m / *_rstd_6m", "Rolling standard deviation over 3/6 months"],
         ]
     )
 
-    doc.add_heading("6.4 Features d'interaction", level=2)
-    add_table(doc,
-        ["Feature", "Formule", "Hypothese metier"],
-        [
-            ["interact_hdd_confiance", "HDD_norm x confiance/100",
-             "Hiver froid + confiance = investissement chauffage"],
-            ["interact_cdd_ipi", "CDD_norm x IPI_C28/100",
-             "Ete chaud + activite industrielle = installations clim"],
-            ["interact_confiance_bat", "confiance/100 x climat_bat/100",
-             "Double proxy d'intention d'investissement"],
-            ["jours_extremes", "nb_jours_canicule + nb_jours_gel",
-             "Meteo extreme = declencheur d'achat"],
-        ]
-    )
-
-    doc.add_heading("6.5 Features de tendance", level=2)
+    doc.add_heading("6.3 Changes", level=2)
     add_table(doc,
         ["Feature", "Description"],
         [
-            ["year_trend", "Annee normalisee (2021=0, 2022=1, ...)"],
-            ["delta_temp_vs_mean", "Ecart de temperature vs moyenne historique dept x mois"],
+            ["*_diff_1m", "Absolute difference from previous month"],
+            ["*_pct_1m", "Relative change in % (clipped [-200, +500])"],
         ]
     )
 
+    doc.add_heading("6.4 Interaction Features", level=2)
+    add_table(doc,
+        ["Feature", "Business Hypothesis"],
+        [
+            ["interact_hdd_confiance", "Cold winter + confidence = heating investment"],
+            ["interact_cdd_ipi", "Hot summer + industrial activity = AC installations"],
+            ["interact_confiance_bat", "Double proxy of investment intention"],
+            ["jours_extremes", "Extreme weather = purchase trigger"],
+        ]
+    )
     doc.add_page_break()
 
-    # === 7. SCHEMA BDD ===
-    doc.add_heading("7. Schema de base de donnees", level=1)
-
+    # =================================================================
+    # 7. DATABASE SCHEMA
+    # =================================================================
+    doc.add_heading("7. Database Schema", level=1)
     doc.add_paragraph(
-        "Le projet utilise un schema en etoile (Star Schema) avec SQLAlchemy "
-        "comme couche d'abstraction. Trois moteurs sont supportes :"
+        "Star Schema with SQLAlchemy. "
+        "Three supported engines: SQLite (default), PostgreSQL, SQL Server."
     )
-    bullets = [
-        "SQLite (defaut) — aucune installation, fichier local",
-        "SQL Server — via pyodbc, pour environnement entreprise",
-        "PostgreSQL — pour deploiement cloud/production",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
 
-    doc.add_heading("7.1 Tables dimensionnelles", level=2)
+    doc.add_heading("7.1 Dimension Tables", level=2)
     add_table(doc,
-        ["Table", "Grain", "Lignes", "Description"],
+        ["Table", "Granularity", "Description"],
         [
-            ["dim_time", "Mois", "84", "Dimension temporelle (YYYYMM, saisons HVAC)"],
-            ["dim_geo", "Departement", "8", "8 departements AURA avec ville de reference"],
-            ["dim_equipment_type", "Type", "10", "Catalogue des equipements HVAC"],
+            ["dim_time", "Month", "Time dimension (YYYYMM, HVAC seasons)"],
+            ["dim_geo", "Department", "96 departments with reference city"],
+            ["dim_equipment_type", "Type", "HVAC equipment catalog"],
         ]
     )
 
-    doc.add_heading("7.2 Tables de faits", level=2)
+    doc.add_heading("7.2 Fact Tables", level=2)
     add_table(doc,
-        ["Table", "Grain", "Description"],
+        ["Table", "Granularity", "Description"],
         [
-            ["fact_hvac_installations", "Mois x Dept", "Variable cible + meteo + permis"],
-            ["fact_economic_context", "Mois", "Indicateurs economiques nationaux"],
-            ["raw_dpe", "DPE unitaire", "~1.4M diagnostics individuels"],
+            ["fact_hvac_installations", "Month x Dept", "Target variable + weather + permits"],
+            ["fact_economic_context", "Month", "National economic indicators"],
+            ["raw_dpe", "Individual DPE", "Individual diagnostics"],
         ]
     )
-
     doc.add_page_break()
 
-    # === 8. MODELISATION ML ===
-    doc.add_heading("8. Modelisation ML (Phase 4)", level=1)
+    # =================================================================
+    # 8. ML MODELING
+    # =================================================================
+    doc.add_heading("8. ML Modeling", level=1)
 
-    doc.add_heading("8.1 Split temporel", level=2)
-    doc.add_paragraph(
-        "Le split respecte la chronologie (pas de fuite temporelle) :"
-    )
+    doc.add_heading("8.1 Temporal Split", level=2)
+    doc.add_paragraph("The split respects chronological order (no temporal leakage):")
     add_table(doc,
-        ["Split", "Periode", "Duree", "Lignes (8 depts)"],
+        ["Split", "Period", "Duration"],
         [
-            ["Train", "2021-07 a 2024-06", "36 mois", "~288"],
-            ["Validation", "2024-07 a 2024-12", "6 mois", "~48"],
-            ["Test", "2025-01 a 2025-12+", "12+ mois", "~96"],
+            ["Train", "2021-07 to 2024-06", "36 months"],
+            ["Validation", "2024-07 to 2024-12", "6 months"],
+            ["Test", "2025-01 to 2025-12+", "12+ months"],
         ]
     )
 
     doc.add_heading("8.2 Preprocessing", level=2)
-    steps = [
-        "Separation features (X) / cible (y)",
-        "Suppression des identifiants (date_id, dept, city_ref, etc.)",
-        "Suppression des lignes avec cible NaN",
-        "Imputation median des NaN dans les features (SimpleImputer)",
-        "Standardisation (StandardScaler) pour Ridge et LSTM",
-    ]
-    for i, s in enumerate(steps, 1):
-        doc.add_paragraph(f"{i}. {s}")
+    add_numbered(doc, [
+        "Separation of features (X) / target (y)",
+        "Removal of identifiers (date_id, dept, city_ref)",
+        "Median imputation of NaN (SimpleImputer)",
+        "Standardization (StandardScaler) for Ridge and LSTM",
+    ])
 
-    doc.add_heading("8.3 Modeles", level=2)
+    doc.add_heading("8.3 Models", level=2)
 
-    doc.add_heading("Ridge Regression (Tier 1 — robuste)", level=3)
+    doc.add_heading("Ridge Regression (robust)", level=3)
     doc.add_paragraph(
-        "Regression lineaire regularisee L2. Alpha selectionne par cross-validation "
-        "temporelle (TimeSeriesSplit, 3 folds). Tres stable sur petit dataset. "
-        "Predictions negatives clippees a 0 (comptages)."
+        "L2 regularized linear regression. Alpha selected by temporal cross-validation "
+        "(TimeSeriesSplit, 3 folds). Negative predictions clipped to 0."
     )
 
-    doc.add_heading("Ridge Exogenes (sans lags cible)", level=3)
+    doc.add_heading("LightGBM (gradient boosting)", level=3)
     doc.add_paragraph(
-        "Variante de Ridge qui exclut les features auto-regressives de la variable "
-        "cible (lags, rolling, diff, pct_change de nb_installations_pac). "
-        "Permet d'evaluer la vraie contribution predictive des features exogenes "
-        "(meteo, economie) sans l'auto-correlation qui domine le R2 standard."
+        "Regularized gradient boosting for small dataset: "
+        "max_depth=4, num_leaves=15, min_child_samples=20. "
+        "Early stopping on validation (20 rounds)."
     )
 
-    doc.add_heading("LightGBM (Tier 2 — gradient boosting)", level=3)
+    doc.add_heading("Prophet (time series)", level=3)
     doc.add_paragraph(
-        "Gradient boosting regularise pour petit dataset : "
-        "max_depth=4, num_leaves=15, min_child_samples=20, "
-        "reg_alpha=0.1, reg_lambda=0.1, subsample=0.8. "
-        "Early stopping sur la validation (20 rounds)."
+        "Meta additive model trained per department. "
+        "External regressors: temp_mean, hdd_sum, cdd_sum, confiance_menages."
     )
 
-    doc.add_heading("Prophet (Tier 1 — series temporelles)", level=3)
+    doc.add_heading("LSTM (exploratory)", level=3)
     doc.add_paragraph(
-        "Modele additif de Meta/Facebook entraine par departement. "
-        "Capture tendance + saisonnalite annuelle. Regresseurs externes : "
-        "temp_mean, hdd_sum, cdd_sum, confiance_menages, ipi_hvac_c28."
+        "Recurrent neural network (PyTorch). Exploratory only — "
+        "the data volume is too small for robust DL."
     )
 
-    doc.add_heading("LSTM (exploratoire)", level=3)
-    doc.add_paragraph(
-        "Reseau de neurones recurrent (PyTorch). Exploratoire uniquement — "
-        "le volume de donnees (~288 lignes train) est trop faible pour un DL robuste."
+    doc.add_heading("8.4 Evaluation", level=2)
+    add_table(doc,
+        ["Metric", "Interpretation"],
+        [
+            ["RMSE", "Average error in target units"],
+            ["MAE", "Mean absolute error"],
+            ["MAPE", "Relative error as percentage"],
+            ["R2", "Proportion of variance explained (1 = perfect)"],
+        ]
     )
-
     doc.add_page_break()
 
-    # === 9. ANALYSE AUTO-CORRELATION ===
-    doc.add_heading("9. Analyse de l'auto-correlation Ridge", level=1)
+    # =================================================================
+    # 9. RIDGE AUTOCORRELATION ANALYSIS
+    # =================================================================
+    doc.add_heading("9. Ridge Auto-correlation Analysis", level=1)
 
-    doc.add_heading("9.1 Constat", level=2)
+    doc.add_heading("9.1 Observation", level=2)
     doc.add_paragraph(
-        "Le modele Ridge atteint un R2 de 0.998 sur le jeu de test, "
-        "ce qui est exceptionnellement eleve. L'analyse des coefficients "
-        "revele que les features dominantes sont les lags de la variable cible :"
-    )
-    add_table(doc,
-        ["Feature", "Importance (coeff. absolu)"],
-        [
-            ["nb_installations_pac_lag_1m", "Tres elevee"],
-            ["nb_installations_pac_rmean_3m", "Elevee"],
-            ["nb_installations_pac_lag_3m", "Elevee"],
-            ["nb_dpe_total_lag_1m", "Moyenne"],
-        ]
+        "The Ridge model achieves an R2 of 0.998 on the test set. "
+        "Coefficient analysis reveals that the dominant features "
+        "are the target variable lags (auto-regression)."
     )
 
-    doc.add_heading("9.2 Explication", level=2)
+    doc.add_heading("9.2 Explanation", level=2)
     doc.add_paragraph(
-        "Ce n'est pas une fuite de donnees au sens strict (les lags utilisent "
-        "des valeurs du passe, pas du futur), mais le modele fait essentiellement "
-        "de l'auto-regression : il predit le nombre d'installations du mois M "
-        "a partir du nombre d'installations du mois M-1. C'est une strategie "
-        "valide mais qui ne demontre pas la valeur predictive des features "
-        "exogenes (meteo, economie)."
+        "This is not a data leak (lags use past values), "
+        "but the model is essentially performing auto-regression. "
+        "It predicts month M from month M-1."
     )
 
-    doc.add_heading("9.3 Solution implementee", level=2)
+    doc.add_heading("9.3 Solution", level=2)
     doc.add_paragraph(
-        "Le ModelTrainer dispose d'un parametre exclude_target_lags=True qui "
-        "exclut automatiquement toutes les features derivees de la variable cible "
-        "(pattern : *_lag_*, *_rmean_*, *_rstd_*, *_diff_*, *_pct_*). "
-        "Un modele 'ridge_exogenes' est entraine automatiquement dans train_all() "
-        "pour comparer les performances avec et sans auto-correlation."
+        "The ModelTrainer has an exclude_target_lags=True parameter that "
+        "excludes all features derived from the target variable. "
+        "A 'ridge_exogenous' model is automatically trained for comparison."
     )
-    doc.add_paragraph(
-        "Cela permet de repondre a la question : "
-        "'Les features meteo et economiques apportent-elles une information "
-        "predictive reelle, ou est-ce que seule l'inertie du marche explique "
-        "les installations ?'"
-    )
-
     doc.add_page_break()
 
-    # === 10. EVALUATION ===
-    doc.add_heading("10. Evaluation des modeles", level=1)
+    # =================================================================
+    # 10. REST API (FastAPI)
+    # =================================================================
+    doc.add_heading("10. REST API (FastAPI)", level=1)
 
-    doc.add_heading("10.1 Metriques", level=2)
+    doc.add_paragraph(
+        "The API exposes ML models via 6 REST endpoints. "
+        "It is built with FastAPI and Pydantic v2."
+    )
+
+    doc.add_heading("10.1 Architecture", level=2)
     add_table(doc,
-        ["Metrique", "Formule", "Interpretation"],
+        ["File", "Responsibility"],
         [
-            ["RMSE", "sqrt(mean((y-yhat)^2))", "Erreur moyenne en unites de la cible"],
-            ["MAE", "mean(|y-yhat|)", "Erreur absolue moyenne"],
-            ["MAPE", "mean(|y-yhat|/|y|) x 100", "Erreur relative en pourcentage"],
-            ["R2", "1 - SS_res/SS_tot", "Part de variance expliquee (1 = parfait)"],
+            ["api/main.py", "Endpoints, CORS middleware, lifespan (model loading)"],
+            ["api/models.py", "Pydantic v2 schemas (request/response)"],
+            ["api/dependencies.py", "AppState singleton, .pkl model loading"],
         ]
     )
 
-    doc.add_heading("10.2 Visualisations generees", level=2)
-    bullets = [
-        "Predictions vs reel (validation + test) pour chaque modele",
-        "Comparaison des metriques (graphique en barres groupees)",
-        "Analyse des residus (distribution + scatter residus vs predictions)",
-        "Feature importance (coefficients Ridge, gain LightGBM)",
-        "Analyse SHAP (si le package shap est installe)",
-    ]
-    for b in bullets:
-        doc.add_paragraph(b, style="List Bullet")
-
-    doc.add_heading("10.3 Cross-validation", level=2)
-    doc.add_paragraph(
-        "Une cross-validation temporelle (TimeSeriesSplit, 3 folds) est effectuee "
-        "sur Ridge et LightGBM pour estimer la stabilite des performances. "
-        "Les scores moyens et ecarts-types sont reportes dans training_results.csv."
+    doc.add_heading("10.2 Endpoints", level=2)
+    add_table(doc,
+        ["Method", "Endpoint", "Description"],
+        [
+            ["GET", "/health", "Health check + version + model status"],
+            ["GET", "/predictions", "Stored predictions (with dept/date filters)"],
+            ["POST", "/predict", "Custom prediction (manual values)"],
+            ["GET", "/data/summary", "Dataset summary (rows, columns, sources)"],
+            ["GET", "/model/metrics", "Model evaluation metrics"],
+            ["GET", "/departments", "List of 96 departments"],
+        ]
     )
 
+    doc.add_heading("10.3 Startup", level=2)
+    doc.add_paragraph("uvicorn api.main:app --reload", style="No Spacing")
+    doc.add_paragraph("Interactive documentation: http://localhost:8000/docs")
     doc.add_page_break()
 
-    # === 11. TESTS UNITAIRES ===
-    doc.add_heading("11. Tests unitaires", level=1)
+    # =================================================================
+    # 11. STREAMLIT DASHBOARD
+    # =================================================================
+    doc.add_heading("11. Streamlit Dashboard", level=1)
 
     doc.add_paragraph(
-        "Le projet dispose de 57 tests unitaires repartis en 3 categories :"
+        "The Streamlit dashboard provides 6 interactive pages to "
+        "explore the data and model results."
     )
+
     add_table(doc,
-        ["Fichier", "Tests", "Couverture"],
+        ["Page", "File", "Content"],
         [
-            ["tests/test_config.py", "11", "GeoConfig, TimeConfig, DatabaseConfig, "
-             "ProjectConfig, ModelConfig"],
-            ["tests/test_collectors/test_base.py", "12", "CollectorStatus, CollectorConfig, "
-             "CollectorResult, CollectorRegistry"],
-            ["tests/test_collectors/test_weather.py", "6", "Validation, collecte mockee, "
-             "resilience partielle"],
-            ["tests/test_collectors/test_insee.py", "5", "Validation, structure des series"],
-            ["tests/test_processing/test_clean_data.py", "7", "Nettoyage meteo, INSEE, Eurostat"],
-            ["tests/test_processing/test_feature_engineering.py", "9+7=16", "Lags, rolling, "
-             "interactions, tendances, cas limites"],
+            ["Home", "app/pages/home.py", "Project presentation and KPIs"],
+            ["Exploration", "app/pages/exploration.py", "Interactive charts, dept/date filters"],
+            ["Map", "app/pages/carte.py", "Department choropleth map"],
+            ["Models", "app/pages/models.py", "Model comparison, metrics"],
+            ["Predictions", "app/pages/predictions.py", "Future predictions, charts"],
+            ["Pipeline", "app/pages/pipeline_page.py", "Pipeline execution from the dashboard"],
         ]
     )
 
+    doc.add_paragraph("")
     doc.add_paragraph(
-        "Les tests utilisent des fixtures partagees definies dans tests/conftest.py "
-        "(configurations de test, DataFrames synthetiques). Les appels HTTP sont "
-        "mockes pour eviter les dependances reseau."
+        "The dashboard uses @st.cache_data(ttl=300) for caching "
+        "and a dynamic page loading system."
     )
-
+    doc.add_paragraph("Startup: streamlit run app/app.py", style="No Spacing")
     doc.add_page_break()
 
-    # === 12. CONFIGURATION ===
-    doc.add_heading("12. Configuration et parametrage", level=1)
+    # =================================================================
+    # 12. DEPLOYMENT (Docker / Kubernetes)
+    # =================================================================
+    doc.add_heading("12. Deployment (Docker / Kubernetes)", level=1)
 
-    doc.add_heading("12.1 Variables d'environnement", level=2)
+    doc.add_heading("12.1 Docker", level=2)
+    doc.add_paragraph("The Dockerfile uses a multi-stage build (3 stages):")
+    add_numbered(doc, [
+        "base — Python 3.11-slim, system dependencies",
+        "dependencies — pip installation (cached layer)",
+        "app — Code copy, entrypoint",
+    ])
+
+    doc.add_heading("12.2 Docker Compose", level=2)
     add_table(doc,
-        ["Variable", "Defaut", "Description"],
+        ["Service", "Port", "Description"],
         [
-            ["DB_TYPE", "sqlite", "Type de BDD (sqlite, mssql, postgresql)"],
-            ["DB_PATH", "data/hvac_market.db", "Chemin fichier SQLite"],
-            ["DATA_START_DATE", "2019-01-01", "Debut de la collecte"],
-            ["DATA_END_DATE", "2026-02-28", "Fin de la collecte"],
-            ["TARGET_REGION", "84", "Code region INSEE"],
-            ["TARGET_DEPARTMENTS", "01,07,26,38,42,69,73,74", "Departements cibles"],
-            ["REQUEST_TIMEOUT", "30", "Timeout HTTP en secondes"],
-            ["MAX_RETRIES", "3", "Nombre max de retries"],
-            ["LOG_LEVEL", "INFO", "Niveau de logging"],
+            ["api", "8000", "FastAPI (uvicorn)"],
+            ["dashboard", "8501", "Streamlit"],
+            ["pipeline", "—", "Pipeline execution (profile: tools)"],
+            ["postgres", "5432", "PostgreSQL 16 (profile: db, optional)"],
         ]
     )
 
-    doc.add_heading("12.2 Configuration ML", level=2)
+    doc.add_heading("12.3 Execution Modes", level=2)
+    doc.add_paragraph("The docker-entrypoint.sh supports 5 modes:")
     add_table(doc,
-        ["Parametre", "Defaut", "Description"],
+        ["Mode", "Command", "Description"],
         [
-            ["max_lag_months", "6", "Lag maximum pour les features retardees"],
-            ["rolling_windows", "[3, 6]", "Tailles des fenetres glissantes"],
-            ["hdd_base_temp", "18.0", "Temperature de base HDD (degres C)"],
-            ["cdd_base_temp", "18.0", "Temperature de base CDD (degres C)"],
-            ["lightgbm max_depth", "4", "Profondeur max des arbres"],
-            ["lightgbm num_leaves", "15", "Nombre max de feuilles"],
-            ["lightgbm learning_rate", "0.05", "Taux d'apprentissage"],
+            ["all", "docker run -e MODE=all ...", "API + Dashboard (default)"],
+            ["api", "docker run -e MODE=api ...", "API only"],
+            ["dashboard", "docker run -e MODE=dashboard ...", "Dashboard only"],
+            ["pipeline", "docker run -e MODE=pipeline ...", "Pipeline execution"],
+            ["demo", "docker run -e MODE=demo ...", "Demo data → pipeline → services"],
         ]
     )
 
-    # Sauvegarder
+    doc.add_heading("12.4 Kubernetes", level=2)
+    doc.add_paragraph("6 manifests in the kubernetes/ directory:")
+    add_table(doc,
+        ["File", "Resource", "Description"],
+        [
+            ["namespace.yaml", "Namespace", "hvac-market"],
+            ["api-deployment.yaml", "Deployment + Service", "2 replicas, probes /health"],
+            ["dashboard-deployment.yaml", "Deployment + Service", "1 replica, probes /_stcore/health"],
+            ["ingress.yaml", "Ingress", "nginx, /api/* → API, /* → Dashboard"],
+            ["pvc.yaml", "PersistentVolumeClaim", "5Gi ReadWriteOnce"],
+            ["cronjob-pipeline.yaml", "CronJob", "Monthly pipeline (1st of month, 6am)"],
+        ]
+    )
+
+    doc.add_heading("12.5 Render (PaaS)", level=2)
+    doc.add_paragraph(
+        "The render.yaml file defines 2 web services (API + Dashboard) "
+        "deployable with one click on Render.com (free tier)."
+    )
+    doc.add_page_break()
+
+    # =================================================================
+    # 13. ORCHESTRATION (Airflow)
+    # =================================================================
+    doc.add_heading("13. Orchestration (Airflow)", level=1)
+
+    doc.add_paragraph(
+        "The Airflow DAG (airflow/dags/hvac_pipeline_dag.py) orchestrates "
+        "the complete pipeline with 3 task groups:"
+    )
+
+    add_table(doc,
+        ["TaskGroup", "Tasks", "Mode"],
+        [
+            ["collect_group", "5 collectors (weather, insee, eurostat, dpe, sitadel)", "Parallel"],
+            ["process_group", "clean → merge → features → eda (6 steps)", "Sequential"],
+            ["ml_group", "train + evaluate", "Parallel"],
+        ]
+    )
+
+    doc.add_paragraph("")
+    add_bullets(doc, [
+        "Schedule: 0 6 1 * * (1st of month at 6am)",
+        "Quality gates between each group (PythonOperator)",
+        "SLAs and failure callbacks",
+        "Execution_timeout to prevent deadlocks",
+    ])
+    doc.add_page_break()
+
+    # =================================================================
+    # 14. REINFORCEMENT LEARNING
+    # =================================================================
+    doc.add_heading("14. Reinforcement Learning (demo)", level=1)
+
+    doc.add_paragraph(
+        "The module src/models/reinforcement_learning_demo.py implements "
+        "a Gymnasium environment simulating HVAC maintenance."
+    )
+
+    doc.add_heading("14.1 Environment (HVACMaintenanceEnv)", level=2)
+    add_table(doc,
+        ["Element", "Description"],
+        [
+            ["State (6 dim)", "equipment_age, efficiency, temperature, humidity, "
+             "nb_failures, cumulative_cost"],
+            ["Actions (4)", "0: nothing, 1: light maintenance, 2: full maintenance, "
+             "3: replacement"],
+            ["Reward", "Efficiency x bonus — action_cost — failure_penalty"],
+            ["Episode", "12 months (1 year of maintenance)"],
+        ]
+    )
+
+    doc.add_heading("14.2 Q-Learning Agent", level=2)
+    add_bullets(doc, [
+        "Discretization of continuous state into bins",
+        "Epsilon-greedy policy (exploration → exploitation)",
+        "Comparison with random policy",
+        "Visualizations: learning curve, Q-values heatmap",
+    ])
+    doc.add_page_break()
+
+    # =================================================================
+    # 15. UNIT TESTS
+    # =================================================================
+    doc.add_heading("15. Unit Tests", level=1)
+
+    doc.add_paragraph("The project has 119 unit tests:")
+    add_table(doc,
+        ["File", "Tests", "Coverage"],
+        [
+            ["tests/test_config.py", "11+", "GeoConfig, TimeConfig, DatabaseConfig, ModelConfig"],
+            ["tests/test_collectors/test_base.py", "12", "CollectorStatus, Config, Result, Registry"],
+            ["tests/test_collectors/test_weather.py", "6", "Validation, mocked collection, resilience"],
+            ["tests/test_collectors/test_insee.py", "5", "Validation, series structure"],
+            ["tests/test_collectors/test_pcloud_sync.py", "~20", "Sync, upload, download, backward compat"],
+            ["tests/test_processing/test_clean_data.py", "7", "Weather, INSEE, Eurostat cleaning"],
+            ["tests/test_processing/test_feature_engineering.py", "16", "Lags, rolling, interactions"],
+            ["tests/test_processing/test_outlier_detection.py", "~20", "IQR, Z-score, IF, LOF"],
+            ["tests/test_models/test_robust_scaling.py", "~5", "RobustScaler"],
+        ]
+    )
+
+    doc.add_paragraph(
+        "Tests use shared fixtures (tests/conftest.py) "
+        "and HTTP calls are mocked (no network dependency)."
+    )
+    doc.add_page_break()
+
+    # =================================================================
+    # 16. FORMATION MODULES COVERAGE
+    # =================================================================
+    doc.add_heading("16. Training Modules Coverage", level=1)
+
+    doc.add_paragraph(
+        "The project covers the 6 modules of the "
+        "Data Science Lead certification (RNCP Master's level, Jedha Bootcamp):"
+    )
+
+    add_table(doc,
+        ["Module", "Subject", "Implementation in the project"],
+        [
+            ["M1", "Data Governance",
+             "docs/DATA_GOVERNANCE.md — GDPR, AI Act, data lineage, maturity audit"],
+            ["M2", "Deployment & Distributed ML",
+             "Dockerfile, docker-compose.yml, kubernetes/, render.yaml"],
+            ["M3", "Database Architecture",
+             "docs/DATABASE_ARCHITECTURE.md — Star schema, OLAP, MongoDB"],
+            ["M4", "Data Pipelines",
+             "docs/DATA_PIPELINE.md — ETL architecture, monitoring, Airbyte"],
+            ["M5", "Automation & Workflow",
+             "airflow/dags/hvac_pipeline_dag.py — Complete DAG, TaskGroups"],
+            ["M6", "Reinforcement Learning",
+             "src/models/reinforcement_learning_demo.py — Gymnasium + Q-Learning"],
+        ]
+    )
+
+    # Save
     path = "docs/documentation_technique.docx"
     doc.save(path)
-    print(f"Documentation technique generee : {path}")
+    print(f"Technical documentation generated: {path}")
     return path
 
 
 # ================================================================
-# DOCUMENT 2 : Guide d'utilisation
+# DOCUMENT 2 : User Guide & Configuration
 # ================================================================
 
 def generate_user_guide():
-    """Genere le guide d'utilisation."""
+    """Generate the user guide with installation, config, and accounts."""
     doc = Document()
     set_doc_styles(doc)
     add_cover_page(
         doc,
-        "Guide d'Utilisation",
-        "Installation, Commandes et Utilisation Quotidienne"
+        "User Guide",
+        "Installation, Configuration, Accounts and Deployment"
     )
 
-    # --- TABLE DES MATIERES ---
-    doc.add_heading("Table des matieres", level=1)
-    toc_items = [
-        "1. Prerequis",
+    # --- TABLE OF CONTENTS ---
+    doc.add_heading("Table of Contents", level=1)
+    toc = [
+        "1. Prerequisites",
         "2. Installation",
-        "3. Configuration",
-        "4. Commandes du pipeline",
-        "5. Workflow quotidien",
-        "6. Travailler sur plusieurs machines",
-        "7. Tests",
-        "8. Structure des donnees",
-        "9. Depannage",
+        "3. Configuration (.env)",
+        "4. Pipeline Commands",
+        "5. External Accounts and Services",
+        "6. Docker Deployment",
+        "7. Kubernetes Deployment",
+        "8. Render Deployment (PaaS)",
+        "9. Dashboard & API",
+        "10. Tests",
+        "11. Data Structure",
+        "12. Troubleshooting",
     ]
-    for item in toc_items:
+    for item in toc:
         doc.add_paragraph(item, style="List Number")
     doc.add_page_break()
 
-    # === 1. PREREQUIS ===
-    doc.add_heading("1. Prerequis", level=1)
+    # =================================================================
+    # 1. PREREQUISITES
+    # =================================================================
+    doc.add_heading("1. Prerequisites", level=1)
     add_table(doc,
-        ["Composant", "Version", "Notes"],
+        ["Component", "Version", "Notes"],
         [
-            ["Python", "3.10+", "Requis"],
-            ["Git", "2.x+", "Pour le versionnement"],
-            ["pip", "Derniere", "Gestionnaire de packages"],
-            ["SQLite", "Integre", "Aucune installation (inclus dans Python)"],
-            ["PyTorch", "2.1+", "Optionnel (LSTM uniquement)"],
+            ["Python", "3.10+", "Required"],
+            ["Git", "2.x+", "Version control"],
+            ["pip", "Latest", "Package manager"],
+            ["Docker", "20.x+", "Optional (containerized deployment)"],
+            ["Docker Compose", "2.x+", "Optional (multi-services)"],
+            ["kubectl", "1.25+", "Optional (Kubernetes deployment)"],
         ]
     )
-
     doc.add_page_break()
 
-    # === 2. INSTALLATION ===
+    # =================================================================
+    # 2. INSTALLATION
+    # =================================================================
     doc.add_heading("2. Installation", level=1)
 
-    doc.add_heading("2.1 Clonage du depot", level=2)
+    doc.add_heading("2.1 Repository Cloning", level=2)
     doc.add_paragraph(
         "git clone https://github.com/PDUCLOS/Projet-HVAC.git\n"
         "cd Projet-HVAC",
         style="No Spacing"
     )
 
-    doc.add_heading("2.2 Environnement virtuel", level=2)
-    doc.add_paragraph("Windows :", style="List Bullet")
+    doc.add_heading("2.2 Virtual Environment", level=2)
+    doc.add_paragraph("Windows:", style="List Bullet")
     doc.add_paragraph(
-        "python -m venv venv\n"
-        "venv\\Scripts\\activate",
+        "python -m venv venv\nvenv\\Scripts\\activate",
         style="No Spacing"
     )
-    doc.add_paragraph("Linux / Mac :", style="List Bullet")
+    doc.add_paragraph("Linux / Mac:", style="List Bullet")
     doc.add_paragraph(
-        "python -m venv venv\n"
-        "source venv/bin/activate",
+        "python -m venv venv\nsource venv/bin/activate",
         style="No Spacing"
     )
 
-    doc.add_heading("2.3 Dependances", level=2)
+    doc.add_heading("2.3 Dependencies", level=2)
     doc.add_paragraph(
-        "# Core (requis)\n"
+        "# Core (required)\n"
         "pip install -r requirements.txt\n\n"
-        "# Deep Learning (optionnel)\n"
+        "# API (if using FastAPI)\n"
+        "pip install -r requirements-api.txt\n\n"
+        "# Deep Learning (optional)\n"
         "pip install -r requirements-dl.txt",
         style="No Spacing"
     )
 
-    doc.add_heading("2.4 Configuration", level=2)
-    doc.add_paragraph("Windows :", style="List Bullet")
-    doc.add_paragraph("copy .env.example .env", style="No Spacing")
-    doc.add_paragraph("Linux / Mac :", style="List Bullet")
-    doc.add_paragraph("cp .env.example .env", style="No Spacing")
+    doc.add_heading("2.4 Quick Setup", level=2)
+    doc.add_paragraph("python setup_project.py", style="No Spacing")
     doc.add_paragraph(
-        "Le fichier .env contient les parametres du projet. "
-        "Les valeurs par defaut fonctionnent pour un setup local standard."
+        "This script creates the data/ directories, initializes the SQLite database "
+        "and verifies that dependencies are installed."
     )
-
-    doc.add_heading("2.5 Initialisation rapide", level=2)
-    doc.add_paragraph(
-        "python setup_project.py",
-        style="No Spacing"
-    )
-    doc.add_paragraph(
-        "Ce script cree les repertoires data/, initialise la BDD SQLite "
-        "et verifie que les dependances sont installees."
-    )
-
     doc.add_page_break()
 
-    # === 3. CONFIGURATION ===
-    doc.add_heading("3. Configuration", level=1)
+    # =================================================================
+    # 3. CONFIGURATION
+    # =================================================================
+    doc.add_heading("3. Configuration (.env)", level=1)
 
-    doc.add_heading("3.1 Fichier .env", level=2)
-    doc.add_paragraph(
-        "Le fichier .env est lu au demarrage du pipeline via python-dotenv. "
-        "Il n'est pas versionne dans Git (secrets). "
-        "Voir .env.example pour le template complet."
+    doc.add_heading("3.1 File Creation", level=2)
+    doc.add_paragraph("cp .env.example .env", style="No Spacing")
+
+    doc.add_heading("3.2 Main Variables", level=2)
+    add_table(doc,
+        ["Variable", "Default", "Description"],
+        [
+            ["DB_TYPE", "sqlite", "Database type (sqlite, mssql, postgresql)"],
+            ["DB_PATH", "data/hvac_market.db", "SQLite file path"],
+            ["DATA_START_DATE", "2019-01-01", "Collection start date"],
+            ["DATA_END_DATE", "2026-02-28", "Collection end date"],
+            ["TARGET_REGION", "FR", "Region code (FR = Metropolitan France, 96 depts)"],
+            ["REQUEST_TIMEOUT", "30", "HTTP timeout in seconds"],
+            ["MAX_RETRIES", "3", "Maximum number of retries"],
+            ["LOG_LEVEL", "INFO", "Logging level"],
+        ]
     )
 
-    doc.add_heading("3.2 Base de donnees", level=2)
+    doc.add_heading("3.3 Database Configuration", level=2)
     doc.add_paragraph(
-        "Par defaut, le projet utilise SQLite (aucune installation). "
-        "Pour basculer vers SQL Server ou PostgreSQL, modifier DB_TYPE "
-        "dans le fichier .env :"
-    )
-    doc.add_paragraph(
-        "# SQLite (defaut)\n"
+        "# SQLite (default — no installation needed)\n"
         "DB_TYPE=sqlite\n"
         "DB_PATH=data/hvac_market.db\n\n"
-        "# SQL Server\n"
-        "DB_TYPE=mssql\n"
-        "DB_HOST=localhost\n"
-        "DB_PORT=1433\n"
-        "ALLOW_NON_LOCAL=true\n\n"
-        "# PostgreSQL\n"
+        "# PostgreSQL (production/cloud)\n"
         "DB_TYPE=postgresql\n"
         "DB_HOST=localhost\n"
         "DB_PORT=5432\n"
+        "DB_NAME=hvac\n"
+        "DB_USER=hvac_user\n"
+        "DB_PASSWORD=your_password\n"
         "ALLOW_NON_LOCAL=true",
         style="No Spacing"
     )
-
-    doc.add_heading("3.3 Periode de collecte", level=2)
-    doc.add_paragraph(
-        "Les dates de debut/fin de collecte sont configurables :\n\n"
-        "DATA_START_DATE=2019-01-01\n"
-        "DATA_END_DATE=2026-02-28",
-        style="No Spacing"
-    )
-
     doc.add_page_break()
 
-    # === 4. COMMANDES ===
-    doc.add_heading("4. Commandes du pipeline", level=1)
+    # =================================================================
+    # 4. PIPELINE COMMANDS
+    # =================================================================
+    doc.add_heading("4. Pipeline Commands", level=1)
 
-    doc.add_paragraph(
-        "Toutes les commandes s'executent depuis la racine du projet :"
+    add_table(doc,
+        ["Command", "Description", "Duration"],
+        [
+            ["python -m src.pipeline list", "List collectors", "< 1s"],
+            ["python -m src.pipeline init_db", "Initialize the database", "< 5s"],
+            ["python -m src.pipeline collect", "Collect all sources", "30-90 min"],
+            ["python -m src.pipeline collect --sources weather,insee",
+             "Collect specific sources", "< 5 min"],
+            ["python -m src.pipeline clean", "Clean raw data", "1-3 min"],
+            ["python -m src.pipeline merge", "Merge into ML dataset", "< 30s"],
+            ["python -m src.pipeline features", "Feature engineering", "< 10s"],
+            ["python -m src.pipeline process", "clean + merge + features", "2-5 min"],
+            ["python -m src.pipeline eda", "Exploratory analysis", "1-2 min"],
+            ["python -m src.pipeline train", "Train ML models", "2-5 min"],
+            ["python -m src.pipeline evaluate", "Evaluate models", "3-5 min"],
+            ["python -m src.pipeline all", "Complete pipeline", "40-90 min"],
+        ]
     )
 
-    doc.add_heading("4.1 Syntaxe", level=2)
+    doc.add_heading("Makefile Shortcuts", level=2)
+    add_table(doc,
+        ["Command", "Action"],
+        [
+            ["make install", "Create venv + install dependencies"],
+            ["make collect", "Collect all sources"],
+            ["make process", "Process data"],
+            ["make train", "Train models"],
+            ["make all", "Complete pipeline"],
+            ["make test", "Run all 119 tests"],
+            ["make api", "Start the FastAPI API"],
+            ["make dashboard", "Start the Streamlit dashboard"],
+            ["make docker-build", "Build the Docker image"],
+            ["make docker-run", "Run via Docker"],
+        ]
+    )
+    doc.add_page_break()
+
+    # =================================================================
+    # 5. ACCOUNTS AND EXTERNAL SERVICES
+    # =================================================================
+    doc.add_heading("5. External Accounts and Services", level=1)
+
     doc.add_paragraph(
-        "python -m src.pipeline <commande> [options]",
+        "Here are the accounts and configurations required depending on your usage:"
+    )
+
+    doc.add_heading("5.1 No account required (local usage)", level=2)
+    doc.add_paragraph(
+        "To use the project locally, NO account is needed. "
+        "All data sources are Open Data without API keys."
+    )
+    add_bullets(doc, [
+        "DPE ADEME: free access (data.ademe.fr)",
+        "Open-Meteo: free access (archive-api.open-meteo.com)",
+        "INSEE BDM: free access (bdm.insee.fr/sdmx)",
+        "Eurostat: free access (ec.europa.eu/eurostat)",
+    ])
+
+    doc.add_heading("5.2 GitHub (version control + CI/CD)", level=2)
+    add_table(doc,
+        ["Element", "Action"],
+        [
+            ["Account", "Create an account on github.com (free)"],
+            ["Repository", "Fork or clone PDUCLOS/Projet-HVAC"],
+            ["Visibility", "Set the repo to PUBLIC for the portfolio"],
+            ["GitHub Pages", "Optional: enable to host documentation"],
+        ]
+    )
+
+    doc.add_heading("5.3 Render.com (PaaS deployment)", level=2)
+    add_table(doc,
+        ["Element", "Action"],
+        [
+            ["Account", "Create an account on render.com (free)"],
+            ["Connection", "Link with your GitHub account"],
+            ["Deployment", "New > Blueprint > select the repo"],
+            ["Blueprint", "render.yaml configures 2 services automatically"],
+            ["Tier", "Free tier (sufficient for demo/portfolio)"],
+            ["Variables", "Add DB_TYPE=sqlite in Environment"],
+        ]
+    )
+
+    doc.add_heading("5.4 Docker Hub (Docker images)", level=2)
+    add_table(doc,
+        ["Element", "Action"],
+        [
+            ["Account", "Create an account on hub.docker.com (free)"],
+            ["Login", "docker login"],
+            ["Build", "docker build -t your-user/hvac-market ."],
+            ["Push", "docker push your-user/hvac-market"],
+        ]
+    )
+    doc.add_paragraph(
+        "Note: Docker Hub is only needed if you want to distribute "
+        "the image. For local usage, 'docker build' is sufficient."
+    )
+
+    doc.add_heading("5.5 Cloud Kubernetes (optional)", level=2)
+    doc.add_paragraph(
+        "To deploy on a Kubernetes cluster:"
+    )
+    add_table(doc,
+        ["Provider", "Service", "Free tier"],
+        [
+            ["Google Cloud", "GKE Autopilot", "$300 credits (90 days)"],
+            ["AWS", "EKS", "No free tier for EKS"],
+            ["Azure", "AKS", "Free tier control plane"],
+            ["OVHcloud", "Managed Kubernetes", "Free (pay-as-you-go nodes)"],
+        ]
+    )
+    doc.add_paragraph(
+        "For the portfolio, Render.com (free) is recommended. "
+        "Kubernetes is documented to demonstrate the skill."
+    )
+
+    doc.add_heading("5.6 pCloud (data storage)", level=2)
+    add_table(doc,
+        ["Element", "Action"],
+        [
+            ["Account", "Create an account on pcloud.com (free, 10 GB)"],
+            ["Configuration", "Add PCLOUD_USER and PCLOUD_PASS in .env"],
+            ["Usage", "python -m src.pipeline sync — synchronizes data/"],
+            ["Optional", "Only if you work on multiple machines"],
+        ]
+    )
+
+    doc.add_heading("5.7 Streamlit Cloud (online dashboard)", level=2)
+    add_table(doc,
+        ["Element", "Action"],
+        [
+            ["Account", "Create an account on streamlit.io (free)"],
+            ["Connection", "Link with your GitHub account"],
+            ["Deployment", "New app > select repo > app/app.py"],
+            ["Data", "Use data/sample/ for demo mode"],
+        ]
+    )
+    doc.add_page_break()
+
+    # =================================================================
+    # 6. DOCKER DEPLOYMENT
+    # =================================================================
+    doc.add_heading("6. Docker Deployment", level=1)
+
+    doc.add_heading("6.1 Build", level=2)
+    doc.add_paragraph("docker build -t hvac-market .", style="No Spacing")
+
+    doc.add_heading("6.2 Run (full mode)", level=2)
+    doc.add_paragraph(
+        "docker compose up -d\n"
+        "# API: http://localhost:8000\n"
+        "# Dashboard: http://localhost:8501",
         style="No Spacing"
     )
 
-    doc.add_heading("4.2 Commandes disponibles", level=2)
-    add_table(doc,
-        ["Commande", "Description", "Duree estimee"],
-        [
-            ["list", "Lister les collecteurs disponibles", "< 1s"],
-            ["init_db", "Initialiser la BDD (tables, index, donnees de reference)", "< 5s"],
-            ["collect", "Collecter toutes les sources", "30-60 min (DPE)"],
-            ["collect --sources weather,insee", "Collecter des sources specifiques", "< 5 min"],
-            ["import_data", "Importer les CSV collectes dans la BDD", "5-10 min"],
-            ["clean", "Nettoyer les donnees brutes", "1-3 min"],
-            ["merge", "Fusionner en dataset ML", "< 30s"],
-            ["features", "Feature engineering", "< 10s"],
-            ["process", "clean + merge + features (raccourci)", "2-5 min"],
-            ["eda", "Analyse exploratoire + correlations", "1-2 min"],
-            ["train", "Entrainer les modeles ML", "2-5 min"],
-            ["train --target nb_dpe_total", "Entrainer avec une autre cible", "2-5 min"],
-            ["evaluate", "Evaluer et comparer les modeles", "3-5 min"],
-            ["all", "Pipeline complet de bout en bout", "40-70 min"],
-        ]
+    doc.add_heading("6.3 Run (demo mode)", level=2)
+    doc.add_paragraph(
+        "docker run -e MODE=demo -p 8000:8000 -p 8501:8501 hvac-market",
+        style="No Spacing"
     )
-
-    doc.add_heading("4.3 Options globales", level=2)
-    add_table(doc,
-        ["Option", "Valeurs", "Description"],
-        [
-            ["--log-level", "DEBUG, INFO, WARNING, ERROR", "Niveau de verbosity (defaut: INFO)"],
-            ["--sources", "weather,insee,eurostat,dpe", "Sources a collecter (virgule)"],
-            ["--target", "nb_installations_pac, nb_dpe_total, ...", "Variable cible ML"],
-        ]
+    doc.add_paragraph(
+        "Demo mode generates synthetic data, runs the pipeline, "
+        "then launches the API and dashboard automatically."
     )
+    doc.add_page_break()
 
-    doc.add_heading("4.4 Exemples d'utilisation", level=2)
+    # =================================================================
+    # 7. KUBERNETES DEPLOYMENT
+    # =================================================================
+    doc.add_heading("7. Kubernetes Deployment", level=1)
 
-    doc.add_paragraph("Pipeline complet :", style="List Bullet")
-    doc.add_paragraph("python -m src.pipeline all", style="No Spacing")
-
+    doc.add_paragraph("Apply the manifests in order:")
+    doc.add_paragraph(
+        "kubectl apply -f kubernetes/namespace.yaml\n"
+        "kubectl apply -f kubernetes/pvc.yaml\n"
+        "kubectl apply -f kubernetes/api-deployment.yaml\n"
+        "kubectl apply -f kubernetes/dashboard-deployment.yaml\n"
+        "kubectl apply -f kubernetes/ingress.yaml\n"
+        "kubectl apply -f kubernetes/cronjob-pipeline.yaml",
+        style="No Spacing"
+    )
     doc.add_paragraph("")
-    doc.add_paragraph("Collecte meteo + INSEE uniquement :", style="List Bullet")
-    doc.add_paragraph("python -m src.pipeline collect --sources weather,insee", style="No Spacing")
+    doc.add_paragraph(
+        "Verify the deployment:\n"
+        "kubectl get pods -n hvac-market\n"
+        "kubectl get svc -n hvac-market",
+        style="No Spacing"
+    )
+    doc.add_page_break()
 
+    # =================================================================
+    # 8. RENDER DEPLOYMENT
+    # =================================================================
+    doc.add_heading("8. Render Deployment (PaaS)", level=1)
+
+    doc.add_heading("Steps", level=2)
+    add_numbered(doc, [
+        "Create an account on render.com and link GitHub",
+        "Click 'New > Blueprint'",
+        "Select the repository PDUCLOS/Projet-HVAC",
+        "Render automatically detects render.yaml",
+        "2 services are created: hvac-api (FastAPI) and hvac-dashboard (Streamlit)",
+        "Add environment variables if needed (DB_TYPE=sqlite)",
+        "Click Deploy — URLs are generated automatically",
+    ])
+    doc.add_page_break()
+
+    # =================================================================
+    # 9. DASHBOARD & API
+    # =================================================================
+    doc.add_heading("9. Dashboard & API", level=1)
+
+    doc.add_heading("9.1 Local Launch", level=2)
+    doc.add_paragraph(
+        "# API (terminal 1)\n"
+        "uvicorn api.main:app --reload --port 8000\n\n"
+        "# Dashboard (terminal 2)\n"
+        "streamlit run app/app.py --server.port 8501",
+        style="No Spacing"
+    )
+
+    doc.add_heading("9.2 API Documentation", level=2)
+    add_bullets(doc, [
+        "Swagger UI : http://localhost:8000/docs",
+        "ReDoc : http://localhost:8000/redoc",
+        "OpenAPI JSON : http://localhost:8000/openapi.json",
+    ])
+    doc.add_page_break()
+
+    # =================================================================
+    # 10. TESTS
+    # =================================================================
+    doc.add_heading("10. Tests", level=1)
+
+    doc.add_paragraph("python -m pytest tests/ -v", style="No Spacing")
     doc.add_paragraph("")
-    doc.add_paragraph("Retraiter les donnees sans recollecte :", style="List Bullet")
-    doc.add_paragraph("python -m src.pipeline process", style="No Spacing")
-
-    doc.add_paragraph("")
-    doc.add_paragraph("Entrainer un modele avec logs detailles :", style="List Bullet")
-    doc.add_paragraph("python -m src.pipeline train --log-level DEBUG", style="No Spacing")
-
-    doc.add_page_break()
-
-    # === 5. WORKFLOW ===
-    doc.add_heading("5. Workflow quotidien", level=1)
-
-    doc.add_heading("5.1 Premiere utilisation", level=2)
-    steps = [
-        "Cloner le depot et installer l'environnement (Section 2)",
-        "Copier .env.example en .env",
-        "Lancer : python -m src.pipeline all",
-        "Attendre 30-60 minutes (la collecte DPE est longue)",
-        "Les resultats sont dans data/models/ et data/analysis/",
-    ]
-    for i, s in enumerate(steps, 1):
-        doc.add_paragraph(f"{i}. {s}")
-
-    doc.add_heading("5.2 Mise a jour des donnees", level=2)
     doc.add_paragraph(
-        "Pour mettre a jour les donnees avec les derniers mois disponibles :"
-    )
-    steps = [
-        "Modifier DATA_END_DATE dans .env si necessaire",
-        "python -m src.pipeline collect    # Re-collecter",
-        "python -m src.pipeline process    # Retraiter",
-        "python -m src.pipeline train      # Re-entrainer",
-    ]
-    for i, s in enumerate(steps, 1):
-        doc.add_paragraph(f"{i}. {s}")
-
-    doc.add_heading("5.3 Changer de variable cible", level=2)
-    doc.add_paragraph(
-        "Le projet peut predire differentes variables :"
-    )
-    add_table(doc,
-        ["Cible", "Description"],
-        [
-            ["nb_installations_pac", "Nombre de pompes a chaleur (defaut)"],
-            ["nb_installations_clim", "Nombre de climatisations"],
-            ["nb_dpe_total", "Volume total de DPE"],
-            ["nb_dpe_classe_ab", "Nombre de batiments performants (A ou B)"],
-        ]
-    )
-    doc.add_paragraph(
-        "python -m src.pipeline train --target nb_dpe_total",
-        style="No Spacing"
-    )
-
-    doc.add_page_break()
-
-    # === 6. MULTI-MACHINES ===
-    doc.add_heading("6. Travailler sur plusieurs machines", level=1)
-
-    doc.add_heading("6.1 Ce qui est dans Git vs ce qui ne l'est pas", level=2)
-    add_table(doc,
-        ["Dans Git", "Pas dans Git (.gitignore)"],
-        [
-            ["Code source (src/, config/)", "Donnees brutes (data/raw/) ~600 Mo"],
-            ["Configuration (.env.example)", "Donnees traitees (data/processed/)"],
-            ["Schemas SQL", "Features ML (data/features/)"],
-            ["Tests (tests/)", "Base SQLite (data/*.db) ~316 Mo"],
-            ["Notebooks (structure)", "Fichier .env (secrets)"],
-            ["Documentation (docs/)", "Modeles entraines (*.pkl, *.pt)"],
-        ]
-    )
-
-    doc.add_heading("6.2 Option A — Telecharger les donnees (rapide)", level=2)
-    doc.add_paragraph(
-        "Les donnees pre-collectees (~1.5 Go) sont disponibles sur pCloud. "
-        "Telecharger et extraire dans le repertoire data/ du projet."
-    )
-
-    doc.add_heading("6.3 Option B — Regenerer les donnees", level=2)
-    doc.add_paragraph(
-        "git clone https://github.com/PDUCLOS/Projet-HVAC.git\n"
-        "cd Projet-HVAC\n"
-        "python -m venv venv && source venv/bin/activate\n"
-        "pip install -r requirements.txt\n"
-        "cp .env.example .env\n"
-        "python -m src.pipeline all",
-        style="No Spacing"
-    )
-
-    doc.add_heading("6.4 Synchronisation", level=2)
-    doc.add_paragraph("Machine A (apres modifications) :")
-    doc.add_paragraph(
-        "git add -A && git commit -m \"description\" && git push",
-        style="No Spacing"
-    )
-    doc.add_paragraph("Machine B (recuperer) :")
-    doc.add_paragraph(
-        "git pull\n"
-        "python -m src.pipeline process  # Si les donnees doivent etre retraitees",
-        style="No Spacing"
-    )
-
-    doc.add_page_break()
-
-    # === 7. TESTS ===
-    doc.add_heading("7. Tests", level=1)
-
-    doc.add_heading("7.1 Lancer tous les tests", level=2)
-    doc.add_paragraph(
-        "python -m pytest tests/ -v",
-        style="No Spacing"
-    )
-
-    doc.add_heading("7.2 Lancer un fichier de test specifique", level=2)
-    doc.add_paragraph(
-        "python -m pytest tests/test_config.py -v\n"
-        "python -m pytest tests/test_collectors/test_weather.py -v\n"
-        "python -m pytest tests/test_processing/ -v",
-        style="No Spacing"
-    )
-
-    doc.add_heading("7.3 Tests avec couverture", level=2)
-    doc.add_paragraph(
+        "# With coverage\n"
         "pip install pytest-cov\n"
         "python -m pytest tests/ --cov=src --cov=config --cov-report=term-missing",
         style="No Spacing"
     )
-
     doc.add_page_break()
 
-    # === 8. STRUCTURE DES DONNEES ===
-    doc.add_heading("8. Structure des donnees", level=1)
+    # =================================================================
+    # 11. DATA STRUCTURE
+    # =================================================================
+    doc.add_heading("11. Data Structure", level=1)
 
-    doc.add_heading("8.1 Repertoires", level=2)
     add_table(doc,
-        ["Repertoire", "Contenu"],
+        ["Directory", "Content"],
         [
-            ["data/raw/weather/", "weather_aura.csv — donnees meteo quotidiennes"],
-            ["data/raw/insee/", "indicateurs_economiques.csv — series INSEE"],
-            ["data/raw/eurostat/", "ipi_hvac_france.csv — indices de production"],
-            ["data/raw/dpe/", "dpe_aura_all.csv — DPE bruts (~300 Mo)"],
-            ["data/processed/", "Donnees nettoyees (meme structure que raw/)"],
-            ["data/features/", "hvac_ml_dataset.csv et hvac_features_dataset.csv"],
-            ["data/models/", "Modeles .pkl, metriques, rapports"],
-            ["data/models/figures/", "Graphiques de visualisation"],
-            ["data/analysis/", "Resultats EDA et correlations"],
-            ["data/analysis/figures/", "Graphiques exploratoires"],
+            ["data/raw/weather/", "weather_france.csv — daily weather data"],
+            ["data/raw/insee/", "indicateurs_economiques.csv — INSEE series"],
+            ["data/raw/eurostat/", "ipi_hvac_france.csv — production indices"],
+            ["data/raw/dpe/", "dpe_france_all.csv — raw DPE data"],
+            ["data/processed/", "Cleaned data"],
+            ["data/features/", "hvac_ml_dataset.csv and hvac_features_dataset.csv"],
+            ["data/models/", "Models .pkl, metrics, reports"],
+            ["data/models/figures/", "Visualization charts"],
+            ["data/analysis/", "EDA results and correlations"],
+            ["data/sample/", "Sample data for demo (200 rows)"],
         ]
     )
-
-    doc.add_heading("8.2 Fichiers de sortie cles", level=2)
-    add_table(doc,
-        ["Fichier", "Contenu", "Taille typique"],
-        [
-            ["hvac_ml_dataset.csv", "Dataset fusionne (35 colonnes)", "~50 Ko"],
-            ["hvac_features_dataset.csv", "Dataset avec features (90 colonnes)", "~150 Ko"],
-            ["training_results.csv", "Resume des metriques de tous les modeles", "< 5 Ko"],
-            ["evaluation_report.txt", "Rapport textuel complet", "< 10 Ko"],
-            ["ridge_model.pkl", "Modele Ridge entraine (pickle)", "< 1 Mo"],
-            ["lightgbm_model.pkl", "Modele LightGBM entraine (pickle)", "< 5 Mo"],
-            ["hvac_market.db", "Base SQLite complete", "~316 Mo"],
-        ]
-    )
-
     doc.add_page_break()
 
-    # === 9. DEPANNAGE ===
-    doc.add_heading("9. Depannage", level=1)
-
-    doc.add_heading("9.1 Erreurs courantes", level=2)
+    # =================================================================
+    # 12. TROUBLESHOOTING
+    # =================================================================
+    doc.add_heading("12. Troubleshooting", level=1)
 
     problems = [
         (
-            "ModuleNotFoundError: No module named 'xxx'",
-            "Installer le package manquant : pip install xxx\n"
-            "Ou reinstaller toutes les dependances : pip install -r requirements.txt"
+            "ModuleNotFoundError",
+            "pip install -r requirements.txt\n"
+            "Verify that the virtual environment is activated."
         ),
         (
-            "La collecte DPE echoue ou est tres lente",
-            "L'API ADEME peut etre temporairement surchargee. "
-            "Relancer la commande — le collecteur est idempotent. "
-            "Verifier la connexion internet."
+            "DPE collection fails or is slow",
+            "The ADEME API may be overloaded. Re-run the command. "
+            "The collector is idempotent."
         ),
         (
-            "FileNotFoundError: Dataset features introuvable",
-            "Les etapes doivent etre executees dans l'ordre : "
-            "collect -> process -> train. "
-            "Lancer d'abord : python -m src.pipeline process"
+            "FileNotFoundError: Dataset not found",
+            "Steps must be executed in order: "
+            "collect → process → train. "
+            "Run: python -m src.pipeline process"
         ),
         (
-            "ValueError: Base non locale desactivee",
-            "Pour utiliser SQL Server ou PostgreSQL, ajouter "
-            "ALLOW_NON_LOCAL=true dans le fichier .env"
+            "Ridge R2 > 0.99",
+            "Normal with lag features (auto-regression). "
+            "See the 'ridge_exogenous' model for performance "
+            "without auto-correlation."
         ),
         (
-            "Les tests echouent",
-            "Verifier que pytest est installe : pip install pytest\n"
-            "Verifier les dependances : pip install -r requirements.txt"
+            "Docker build fails",
+            "Verify that Docker is installed and running. "
+            "Check disk space (>5 GB recommended)."
         ),
         (
-            "Ridge R2 tres eleve (>0.99)",
-            "C'est normal avec les features lag — le modele fait de "
-            "l'auto-regression. Voir le modele 'ridge_exogenes' pour "
-            "l'evaluation sans auto-correlation."
+            "API does not start",
+            "Verify that .pkl models exist in data/models/. "
+            "Otherwise, run: python -m src.pipeline train"
         ),
     ]
 
@@ -1167,30 +1285,17 @@ def generate_user_guide():
         doc.add_heading(problem, level=3)
         doc.add_paragraph(solution)
 
-    doc.add_heading("9.2 Logs", level=2)
+    doc.add_heading("Contact", level=2)
     doc.add_paragraph(
-        "Pour augmenter le niveau de detail des logs :"
-    )
-    doc.add_paragraph(
-        "python -m src.pipeline <commande> --log-level DEBUG",
-        style="No Spacing"
-    )
-    doc.add_paragraph(
-        "Les niveaux disponibles sont : DEBUG, INFO, WARNING, ERROR. "
-        "En mode DEBUG, tous les appels HTTP et les details de parsing "
-        "sont affiches."
+        "Author: Patrice DUCLOS — Senior Data Analyst\n"
+        "GitHub Repository: https://github.com/PDUCLOS/Projet-HVAC\n"
+        "Program: Data Science Lead — Jedha Bootcamp"
     )
 
-    doc.add_heading("9.3 Contact", level=2)
-    doc.add_paragraph(
-        "Auteur : Patrice DUCLOS — Data Analyst Senior\n"
-        "Depot GitHub : https://github.com/PDUCLOS/Projet-HVAC"
-    )
-
-    # Sauvegarder
+    # Save
     path = "docs/guide_utilisation.docx"
     doc.save(path)
-    print(f"Guide d'utilisation genere : {path}")
+    print(f"User guide generated: {path}")
     return path
 
 
@@ -1202,4 +1307,4 @@ if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     generate_technical_doc()
     generate_user_guide()
-    print("\nDocumentation generee avec succes dans docs/")
+    print("\nDocumentation generated successfully in docs/")

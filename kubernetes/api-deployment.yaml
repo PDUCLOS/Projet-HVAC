@@ -1,0 +1,89 @@
+# =============================================================================
+# HVAC Market Analysis — API Deployment + Service
+# =============================================================================
+# Deploiement de l'API FastAPI avec 2 replicas et auto-scaling.
+#
+# kubectl apply -f kubernetes/api-deployment.yaml
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hvac-api
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+    component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hvac-market
+      component: api
+  template:
+    metadata:
+      labels:
+        app: hvac-market
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: hvac-market:latest
+          command: ["/docker-entrypoint.sh", "api"]
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          env:
+            - name: DB_TYPE
+              value: "sqlite"
+            - name: DB_PATH
+              value: "/app/data/hvac_market.db"
+            - name: LOG_LEVEL
+              value: "INFO"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/data
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: hvac-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hvac-api
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+    component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+  selector:
+    app: hvac-market
+    component: api

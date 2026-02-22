@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Fixtures partagées pour les tests du projet HVAC."""
+"""Shared fixtures for the HVAC project tests."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from src.collectors.base import CollectorConfig
 
 @pytest.fixture
 def test_config() -> ProjectConfig:
-    """Configuration de test avec des chemins temporaires."""
+    """Test configuration with temporary paths."""
     return ProjectConfig(
         geo=GeoConfig(
             region_code="84",
@@ -56,7 +56,7 @@ def test_config() -> ProjectConfig:
 
 @pytest.fixture
 def collector_config() -> CollectorConfig:
-    """Configuration de collecteur pour les tests."""
+    """Collector configuration for tests."""
     return CollectorConfig(
         raw_data_dir=Path("/tmp/hvac_test/raw"),
         processed_data_dir=Path("/tmp/hvac_test/processed"),
@@ -73,7 +73,7 @@ def collector_config() -> CollectorConfig:
 
 @pytest.fixture
 def sample_weather_df() -> pd.DataFrame:
-    """DataFrame météo de test (2 villes, 30 jours)."""
+    """Test weather DataFrame (2 cities, 30 days)."""
     dates = pd.date_range("2023-01-01", periods=30, freq="D")
     rows = []
     for city, dept in [("Lyon", "69"), ("Grenoble", "38")]:
@@ -95,7 +95,7 @@ def sample_weather_df() -> pd.DataFrame:
 
 @pytest.fixture
 def sample_insee_df() -> pd.DataFrame:
-    """DataFrame INSEE de test (12 mois)."""
+    """Test INSEE DataFrame (12 months)."""
     periods = [f"2023-{m:02d}" for m in range(1, 13)]
     return pd.DataFrame({
         "period": periods,
@@ -110,7 +110,7 @@ def sample_insee_df() -> pd.DataFrame:
 
 @pytest.fixture
 def sample_eurostat_df() -> pd.DataFrame:
-    """DataFrame Eurostat de test (2 codes NACE, 12 mois)."""
+    """Test Eurostat DataFrame (2 NACE codes, 12 months)."""
     periods = [f"2023-{m:02d}" for m in range(1, 13)]
     rows = []
     for nace in ["C28", "C2825"]:
@@ -125,7 +125,7 @@ def sample_eurostat_df() -> pd.DataFrame:
 
 @pytest.fixture
 def sample_ml_dataset() -> pd.DataFrame:
-    """Dataset ML minimal pour tester le feature engineering."""
+    """Minimal ML dataset for testing feature engineering."""
     np.random.seed(42)
     rows = []
     for dept in ["69", "38"]:

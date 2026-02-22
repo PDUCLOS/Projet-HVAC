@@ -1,25 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-Études de corrélation — Phase 3.2.
+Correlation studies — Phase 3.2.
 ====================================
 
-Ce module analyse les corrélations entre features et variables cibles
-pour guider la sélection de features en Phase 4 (modélisation ML).
+This module analyzes correlations between features and target variables
+to guide feature selection in Phase 4 (ML modeling).
 
-Analyses produites :
-    1. Matrice de corrélation complète (heatmap)
-    2. Top corrélations avec chaque variable cible
-    3. Corrélations par département (stabilité géographique)
-    4. Corrélations par saison (variations saisonnières)
-    5. Analyse de multicolinéarité (VIF)
-    6. Matrice de corrélation des lags et rolling features
+Analyses produced:
+    1. Full correlation matrix (heatmap)
+    2. Top correlations with each target variable
+    3. Correlations by department (geographic stability)
+    4. Correlations by season (seasonal variations)
+    5. Multicollinearity analysis (VIF)
+    6. Correlation matrix for lag and rolling features
 
-Usage :
+Usage:
     >>> from src.analysis.correlation import CorrelationAnalyzer
     >>> corr = CorrelationAnalyzer(config)
     >>> corr.run_full_correlation()
 
-    # Ou via CLI
+    # Or via CLI
     python -m src.pipeline eda
 """
 
@@ -40,12 +40,12 @@ logger = logging.getLogger(__name__)
 
 
 class CorrelationAnalyzer:
-    """Analyseur de corrélations pour le dataset HVAC.
+    """Correlation analyzer for the HVAC dataset.
 
     Attributes:
-        config: Configuration du projet.
-        df: DataFrame features dataset.
-        output_dir: Répertoire de sortie pour les graphiques.
+        config: Project configuration.
+        df: Features dataset DataFrame.
+        output_dir: Output directory for charts.
     """
 
     DEPT_NAMES = {
@@ -53,7 +53,7 @@ class CorrelationAnalyzer:
         "42": "Loire", "69": "Rhône", "73": "Savoie", "74": "Haute-Savoie",
     }
 
-    # Features de base (hors lags/rolling) pour la matrice principale
+    # Base features (excluding lags/rolling) for the main matrix
     BASE_FEATURES = [
         "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
         "nb_dpe_classe_ab", "pct_pac", "pct_clim",
@@ -80,10 +80,10 @@ class CorrelationAnalyzer:
         })
 
     def _load_data(self) -> pd.DataFrame:
-        """Charge le features dataset."""
+        """Load the features dataset."""
         filepath = self.config.features_data_dir / "hvac_features_dataset.csv"
         if not filepath.exists():
-            raise FileNotFoundError(f"Features dataset introuvable : {filepath}")
+            raise FileNotFoundError(f"Features dataset not found: {filepath}")
 
         df = pd.read_csv(filepath)
         df["dept"] = df["dept"].astype(str).str.zfill(2)
@@ -102,20 +102,20 @@ class CorrelationAnalyzer:
         return path
 
     # ------------------------------------------------------------------
-    # 1. Matrice de corrélation complète
+    # 1. Full correlation matrix
     # ------------------------------------------------------------------
 
     def plot_correlation_matrix(self) -> Path:
-        """Matrice de corrélation des features de base (hors lags).
+        """Correlation matrix for base features (excluding lags).
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         df = self.df
         cols = [c for c in self.BASE_FEATURES if c in df.columns]
         corr_matrix = df[cols].corr()
 
-        # Masquer la moitié supérieure (redondante)
+        # Mask the upper half (redundant)
         mask = np.triu(np.ones_like(corr_matrix, dtype=bool), k=1)
 
         fig, ax = plt.subplots(figsize=(16, 14))
@@ -124,42 +124,42 @@ class CorrelationAnalyzer:
             cmap="RdBu_r", center=0, vmin=-1, vmax=1,
             linewidths=0.5, ax=ax, annot_kws={"size": 8},
         )
-        ax.set_title("Matrice de corrélation — Features de base", fontsize=14)
+        ax.set_title("Correlation matrix — Base features", fontsize=14)
         plt.xticks(rotation=45, ha="right", fontsize=9)
         plt.yticks(fontsize=9)
 
         return self._save_fig("20_correlation_matrix_base")
 
     # ------------------------------------------------------------------
-    # 2. Top corrélations avec la cible
+    # 2. Top correlations with target
     # ------------------------------------------------------------------
 
     def plot_top_correlations(self, target: str = None, n_top: int = 20) -> Path:
-        """Bar chart des corrélations les plus fortes avec la cible.
+        """Bar chart of the strongest correlations with the target.
 
         Args:
-            target: Nom de la colonne cible (défaut: nb_installations_pac).
-            n_top: Nombre de features à afficher.
+            target: Name of the target column (default: nb_installations_pac).
+            n_top: Number of features to display.
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         target = target or self.TARGET_COL
         df = self.df
         numeric = df.select_dtypes(include=[np.number])
 
         if target not in numeric.columns:
-            logger.warning("Cible '%s' absente du dataset.", target)
+            logger.warning("Target '%s' not found in dataset.", target)
             return Path()
 
         corr = numeric.corrwith(numeric[target])
         corr = corr.drop(target, errors="ignore")
 
-        # Exclure les colonnes auxiliaires
+        # Exclude auxiliary columns
         exclude = ["date_id", "year_trend", "n_valid_features", "pct_valid_features"]
         corr = corr.drop(exclude, errors="ignore")
 
-        # Top N par valeur absolue
+        # Top N by absolute value
         top = corr.abs().sort_values(ascending=False).head(n_top)
         top_signed = corr.loc[top.index]
 
@@ -168,8 +168,8 @@ class CorrelationAnalyzer:
         ax.barh(range(len(top_signed)), top_signed.values, color=colors, alpha=0.8)
         ax.set_yticks(range(len(top_signed)))
         ax.set_yticklabels(top_signed.index, fontsize=9)
-        ax.set_xlabel("Coefficient de corrélation (Pearson)")
-        ax.set_title(f"Top {n_top} corrélations avec {target}", fontsize=14)
+        ax.set_xlabel("Correlation coefficient (Pearson)")
+        ax.set_title(f"Top {n_top} correlations with {target}", fontsize=14)
         ax.axvline(0, color="black", linewidth=0.5)
         ax.invert_yaxis()
 
@@ -181,16 +181,16 @@ class CorrelationAnalyzer:
         return self._save_fig(f"21_top_correlations_{target}")
 
     # ------------------------------------------------------------------
-    # 3. Corrélations par département
+    # 3. Correlations by department
     # ------------------------------------------------------------------
 
     def plot_correlation_by_dept(self) -> Path:
-        """Heatmap des corrélations features→PAC par département.
+        """Heatmap of feature-to-PAC correlations by department.
 
-        Permet de voir si les relations sont stables géographiquement.
+        Allows checking whether relationships are geographically stable.
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         df = self.df
         target = self.TARGET_COL
@@ -201,7 +201,7 @@ class CorrelationAnalyzer:
         ]
         features = [f for f in features if f in df.columns]
 
-        # Corrélation par département
+        # Correlation by department
         corr_by_dept = {}
         for dept in sorted(df["dept"].unique()):
             subset = df[df["dept"] == dept]
@@ -210,7 +210,7 @@ class CorrelationAnalyzer:
                 corr_by_dept[f"{dept} — {self.DEPT_NAMES.get(dept, dept)}"] = corr
 
         if not corr_by_dept:
-            logger.warning("Pas assez de données pour les corrélations par dept.")
+            logger.warning("Not enough data for correlations by department.")
             return Path()
 
         corr_df = pd.DataFrame(corr_by_dept).T
@@ -222,7 +222,7 @@ class CorrelationAnalyzer:
             annot_kws={"size": 9},
         )
         ax.set_title(
-            f"Corrélations features → {target} par département",
+            f"Feature correlations with {target} by department",
             fontsize=14,
         )
         plt.xticks(rotation=45, ha="right", fontsize=10)
@@ -230,22 +230,22 @@ class CorrelationAnalyzer:
         return self._save_fig("22_correlation_by_dept")
 
     # ------------------------------------------------------------------
-    # 4. Corrélations par saison
+    # 4. Correlations by season
     # ------------------------------------------------------------------
 
     def plot_correlation_by_season(self) -> Path:
-        """Heatmap des corrélations par saison (hiver/été/etc.).
+        """Heatmap of correlations by season (winter/summer/etc.).
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         df = self.df.copy()
         target = self.TARGET_COL
 
-        df["saison"] = df["month"].map(lambda m: (
-            "1_Hiver" if m in [12, 1, 2] else
-            "2_Printemps" if m in [3, 4, 5] else
-            "3_Été" if m in [6, 7, 8] else "4_Automne"
+        df["season"] = df["month"].map(lambda m: (
+            "1_Winter" if m in [12, 1, 2] else
+            "2_Spring" if m in [3, 4, 5] else
+            "3_Summer" if m in [6, 7, 8] else "4_Autumn"
         ))
 
         features = [
@@ -256,11 +256,11 @@ class CorrelationAnalyzer:
         features = [f for f in features if f in df.columns]
 
         corr_by_season = {}
-        for saison in sorted(df["saison"].unique()):
-            subset = df[df["saison"] == saison]
+        for season in sorted(df["season"].unique()):
+            subset = df[df["season"] == season]
             if len(subset) > 5 and target in subset.columns:
                 corr = subset[features].corrwith(subset[target])
-                corr_by_season[saison.split("_")[1]] = corr
+                corr_by_season[season.split("_")[1]] = corr
 
         if not corr_by_season:
             return Path()
@@ -274,7 +274,7 @@ class CorrelationAnalyzer:
             annot_kws={"size": 10},
         )
         ax.set_title(
-            f"Corrélations features → {target} par saison",
+            f"Feature correlations with {target} by season",
             fontsize=14,
         )
         plt.xticks(rotation=45, ha="right", fontsize=10)
@@ -282,20 +282,20 @@ class CorrelationAnalyzer:
         return self._save_fig("23_correlation_by_season")
 
     # ------------------------------------------------------------------
-    # 5. Analyse de multicolinéarité
+    # 5. Multicollinearity analysis
     # ------------------------------------------------------------------
 
     def plot_multicollinearity(self) -> Path:
-        """Identifie les paires de features très corrélées (|r| > 0.8).
+        """Identify pairs of highly correlated features (|r| > 0.8).
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         df = self.df
         features = [c for c in self.BASE_FEATURES if c in df.columns]
         corr = df[features].corr()
 
-        # Extraire les paires avec |r| > 0.8 (hors diagonale)
+        # Extract pairs with |r| > 0.8 (excluding diagonal)
         pairs = []
         for i in range(len(features)):
             for j in range(i + 1, len(features)):
@@ -304,7 +304,7 @@ class CorrelationAnalyzer:
                     pairs.append((features[i], features[j], r))
 
         if not pairs:
-            logger.info("  Aucune paire avec |r| > 0.8 trouvée.")
+            logger.info("  No pair with |r| > 0.8 found.")
             return Path()
 
         pairs.sort(key=lambda x: abs(x[2]), reverse=True)
@@ -317,8 +317,8 @@ class CorrelationAnalyzer:
         ax.barh(range(len(pairs)), values, color=colors, alpha=0.8)
         ax.set_yticks(range(len(pairs)))
         ax.set_yticklabels(labels, fontsize=9)
-        ax.set_xlabel("Coefficient de corrélation")
-        ax.set_title("Paires multicolinéaires (|r| > 0.8)", fontsize=14)
+        ax.set_xlabel("Correlation coefficient")
+        ax.set_title("Multicollinear pairs (|r| > 0.8)", fontsize=14)
         ax.axvline(0, color="black", linewidth=0.5)
         ax.invert_yaxis()
 
@@ -329,27 +329,27 @@ class CorrelationAnalyzer:
         return self._save_fig("24_multicollinearity")
 
     # ------------------------------------------------------------------
-    # 6. Corrélation des lags
+    # 6. Lag correlations
     # ------------------------------------------------------------------
 
     def plot_lag_correlations(self) -> Path:
-        """Heatmap des corrélations entre les différents lags et la cible.
+        """Heatmap of correlations between different lags and the target.
 
-        Permet de déterminer quels horizons de lag sont les plus prédictifs.
+        Helps determine which lag horizons are the most predictive.
 
         Returns:
-            Chemin du graphique sauvegardé.
+            Path to the saved chart.
         """
         df = self.df
         target = self.TARGET_COL
 
-        # Trouver toutes les colonnes de lag
+        # Find all lag columns
         lag_cols = [c for c in df.columns if "_lag_" in c]
         if not lag_cols:
-            logger.info("  Aucune colonne lag trouvée.")
+            logger.info("  No lag column found.")
             return Path()
 
-        # Organiser par variable et horizon
+        # Organize by variable and horizon
         lag_data = {}
         for col in lag_cols:
             # Format: variable_lag_Xm
@@ -365,9 +365,9 @@ class CorrelationAnalyzer:
         if not lag_data:
             return Path()
 
-        # Créer un DataFrame pour la heatmap
+        # Create a DataFrame for the heatmap
         lag_df = pd.DataFrame(lag_data).T
-        # Trier les colonnes par horizon
+        # Sort columns by horizon
         col_order = sorted(lag_df.columns, key=lambda x: int(x.replace("m", "")))
         lag_df = lag_df[col_order]
 
@@ -376,21 +376,21 @@ class CorrelationAnalyzer:
             lag_df, annot=True, fmt=".2f", cmap="RdBu_r",
             center=0, linewidths=0.5, ax=ax,
         )
-        ax.set_title(f"Corrélation des lags avec {target}", fontsize=14)
-        ax.set_xlabel("Horizon du lag")
+        ax.set_title(f"Lag correlations with {target}", fontsize=14)
+        ax.set_xlabel("Lag Horizon")
         ax.set_ylabel("Variable")
 
         return self._save_fig("25_lag_correlations")
 
     # ------------------------------------------------------------------
-    # Rapport corrélations
+    # Correlation report
     # ------------------------------------------------------------------
 
     def generate_correlation_report(self) -> Path:
-        """Génère un rapport textuel des corrélations.
+        """Generate a text-based correlation report.
 
         Returns:
-            Chemin du rapport sauvegardé.
+            Path to the saved report.
         """
         df = self.df
         target = self.TARGET_COL
@@ -398,23 +398,23 @@ class CorrelationAnalyzer:
 
         lines = []
         lines.append("=" * 70)
-        lines.append("  RAPPORT CORRÉLATIONS — HVAC Market Analysis")
+        lines.append("  CORRELATION REPORT — HVAC Market Analysis")
         lines.append("=" * 70)
 
-        # Top 20 corrélations avec la cible
+        # Top 20 correlations with the target
         numeric = df.select_dtypes(include=[np.number])
         if target in numeric.columns:
             corr = numeric.corrwith(numeric[target])
             corr = corr.drop(target, errors="ignore")
             top = corr.abs().sort_values(ascending=False).head(20)
 
-            lines.append(f"\n\n1. TOP 20 CORRÉLATIONS AVEC {target}")
+            lines.append(f"\n\n1. TOP 20 CORRELATIONS WITH {target}")
             lines.append("-" * 50)
             for feat in top.index:
                 val = corr[feat]
                 lines.append(f"  {'+' if val > 0 else '-'}{abs(val):.3f}  {feat}")
 
-        # Paires multicolinéaires
+        # Multicollinear pairs
         features = [c for c in self.BASE_FEATURES if c in df.columns]
         corr_matrix = df[features].corr()
         pairs = []
@@ -425,44 +425,44 @@ class CorrelationAnalyzer:
                     pairs.append((features[i], features[j], r))
         pairs.sort(key=lambda x: abs(x[2]), reverse=True)
 
-        lines.append(f"\n\n2. PAIRES MULTICOLINÉAIRES (|r| > 0.8) — {len(pairs)} trouvées")
+        lines.append(f"\n\n2. MULTICOLLINEAR PAIRS (|r| > 0.8) — {len(pairs)} found")
         lines.append("-" * 50)
         for a, b, r in pairs:
             lines.append(f"  {r:+.3f}  {a} ↔ {b}")
 
-        # Recommandations
-        lines.append("\n\n3. RECOMMANDATIONS POUR LA MODÉLISATION")
+        # Recommendations
+        lines.append("\n\n3. RECOMMENDATIONS FOR MODELING")
         lines.append("-" * 50)
         if pairs:
-            lines.append("  ⚠ Multicolinéarité détectée :")
+            lines.append("  ⚠ Multicollinearity detected:")
             seen = set()
             for a, b, r in pairs:
                 if a not in seen and b not in seen:
-                    lines.append(f"    → Garder {a}, considérer retirer {b} (r={r:.3f})")
+                    lines.append(f"    → Keep {a}, consider removing {b} (r={r:.3f})")
                     seen.add(b)
 
-        lines.append("  ✓ Utiliser Ridge ou Lasso pour gérer la colinéarité")
-        lines.append("  ✓ LightGBM est naturellement robuste à la colinéarité")
-        lines.append("  ✓ Vérifier la stabilité des corrélations par département")
+        lines.append("  ✓ Use Ridge or Lasso to handle collinearity")
+        lines.append("  ✓ LightGBM is naturally robust to collinearity")
+        lines.append("  ✓ Verify correlation stability across departments")
 
         report_text = "\n".join(lines)
         report_path.write_text(report_text, encoding="utf-8")
-        logger.info("Rapport corrélations sauvegardé : %s", report_path)
+        logger.info("Correlation report saved: %s", report_path)
 
         return report_path
 
     # ------------------------------------------------------------------
-    # Orchestrateur
+    # Orchestrator
     # ------------------------------------------------------------------
 
     def run_full_correlation(self) -> Dict[str, Any]:
-        """Exécute l'ensemble des analyses de corrélation.
+        """Execute all correlation analyses.
 
         Returns:
-            Dictionnaire avec les chemins des fichiers générés.
+            Dictionary with the paths of generated files.
         """
         logger.info("=" * 60)
-        logger.info("  Phase 3.2 — Analyse des corrélations")
+        logger.info("  Phase 3.2 — Correlation analysis")
         logger.info("=" * 60)
 
         self._ensure_dirs()
@@ -470,38 +470,38 @@ class CorrelationAnalyzer:
 
         results = {"figures": []}
 
-        logger.info("Matrice de corrélation...")
+        logger.info("Correlation matrix...")
         results["figures"].append(str(self.plot_correlation_matrix()))
 
-        logger.info("Top corrélations vs cible...")
+        logger.info("Top correlations vs target...")
         results["figures"].append(str(self.plot_top_correlations()))
 
-        logger.info("Corrélations par département...")
+        logger.info("Correlations by department...")
         fig = self.plot_correlation_by_dept()
         if fig.name:
             results["figures"].append(str(fig))
 
-        logger.info("Corrélations par saison...")
+        logger.info("Correlations by season...")
         fig = self.plot_correlation_by_season()
         if fig.name:
             results["figures"].append(str(fig))
 
-        logger.info("Analyse multicolinéarité...")
+        logger.info("Multicollinearity analysis...")
         fig = self.plot_multicollinearity()
         if fig.name:
             results["figures"].append(str(fig))
 
-        logger.info("Corrélations des lags...")
+        logger.info("Lag correlations...")
         fig = self.plot_lag_correlations()
         if fig.name:
             results["figures"].append(str(fig))
 
-        logger.info("Rapport de corrélations...")
+        logger.info("Correlation report...")
         report = self.generate_correlation_report()
         results["report"] = str(report)
 
         logger.info(
-            "Analyse des corrélations terminée : %d graphiques.",
+            "Correlation analysis complete: %d charts.",
             len(results["figures"]),
         )
         return results

@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Data Processing Package — Nettoyage, fusion et feature engineering.
-===================================================================
+Data Processing Package — Cleaning, merging, and feature engineering.
+=====================================================================
 
-Ce package contient les modules de traitement des données (Phase 2-3) :
+This package contains the data processing modules (Phase 2-3):
 
-    - clean_data.py           : Nettoyage source par source
-    - merge_datasets.py       : Fusion multi-sources → dataset ML-ready
-    - feature_engineering.py  : Construction des features avancées
+    - clean_data.py           : Source-by-source data cleaning
+    - merge_datasets.py       : Multi-source merge → ML-ready dataset
+    - feature_engineering.py  : Advanced feature construction
 
-Usage :
+Usage:
     >>> from src.processing.clean_data import DataCleaner
     >>> from src.processing.merge_datasets import DatasetMerger
     >>> from src.processing.feature_engineering import FeatureEngineer

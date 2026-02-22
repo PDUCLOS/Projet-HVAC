@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le module de feature engineering."""
+"""Tests for the feature engineering module."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ from src.processing.feature_engineering import FeatureEngineer
 
 
 class TestFeatureEngineer:
-    """Tests pour FeatureEngineer."""
+    """Tests for FeatureEngineer."""
 
     def test_lag_features_created(self, test_config, sample_ml_dataset):
-        """Vérifie que les features de lag sont créées."""
+        """Verify that lag features are created."""
         fe = FeatureEngineer(test_config)
         df = fe._add_lag_features(
             sample_ml_dataset.sort_values(["dept", "date_id"]).reset_index(drop=True)
@@ -24,19 +24,19 @@ class TestFeatureEngineer:
         assert "temp_mean_lag_1m" in df.columns
 
     def test_lag_nan_at_start(self, test_config, sample_ml_dataset):
-        """Vérifie que les lags créent des NaN en début de série."""
+        """Verify that lags create NaN values at the beginning of each series."""
         fe = FeatureEngineer(test_config)
         df = sample_ml_dataset.sort_values(["dept", "date_id"]).reset_index(drop=True)
         df = fe._add_lag_features(df)
 
-        # Première ligne de chaque département doit avoir lag_1m = NaN
+        # First row of each department should have lag_1m = NaN
         for dept in df["dept"].unique():
             dept_data = df[df["dept"] == dept]
             first_row = dept_data.iloc[0]
             assert pd.isna(first_row["nb_installations_pac_lag_1m"])
 
     def test_rolling_features_created(self, test_config, sample_ml_dataset):
-        """Vérifie que les features rolling sont créées."""
+        """Verify that rolling features are created."""
         fe = FeatureEngineer(test_config)
         df = sample_ml_dataset.sort_values(["dept", "date_id"]).reset_index(drop=True)
         df = fe._add_rolling_features(df)
@@ -45,19 +45,19 @@ class TestFeatureEngineer:
         assert "nb_installations_pac_rstd_3m" in df.columns
 
     def test_variation_features(self, test_config, sample_ml_dataset):
-        """Vérifie les features de variation."""
+        """Verify variation features."""
         fe = FeatureEngineer(test_config)
         df = sample_ml_dataset.sort_values(["dept", "date_id"]).reset_index(drop=True)
         df = fe._add_variation_features(df)
 
         assert "nb_installations_pac_diff_1m" in df.columns
         assert "nb_installations_pac_pct_1m" in df.columns
-        # Variations extrêmes doivent être clippées
+        # Extreme variations should be clipped
         assert df["nb_installations_pac_pct_1m"].max() <= 500
         assert df["nb_installations_pac_pct_1m"].min() >= -200
 
     def test_interaction_features(self, test_config, sample_ml_dataset):
-        """Vérifie les features d'interaction."""
+        """Verify interaction features."""
         fe = FeatureEngineer(test_config)
         df = fe._add_interaction_features(sample_ml_dataset)
 
@@ -66,7 +66,7 @@ class TestFeatureEngineer:
         assert "jours_extremes" in df.columns
 
     def test_trend_features(self, test_config, sample_ml_dataset):
-        """Vérifie les features de tendance."""
+        """Verify trend features."""
         fe = FeatureEngineer(test_config)
         df = fe._add_trend_features(sample_ml_dataset)
 
@@ -74,7 +74,7 @@ class TestFeatureEngineer:
         assert df["year_trend"].min() == 0
 
     def test_completeness_flag(self, test_config, sample_ml_dataset):
-        """Vérifie le flag de complétude."""
+        """Verify the completeness flag."""
         fe = FeatureEngineer(test_config)
         df = fe._add_completeness_flag(sample_ml_dataset)
 
@@ -84,24 +84,24 @@ class TestFeatureEngineer:
         assert (df["pct_valid_features"] <= 100).all()
 
     def test_full_engineer_pipeline(self, test_config, sample_ml_dataset, tmp_path):
-        """Test complet du pipeline de feature engineering."""
+        """Full test of the feature engineering pipeline."""
         from dataclasses import replace
         config = replace(test_config, features_data_dir=tmp_path / "features")
 
         fe = FeatureEngineer(config)
         df = fe.engineer(sample_ml_dataset)
 
-        # On doit avoir significativement plus de colonnes
+        # We should have significantly more columns
         assert len(df.columns) > len(sample_ml_dataset.columns)
-        # Le nombre de lignes ne doit pas changer
+        # The number of rows should not change
         assert len(df) == len(sample_ml_dataset)
 
 
 class TestFeatureEngineerEdgeCases:
-    """Tests des cas limites."""
+    """Tests for edge cases."""
 
     def test_missing_optional_columns(self, test_config):
-        """Le FE doit fonctionner même sans colonnes optionnelles."""
+        """The FE should work even without optional columns."""
         df = pd.DataFrame({
             "date_id": [202301, 202302, 202303],
             "dept": ["69", "69", "69"],
@@ -113,11 +113,11 @@ class TestFeatureEngineerEdgeCases:
         })
         fe = FeatureEngineer(test_config)
         result = fe._add_interaction_features(df)
-        # Pas d'erreur, les interactions non calculables sont ignorées
+        # No error, non-computable interactions are ignored
         assert len(result) == 3
 
     def test_single_department(self, test_config):
-        """Le FE doit fonctionner avec un seul département."""
+        """The FE should work with a single department."""
         np.random.seed(42)
         df = pd.DataFrame({
             "date_id": [202301 + i for i in range(12)],

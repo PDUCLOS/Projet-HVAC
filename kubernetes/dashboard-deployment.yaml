@@ -1,0 +1,55 @@
+# =============================================================================
+# HVAC Market Analysis — Dashboard Deployment (Kubernetes)
+# =============================================================================
+# Minimal deployment for the Streamlit dashboard.
+# For this dataset size (<10k rows), docker-compose is recommended.
+# Use this only if deploying to an existing Kubernetes cluster.
+#
+# kubectl apply -f kubernetes/dashboard-deployment.yaml
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hvac-dashboard
+  labels:
+    app: hvac-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hvac-dashboard
+  template:
+    metadata:
+      labels:
+        app: hvac-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: hvac-market:latest
+          command: ["streamlit", "run", "app/app.py", "--server.port=8501"]
+          ports:
+            - containerPort: 8501
+          env:
+            - name: DB_TYPE
+              value: "sqlite"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hvac-dashboard
+  labels:
+    app: hvac-dashboard
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8501
+      targetPort: 8501
+  selector:
+    app: hvac-dashboard

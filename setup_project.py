@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Script de setup du projet HVAC Market Analysis.
-=================================================
+HVAC Market Analysis project setup script.
+============================================
 
-Script tout-en-un pour initialiser le projet sur une nouvelle machine.
-Verifie les prerequis, cree les repertoires, copie le .env si absent,
-initialise la BDD SQLite et affiche l'etat du projet.
+All-in-one script to initialize the project on a new machine.
+Checks prerequisites, creates directories, copies .env if missing,
+initializes the SQLite database, and displays the project status.
 
 Usage:
     python setup_project.py
 
-Ce script est idempotent : il peut etre relance sans risque.
+This script is idempotent: it can be rerun safely.
 """
 
 import os
@@ -20,30 +20,30 @@ import sys
 from pathlib import Path
 
 
-# Repertoire racine du projet (ou se trouve ce script)
+# Project root directory (where this script is located)
 PROJECT_ROOT = Path(__file__).parent.resolve()
 
 
 def print_header(title: str) -> None:
-    """Affiche un titre formate."""
+    """Display a formatted title."""
     print(f"\n{'=' * 60}")
     print(f"  {title}")
     print(f"{'=' * 60}")
 
 
 def check_python_version() -> bool:
-    """Verifie que Python 3.10+ est installe."""
+    """Check that Python 3.10+ is installed."""
     v = sys.version_info
     print(f"  Python : {v.major}.{v.minor}.{v.micro}", end="")
     if v.major >= 3 and v.minor >= 10:
         print(" [OK]")
         return True
-    print(" [ERREUR] Python 3.10+ requis")
+    print(" [ERROR] Python 3.10+ required")
     return False
 
 
 def check_pip_packages() -> dict:
-    """Verifie les packages Python requis."""
+    """Check required Python packages."""
     required = [
         "pandas", "numpy", "requests", "sqlalchemy",
         "lxml", "dotenv", "tqdm",
@@ -59,20 +59,20 @@ def check_pip_packages() -> dict:
             __import__(pkg.replace("-", "_"))
             status[pkg] = "OK"
         except ImportError:
-            status[pkg] = "MANQUANT"
+            status[pkg] = "MISSING"
 
     for pkg in optional:
         try:
             __import__(pkg.replace("-", "_"))
             status[pkg] = "OK"
         except ImportError:
-            status[pkg] = "optionnel"
+            status[pkg] = "optional"
 
     return status
 
 
 def create_directories() -> None:
-    """Cree les repertoires de donnees s'ils n'existent pas."""
+    """Create data directories if they do not exist."""
     dirs = [
         PROJECT_ROOT / "data" / "raw" / "weather",
         PROJECT_ROOT / "data" / "raw" / "insee",
@@ -89,23 +89,23 @@ def create_directories() -> None:
 
 
 def setup_env_file() -> None:
-    """Copie .env.example vers .env si .env n'existe pas."""
+    """Copy .env.example to .env if .env does not exist."""
     env_file = PROJECT_ROOT / ".env"
     env_example = PROJECT_ROOT / ".env.example"
 
     if env_file.exists():
-        print(f"  .env existe deja [OK]")
+        print(f"  .env already exists [OK]")
     elif env_example.exists():
         shutil.copy2(env_example, env_file)
-        print(f"  .env cree depuis .env.example [OK]")
+        print(f"  .env created from .env.example [OK]")
     else:
-        print(f"  .env.example introuvable [ATTENTION]")
+        print(f"  .env.example not found [WARNING]")
 
 
 def init_database() -> bool:
-    """Initialise la BDD SQLite via le pipeline."""
+    """Initialize the SQLite database via the pipeline."""
     db_path = PROJECT_ROOT / "data" / "hvac_market.db"
-    print(f"  Chemin BDD : {db_path}")
+    print(f"  DB path: {db_path}")
 
     try:
         result = subprocess.run(
@@ -115,93 +115,93 @@ def init_database() -> bool:
             env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
         if result.returncode == 0:
-            print(f"  BDD initialisee [OK]")
+            print(f"  DB initialized [OK]")
             return True
         else:
-            print(f"  Erreur init BDD : {result.stderr[:200]}")
+            print(f"  DB init error: {result.stderr[:200]}")
             return False
     except Exception as exc:
-        print(f"  Erreur : {exc}")
+        print(f"  Error: {exc}")
         return False
 
 
 def check_collected_data() -> dict:
-    """Verifie quelles donnees ont deja ete collectees."""
+    """Check which data has already been collected."""
     raw_dir = PROJECT_ROOT / "data" / "raw"
     files = {
-        "weather": raw_dir / "weather" / "weather_aura.csv",
+        "weather": raw_dir / "weather" / "weather_france.csv",
         "insee": raw_dir / "insee" / "indicateurs_economiques.csv",
         "eurostat": raw_dir / "eurostat" / "ipi_hvac_france.csv",
-        "sitadel": raw_dir / "sitadel" / "permis_construire_aura.csv",
-        "dpe": raw_dir / "dpe" / "dpe_aura_all.csv",
+        "sitadel": raw_dir / "sitadel" / "permis_construire_france.csv",
+        "dpe": raw_dir / "dpe" / "dpe_france_all.csv",
     }
     status = {}
     for name, path in files.items():
         if path.exists():
             size_mb = path.stat().st_size / (1024 * 1024)
-            status[name] = f"OK ({size_mb:.1f} Mo)"
+            status[name] = f"OK ({size_mb:.1f} MB)"
         else:
-            status[name] = "Non collecte"
+            status[name] = "Not collected"
     return status
 
 
 def main() -> None:
-    """Point d'entree principal du setup."""
-    print_header("HVAC Market Analysis - Setup du projet")
+    """Main entry point for the setup."""
+    print_header("HVAC Market Analysis - Project Setup")
 
-    # 1. Verifier Python
-    print_header("1. Verification Python")
+    # 1. Check Python
+    print_header("1. Python Check")
     if not check_python_version():
         sys.exit(1)
 
-    # 2. Verifier les packages
-    print_header("2. Verification des packages")
+    # 2. Check packages
+    print_header("2. Package Check")
     pkg_status = check_pip_packages()
     missing = []
     for pkg, status in pkg_status.items():
         icon = "[OK]" if status == "OK" else f"[{status}]"
         print(f"  {pkg:<20} {icon}")
-        if status == "MANQUANT":
+        if status == "MISSING":
             missing.append(pkg)
 
     if missing:
-        print(f"\n  ATTENTION: Packages manquants : {', '.join(missing)}")
-        print(f"  Installer avec : pip install -r requirements.txt")
+        print(f"\n  WARNING: Missing packages: {', '.join(missing)}")
+        print(f"  Install with: pip install -r requirements.txt")
 
-    # 3. Creer les repertoires
-    print_header("3. Creation des repertoires")
+    # 3. Create directories
+    print_header("3. Directory Creation")
     create_directories()
 
-    # 4. Configurer .env
-    print_header("4. Configuration .env")
+    # 4. Configure .env
+    print_header("4. .env Configuration")
     setup_env_file()
 
-    # 5. Initialiser la BDD
-    print_header("5. Initialisation de la base de donnees")
+    # 5. Initialize the database
+    print_header("5. Database Initialization")
     if not missing:
         init_database()
     else:
-        print("  Passe (packages manquants)")
+        print("  Skipped (missing packages)")
 
-    # 6. Verifier les donnees collectees
-    print_header("6. Etat des donnees collectees")
+    # 6. Check collected data
+    print_header("6. Collected Data Status")
     data_status = check_collected_data()
     for source, status in data_status.items():
         print(f"  {source:<15} : {status}")
 
-    # 7. Resume
-    print_header("Setup termine !")
+    # 7. Summary
+    print_header("Setup complete!")
     print("""
-  Prochaines etapes :
-  1. Collecter les donnees :  python -m src.pipeline collect
-  2. Importer dans la BDD :  python -m src.pipeline import_data
-  3. Explorer les donnees :   jupyter notebook
+  Next steps:
+  1. Collect data:          python -m src.pipeline collect
+  2. Import into DB:        python -m src.pipeline import_data
+  3. Explore data:          jupyter notebook
 
-  Pour basculer vers SQL Server :
+  To switch to SQL Server:
   1. pip install pyodbc
-  2. Modifier DB_TYPE=mssql dans .env
-  3. Relancer : python -m src.pipeline init_db
-  4. Relancer : python -m src.pipeline import_data
+  2. Set DB_TYPE=mssql in .env
+  3. Rerun: python -m src.pipeline init_db
+  4. Rerun: python -m src.pipeline import_data
 """)
 
 

@@ -1,0 +1,51 @@
+# =============================================================================
+# HVAC Market Analysis — Ingress (point d'entree externe)
+# =============================================================================
+# Route le trafic externe vers les services internes :
+#   - hvac.example.com/api/*     → API FastAPI (port 8000)
+#   - hvac.example.com/*         → Dashboard Streamlit (port 8501)
+#
+# Prerequis : un Ingress Controller (nginx-ingress, traefik, etc.)
+#
+# kubectl apply -f kubernetes/ingress.yaml
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hvac-ingress
+  namespace: hvac-market
+  labels:
+    app: hvac-market
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    # TLS automatique avec cert-manager (decommenter si cert-manager installe)
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  # TLS (decommenter pour HTTPS)
+  # tls:
+  #   - hosts:
+  #       - hvac.example.com
+  #     secretName: hvac-tls
+  rules:
+    - host: hvac.example.com
+      http:
+        paths:
+          # API FastAPI
+          - path: /api/(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: hvac-api
+                port:
+                  number: 8000
+          # Dashboard Streamlit (route par defaut)
+          - path: /(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: hvac-dashboard
+                port:
+                  number: 8501

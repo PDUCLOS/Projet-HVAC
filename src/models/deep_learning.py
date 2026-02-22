@@ -1,25 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-LSTM exploratoire — Phase 4.2 : Deep Learning (pedagogique).
-=============================================================
+Exploratory LSTM — Phase 4.2: Deep Learning (pedagogical).
+============================================================
 
-AVERTISSEMENT METHODOLOGIQUE :
-    Ce modele est inclus a titre PEDAGOGIQUE et exploratoire.
-    Avec ~288 lignes d'entrainement (36 mois × 8 departements),
-    un LSTM n'est PAS adapte et risque fortement l'overfitting.
-    Les modeles classiques (Ridge, LightGBM) sont attendus plus
-    performants sur ce volume de donnees.
+METHODOLOGICAL WARNING:
+    This model is included for PEDAGOGICAL and exploratory purposes.
+    With ~288 training rows (36 months x 8 departments),
+    an LSTM is NOT suitable and is highly likely to overfit.
+    Classical models (Ridge, LightGBM) are expected to perform
+    better on this data volume.
 
-Architecture :
-    - LSTM a 1 couche (32 unites), dropout 0.3
-    - Couche dense de sortie (1 neurone, regression)
-    - Sequences de longueur 3 mois (lookback minimal)
-    - Loss = MSE, optimizer = Adam (lr=0.001)
+Architecture:
+    - 1-layer LSTM (32 units), dropout 0.3
+    - Dense output layer (1 neuron, regression)
+    - Sequences of length 3 months (minimal lookback)
+    - Loss = HuberLoss (robust to outliers, delta=1.0)
+    - Optimizer = Adam (lr=0.001)
 
-Dependances :
+Dependencies:
     pip install -r requirements-dl.txt  # torch>=2.1.0
 
-Usage :
+Usage:
     >>> from src.models.deep_learning import LSTMModel
     >>> lstm = LSTMModel(config, target="nb_installations_pac")
     >>> result = lstm.train_and_evaluate(X_train, y_train, X_val, y_val, X_test, y_test)
@@ -37,19 +38,19 @@ from config.settings import ProjectConfig
 
 
 class LSTMModel:
-    """Modele LSTM minimaliste pour series temporelles HVAC.
+    """Minimalist LSTM model for HVAC time series.
 
-    Architecture volontairement simple pour eviter l'overfitting
-    sur un petit dataset.
+    Deliberately simple architecture to avoid overfitting
+    on a small dataset.
 
     Attributes:
-        config: Configuration du projet.
-        target: Variable cible.
-        lookback: Nombre de pas de temps en entree (mois).
-        hidden_size: Nombre d'unites LSTM.
-        epochs: Nombre maximum d'epoques.
+        config: Project configuration.
+        target: Target variable.
+        lookback: Number of input time steps (months).
+        hidden_size: Number of LSTM units.
+        epochs: Maximum number of epochs.
         patience: Early stopping patience.
-        batch_size: Taille des batchs.
+        batch_size: Batch size.
     """
 
     def __init__(
@@ -74,17 +75,17 @@ class LSTMModel:
     def _create_sequences(
         self, X: np.ndarray, y: np.ndarray
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Cree des sequences temporelles pour le LSTM.
+        """Create temporal sequences for the LSTM.
 
-        Transforme les donnees tabulaires en sequences de longueur
-        `lookback` pour l'entree du LSTM.
+        Transforms tabular data into sequences of length
+        `lookback` for LSTM input.
 
         Args:
-            X: Array de features (n_samples, n_features).
-            y: Array cible (n_samples,).
+            X: Feature array (n_samples, n_features).
+            y: Target array (n_samples,).
 
         Returns:
-            Tuple (X_seq, y_seq) :
+            Tuple (X_seq, y_seq):
                 X_seq shape = (n_sequences, lookback, n_features)
                 y_seq shape = (n_sequences,)
         """
@@ -103,18 +104,18 @@ class LSTMModel:
         X_test: pd.DataFrame,
         y_test: pd.Series,
     ) -> Dict[str, Any]:
-        """Entraine le LSTM et evalue sur val et test.
+        """Train the LSTM and evaluate on val and test.
 
         Args:
-            X_train: Features scalees d'entrainement.
-            y_train: Cible d'entrainement.
-            X_val: Features scalees de validation.
-            y_val: Cible de validation.
-            X_test: Features scalees de test.
-            y_test: Cible de test.
+            X_train: Scaled training features.
+            y_train: Training target.
+            X_val: Scaled validation features.
+            y_val: Validation target.
+            X_test: Scaled test features.
+            y_test: Test target.
 
         Returns:
-            Dictionnaire avec metriques et predictions.
+            Dictionary with metrics and predictions.
         """
         import torch
         import torch.nn as nn
@@ -127,7 +128,7 @@ class LSTMModel:
         self.logger.info("  LSTM : lookback=%d, hidden=%d, epochs=%d",
                          self.lookback, self.hidden_size, self.epochs)
 
-        # Imputer les NaN restants
+        # Impute remaining NaN
         X_train_np = X_train.fillna(0).values.astype(np.float32)
         X_val_np = X_val.fillna(0).values.astype(np.float32)
         X_test_np = X_test.fillna(0).values.astype(np.float32)
@@ -135,8 +136,8 @@ class LSTMModel:
         y_val_np = y_val.fillna(0).values.astype(np.float32)
         y_test_np = y_test.fillna(0).values.astype(np.float32)
 
-        # Creer les sequences
-        # Pour val et test, on concatene avec la fin du set precedent
+        # Create sequences
+        # For val and test, concatenate with the end of the previous set
         X_all = np.vstack([X_train_np, X_val_np, X_test_np])
         y_all = np.concatenate([y_train_np, y_val_np, y_test_np])
 
@@ -147,19 +148,19 @@ class LSTMModel:
             X_train_np, y_train_np,
         )
 
-        # Pour val : utiliser la fin du train comme contexte
+        # For val: use the end of train as context
         X_for_val = np.vstack([X_train_np[-(self.lookback):], X_val_np])
         y_for_val = np.concatenate([y_train_np[-(self.lookback):], y_val_np])
         X_seq_val, y_seq_val = self._create_sequences(X_for_val, y_for_val)
 
-        # Pour test : utiliser la fin du val comme contexte
+        # For test: use the end of val as context
         X_for_test = np.vstack([X_val_np[-(self.lookback):], X_test_np])
         y_for_test = np.concatenate([y_val_np[-(self.lookback):], y_test_np])
         X_seq_test, y_seq_test = self._create_sequences(X_for_test, y_for_test)
 
         if len(X_seq_train) < 10:
             self.logger.warning(
-                "  LSTM : trop peu de sequences (%d). Resultats non fiables.",
+                "  LSTM: too few sequences (%d). Results unreliable.",
                 len(X_seq_train),
             )
 
@@ -170,7 +171,7 @@ class LSTMModel:
 
         n_features = X_seq_train.shape[2]
 
-        # Tenseurs PyTorch
+        # PyTorch tensors
         device = torch.device("cpu")
 
         train_ds = TensorDataset(
@@ -181,12 +182,14 @@ class LSTMModel:
             train_ds, batch_size=self.batch_size, shuffle=False,
         )
 
-        # Definir le modele
+        # Define the model
         model = _LSTMNet(n_features, self.hidden_size).to(device)
-        criterion = nn.MSELoss()
+        # HuberLoss: combines MSE (small errors) and MAE (large errors)
+        # Robust to outliers unlike MSE which squares them
+        criterion = nn.HuberLoss(delta=1.0)
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        # Entrainement avec early stopping
+        # Training with early stopping
         best_val_loss = float("inf")
         patience_counter = 0
         best_state = None
@@ -233,11 +236,11 @@ class LSTMModel:
                 )
                 break
 
-        # Charger les meilleurs poids
+        # Load best weights
         if best_state is not None:
             model.load_state_dict(best_state)
 
-        # Predictions finales
+        # Final predictions
         model.eval()
         with torch.no_grad():
             y_pred_val = model(
@@ -250,7 +253,7 @@ class LSTMModel:
         y_pred_val = np.clip(y_pred_val, 0, None)
         y_pred_test = np.clip(y_pred_test, 0, None)
 
-        # Metriques
+        # Metrics
         metrics_val = evaluator.compute_metrics(y_seq_val, y_pred_val)
         metrics_test = evaluator.compute_metrics(y_seq_test, y_pred_test)
 
@@ -271,22 +274,22 @@ class LSTMModel:
 
 
 class _LSTMNet:
-    """Reseau LSTM minimaliste via PyTorch.
+    """Minimalist LSTM network via PyTorch.
 
-    Architecture :
+    Architecture:
         Input (lookback, n_features)
-        → LSTM (hidden_size=32, 1 couche)
-        → Dropout (0.3)
-        → Linear (hidden_size → 1)
+        -> LSTM (hidden_size=32, 1 layer)
+        -> Dropout (0.3)
+        -> Linear (hidden_size -> 1)
 
-    Note : classe interne, ne pas utiliser directement.
+    Note: internal class, do not use directly.
     """
 
     def __new__(cls, n_features: int, hidden_size: int = 32):
-        """Cree le module PyTorch dynamiquement.
+        """Create the PyTorch module dynamically.
 
-        Cela evite un import de torch au niveau du module,
-        permettant au reste du code de fonctionner sans PyTorch.
+        This avoids importing torch at the module level,
+        allowing the rest of the code to work without PyTorch.
         """
         import torch
         import torch.nn as nn
@@ -306,7 +309,7 @@ class _LSTMNet:
 
             def forward(self, x):
                 lstm_out, _ = self.lstm(x)
-                # Prendre la derniere sortie de la sequence
+                # Take the last output of the sequence
                 last_hidden = lstm_out[:, -1, :]
                 out = self.dropout(last_hidden)
                 out = self.fc(out)

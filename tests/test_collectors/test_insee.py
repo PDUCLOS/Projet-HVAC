@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Tests pour le collecteur INSEE (InseeCollector)."""
+"""Tests for the INSEE collector (InseeCollector)."""
 
 from __future__ import annotations
 
@@ -10,20 +10,20 @@ from src.collectors.insee import InseeCollector, INSEE_SERIES
 
 
 class TestInseeCollector:
-    """Tests pour InseeCollector."""
+    """Tests for InseeCollector."""
 
     def test_source_name(self):
         assert InseeCollector.source_name == "insee"
         assert InseeCollector.output_filename == "indicateurs_economiques.csv"
 
     def test_series_config_complete(self):
-        """Vérifie que toutes les séries ont un idbank et une description."""
+        """Verify that all series have an idbank and a description."""
         assert len(INSEE_SERIES) >= 4
         for name, info in INSEE_SERIES.items():
-            assert "idbank" in info, f"Série '{name}' sans idbank"
-            assert "desc" in info, f"Série '{name}' sans description"
+            assert "idbank" in info, f"Series '{name}' missing idbank"
+            assert "desc" in info, f"Series '{name}' missing description"
             assert len(info["idbank"]) == 9, (
-                f"Série '{name}' : idbank '{info['idbank']}' invalide (9 chiffres attendus)"
+                f"Series '{name}': idbank '{info['idbank']}' invalid (9 digits expected)"
             )
 
     def test_validate_valid_data(self, collector_config, sample_insee_df):
@@ -39,7 +39,7 @@ class TestInseeCollector:
             "confiance_menages": [95.0, 96.0],
             "climat_affaires_industrie": [100.0, 101.0],
         })
-        with pytest.raises(ValueError, match="Trop peu de séries"):
+        with pytest.raises(ValueError, match="Too few series"):
             collector.validate(df)
 
     def test_validate_missing_period(self, collector_config):

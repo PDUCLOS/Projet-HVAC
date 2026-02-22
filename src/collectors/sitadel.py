@@ -1,35 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-Collecteur SITADEL — Permis de construire.
-===========================================
+SITADEL collector — Building permits.
+=======================================
 
-Récupère les données de permis de construire (logements autorisés)
-depuis la base SITADEL du Ministère de la Transition Écologique.
+Retrieves building permit data (authorized housing units)
+from the SITADEL database of the Ministry of Ecological Transition.
 
-Source : https://www.statistiques.developpement-durable.gouv.fr
-Format : CSV dans un fichier ZIP
-Authentification : Aucune (Open Data)
+Source: https://www.statistiques.developpement-durable.gouv.fr
+Format: CSV in a ZIP file
+Authentication: None (Open Data)
 
-NOTES AUDIT :
-    - Le domaine DOIT utiliser 'www.' pour éviter les erreurs TLS.
-    - L'URL du fichier ZIP change à chaque mise à jour mensuelle.
-    - Le dataset sur data.gouv.fr est archivé → utiliser la source SDES.
-    - ~15% des mises en chantier ne remontent pas dans SITADEL
-      (sous-estimation structurelle documentée).
+AUDIT NOTES:
+    - The domain MUST use 'www.' to avoid TLS errors.
+    - The ZIP file URL changes with each monthly update.
+    - The dataset on data.gouv.fr is archived -> use the SDES source.
+    - ~15% of construction starts are not reported in SITADEL
+      (documented structural underestimation).
 
-Données collectées :
-    - Date de prise en compte du permis
-    - Département et région
-    - Nombre de logements créés
-    - Type de construction (individuel, collectif, résidence)
-    - Catégorie de demandeur (particulier, SCI, etc.)
+Collected data:
+    - Permit processing date
+    - Department and region
+    - Number of housing units created
+    - Construction type (individual, collective, residential)
+    - Applicant category (individual, SCI, etc.)
 
-Filtrage : Région 84 (Auvergne-Rhône-Alpes) ou départements cibles.
+Filtering: Region 84 (Auvergne-Rhone-Alpes) or target departments.
 
-Extensibilité :
-    Pour mettre à jour l'URL du fichier ZIP, modifier la constante
-    SITADEL_ZIP_URL ci-dessous. L'URL est mise à jour mensuellement
-    par le SDES.
+Extensibility:
+    To update the ZIP file URL, modify the constant
+    SITADEL_ZIP_URL below. The URL is updated monthly
+    by SDES.
 """
 
 from __future__ import annotations
@@ -43,94 +43,94 @@ import pandas as pd
 from src.collectors.base import BaseCollector
 
 # =============================================================================
-# Configuration SITADEL
+# SITADEL configuration
 # =============================================================================
 
-# URL de l'API DiDo pour les permis de construire
-# MIGRATION : les fichiers ZIP directs n'existent plus depuis fin 2025.
-# Les données SITADEL sont désormais servies via l'API DiDo du SDES.
-# datafileRid = identifiant du fichier "PC et DP créant des logements depuis 2017"
-# millesime = date de mise à jour (YYYY-MM)
+# DiDo API URL for building permits
+# MIGRATION: Direct ZIP files no longer exist since late 2025.
+# SITADEL data is now served via the SDES DiDo API.
+# datafileRid = identifier of the file "PC and DP creating housing since 2017"
+# millesime = update date (YYYY-MM)
 SITADEL_DIDO_API_URL = (
     "https://data.statistiques.developpement-durable.gouv.fr/"
     "dido/api/v1/datafiles/"
     "8b35affb-55fc-4c1f-915b-7750f974446a/csv"
 )
-SITADEL_MILLESIME = "2026-01"  # Dernière mise à jour connue
+SITADEL_MILLESIME = "2026-01"  # Latest known update
 
-# Colonnes d'intérêt dans le fichier CSV SITADEL
+# Columns of interest in the SITADEL CSV file
 SITADEL_COLUMNS = [
-    "REG",                    # Code région
-    "DEP",                    # Code département
-    "DATE_PRISE_EN_COMPTE",   # Date de prise en compte du permis
-    "NB_LGT_TOT_CREES",      # Nombre total de logements créés
-    "CAT_DEM",                # Catégorie du demandeur
-    "I_AUT_PC",               # Indicateur permis de construire
+    "REG",                    # Region code
+    "DEP",                    # Department code
+    "DATE_PRISE_EN_COMPTE",   # Permit processing date
+    "NB_LGT_TOT_CREES",      # Total number of housing units created
+    "CAT_DEM",                # Applicant category
+    "I_AUT_PC",               # Building permit indicator
 ]
 
 
 class SitadelCollector(BaseCollector):
-    """Collecteur des permis de construire SITADEL.
+    """Collector for SITADEL building permits.
 
-    Télécharge le CSV depuis l'API DiDo du SDES, filtre sur la
-    région Auvergne-Rhône-Alpes, et sauvegarde.
+    Downloads the CSV from the SDES DiDo API, filters on the
+    Auvergne-Rhone-Alpes region, and saves.
 
-    MIGRATION 2026 : les fichiers ZIP directs n'existent plus.
-    Les données sont désormais servies via l'API DiDo.
+    MIGRATION 2026: Direct ZIP files no longer exist.
+    Data is now served via the DiDo API.
 
-    Auto-enregistré comme 'sitadel' dans le CollectorRegistry.
+    Auto-registered as 'sitadel' in the CollectorRegistry.
     """
 
     source_name: ClassVar[str] = "sitadel"
     output_subdir: ClassVar[str] = "sitadel"
-    output_filename: ClassVar[str] = "permis_construire_aura.csv"
+    output_filename: ClassVar[str] = "permis_construire_france.csv"
 
     def collect(self) -> pd.DataFrame:
-        """Télécharge et filtre les permis de construire AURA.
+        """Download and filter building permits.
 
-        Utilise l'API DiDo du SDES pour récupérer le CSV directement
-        (plus de fichier ZIP depuis la migration de fin 2025).
+        Uses the SDES DiDo API to retrieve the CSV directly
+        (no more ZIP file since the late 2025 migration).
 
-        Étapes :
-        1. Télécharger le CSV depuis l'API DiDo (~40-50 Mo)
-        2. Lire le CSV avec le séparateur ';' (format français)
-        3. Filtrer sur les départements AURA cibles
-        4. Nettoyer les types de colonnes
+        Steps:
+        1. Download the CSV from the DiDo API (~40-50 MB)
+        2. Read the CSV with ';' separator (French format)
+        3. Filter on target departments
+        4. Clean column types
 
         Returns:
-            DataFrame filtré sur AURA avec les colonnes pertinentes.
+            DataFrame filtered on target departments with relevant columns.
         """
         self.logger.info(
-            "Telechargement SITADEL via API DiDo (millesime=%s)...",
+            "Downloading SITADEL via DiDo API (millesime=%s)...",
             SITADEL_MILLESIME,
         )
 
-        # Construire l'URL avec le millésime
+        # Build the URL with the vintage
         params = {"millesime": SITADEL_MILLESIME, "withColumnName": "true"}
 
         try:
-            # Télécharger le CSV brut (timeout étendu car fichier volumineux)
+            # Download the raw CSV (extended timeout for large files)
             csv_content = self.fetch_bytes(SITADEL_DIDO_API_URL, params=params)
             self.logger.info(
-                "CSV telecharge : %.1f Mo",
+                "CSV downloaded: %.1f MB",
                 len(csv_content) / (1024 * 1024),
             )
         except Exception as exc:
             raise RuntimeError(
-                f"Echec du telechargement SITADEL via DiDo : {exc}. "
-                f"Verifier le millesime ({SITADEL_MILLESIME}) sur le catalogue DiDo."
+                f"SITADEL download via DiDo failed: {exc}. "
+                f"Check the millesime ({SITADEL_MILLESIME}) on the DiDo catalog."
             ) from exc
 
-        # Lire le CSV en mémoire
+        # Read the CSV in memory
         try:
             df = pd.read_csv(
                 io.BytesIO(csv_content), sep=",",
                 encoding="utf-8",
                 low_memory=False,
-                dtype=str,  # Lire tout en string pour le nettoyage
+                dtype=str,  # Read everything as string for cleaning
             )
         except Exception:
-            # Fallback : essayer avec séparateur ';' (ancien format)
+            # Fallback: try with ';' separator (legacy format)
             try:
                 df = pd.read_csv(
                     io.BytesIO(csv_content), sep=";",
@@ -139,91 +139,91 @@ class SitadelCollector(BaseCollector):
                     dtype=str,
                 )
             except Exception:
-                # Dernier fallback : latin-1
+                # Last fallback: latin-1
                 df = pd.read_csv(
                     io.BytesIO(csv_content), sep=";",
                     encoding="latin-1",
                     low_memory=False,
                     dtype=str,
                 )
-                self.logger.warning("Fallback latin-1 utilise")
+                self.logger.warning("Fallback latin-1 used")
 
         self.logger.info(
-            "CSV chargé : %d lignes × %d colonnes", len(df), len(df.columns),
+            "CSV loaded: %d rows × %d columns", len(df), len(df.columns),
         )
 
-        # Filtrer sur les départements AURA
-        # La colonne DEP peut avoir des formats variés (01, 1, 001...)
+        # Filter on target departments
+        # The DEP column can have various formats (01, 1, 001...)
         if "DEP" in df.columns:
-            # Normaliser le code département sur 2 caractères
+            # Normalize department code to 2 characters
             df["DEP"] = df["DEP"].astype(str).str.strip().str.zfill(2)
-            df_aura = df[df["DEP"].isin(self.config.departments)].copy()
+            df_filtered = df[df["DEP"].isin(self.config.departments)].copy()
         elif "REG" in df.columns:
-            # Fallback : filtrer par région
-            df_aura = df[df["REG"].astype(str).str.strip() == self.config.region_code].copy()
+            # Fallback: filter by region
+            df_filtered = df[df["REG"].astype(str).str.strip() == self.config.region_code].copy()
         else:
             raise ValueError(
-                "Ni 'DEP' ni 'REG' trouvés dans les colonnes. "
-                f"Colonnes disponibles : {list(df.columns)}"
+                "Neither 'DEP' nor 'REG' found in columns. "
+                f"Available columns: {list(df.columns)}"
             )
 
         self.logger.info(
-            "Après filtrage AURA : %d lignes (sur %d total)",
-            len(df_aura), len(df),
+            "After filtering (%d depts): %d rows (out of %d total)",
+            len(self.config.departments), len(df_filtered), len(df),
         )
 
-        # Convertir les colonnes numériques
-        if "NB_LGT_TOT_CREES" in df_aura.columns:
-            df_aura["NB_LGT_TOT_CREES"] = pd.to_numeric(
-                df_aura["NB_LGT_TOT_CREES"], errors="coerce"
+        # Convert numeric columns
+        if "NB_LGT_TOT_CREES" in df_filtered.columns:
+            df_filtered["NB_LGT_TOT_CREES"] = pd.to_numeric(
+                df_filtered["NB_LGT_TOT_CREES"], errors="coerce"
             )
 
-        return df_aura
+        return df_filtered
 
     def validate(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Valide la structure et la qualité des données SITADEL.
+        """Validate the structure and quality of SITADEL data.
 
-        Vérifications :
-        1. Colonnes obligatoires présentes (DEP, DATE_PRISE_EN_COMPTE)
-        2. Départements corrects (dans la liste AURA)
-        3. Nombre minimum de lignes (au moins 1000 permis attendus)
-        4. Valeurs de NB_LGT_TOT_CREES positives
+        Checks:
+        1. Required columns present (DEP, DATE_PRISE_EN_COMPTE)
+        2. Correct departments (in the configured list)
+        3. Minimum row count (at least 1000 permits expected)
+        4. Positive NB_LGT_TOT_CREES values
 
         Args:
-            df: DataFrame filtré issu de collect().
+            df: Filtered DataFrame from collect().
 
         Returns:
-            DataFrame validé.
+            Validated DataFrame.
 
         Raises:
-            ValueError: Si les colonnes obligatoires sont manquantes.
+            ValueError: If required columns are missing.
         """
-        # 1. Colonnes obligatoires
+        # 1. Required columns
         if "DEP" not in df.columns:
-            raise ValueError("Colonne 'DEP' manquante dans les données SITADEL")
+            raise ValueError("Column 'DEP' missing from SITADEL data")
 
-        # 2. Vérifier les départements
+        # 2. Check departments
         depts_found = sorted(df["DEP"].unique().tolist())
-        self.logger.info("Départements trouvés : %s", depts_found)
+        self.logger.info("Departments found: %s", depts_found)
 
-        # 3. Nombre minimum de lignes
+        # 3. Minimum row count
         if len(df) < 100:
             self.logger.warning(
-                "⚠ Très peu de données SITADEL : %d lignes "
-                "(>1000 attendu pour AURA)", len(df),
+                "⚠ Very few SITADEL data: %d rows "
+                "(>1000 expected for AURA)", len(df),
             )
 
-        # 4. Vérifier NB_LGT_TOT_CREES si disponible
+        # 4. Check NB_LGT_TOT_CREES if available
         if "NB_LGT_TOT_CREES" in df.columns:
             total_logements = df["NB_LGT_TOT_CREES"].sum()
             self.logger.info(
-                "Total logements autorisés AURA : %d",
+                "Total authorized housing units France: %d",
                 int(total_logements) if pd.notna(total_logements) else 0,
             )
 
-        # Log résumé
+        # Log summary
         self.logger.info(
-            "Validation OK : %d permis | %d départements",
+            "Validation OK: %d permits | %d departments",
             len(df), len(depts_found),
         )
 

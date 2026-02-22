@@ -1,4 +1,4 @@
 # -*- coding: utf-8 -*-
 """
-Models Package — Modèles ML/DL, entraînement et évaluation.
+Models Package — ML/DL models, training, and evaluation.
 """

@@ -1,38 +1,38 @@
 # -*- coding: utf-8 -*-
 """
-Nettoyage des données brutes — Phase 2.1.
-==========================================
+Raw data cleaning — Phase 2.1.
+===============================
 
-Ce module centralise le nettoyage de chaque source de données brute.
-Chaque fonction de nettoyage :
-1. Lit le CSV brut (data/raw/)
-2. Supprime les doublons et valeurs aberrantes
-3. Convertit les types (dates, numériques)
-4. Gère les valeurs manquantes (NaN)
-5. Sauvegarde le résultat nettoyé (data/processed/)
+This module centralizes the cleaning of each raw data source.
+Each cleaning function:
+1. Reads the raw CSV (data/raw/)
+2. Removes duplicates and outliers
+3. Converts types (dates, numerics)
+4. Handles missing values (NaN)
+5. Saves the cleaned result (data/processed/)
 
-Les fonctions sont conçues pour être idempotentes : les relancer
-produit le même résultat.
+The functions are designed to be idempotent: re-running them
+produces the same result.
 
-Usage :
+Usage:
     >>> from src.processing.clean_data import DataCleaner
     >>> cleaner = DataCleaner(config)
     >>> cleaner.clean_all()
-    >>> # Ou source par source :
+    >>> # Or source by source:
     >>> cleaner.clean_weather()
 
-Extensibilité :
-    Pour ajouter le nettoyage d'une nouvelle source :
-    1. Ajouter une méthode clean_xxx() dans DataCleaner
-    2. L'appeler depuis clean_all()
-    3. Documenter les règles de nettoyage dans le docstring
+Extensibility:
+    To add cleaning for a new source:
+    1. Add a clean_xxx() method in DataCleaner
+    2. Call it from clean_all()
+    3. Document the cleaning rules in the docstring
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import numpy as np
 import pandas as pd
@@ -40,43 +40,288 @@ import pandas as pd
 from config.settings import ProjectConfig
 
 
-class DataCleaner:
-    """Nettoyeur central des données brutes du projet HVAC.
+# Default cleaning rules per source — each rule can be toggled on/off
+CLEANING_RULES: Dict[str, Dict[str, str]] = {
+    "weather": {
+        "remove_duplicates": "Remove duplicate rows (date x city)",
+        "remove_nan_temps": "Remove rows with no temperature data",
+        "clip_outliers": "Clip extreme values to physical bounds",
+        "recompute_hdd_cdd": "Recompute HDD/CDD from temperature (base 18C)",
+    },
+    "insee": {
+        "filter_non_monthly": "Filter non-monthly rows (quarterly, etc.)",
+        "remove_duplicates": "Remove duplicate periods",
+        "interpolate_gaps": "Interpolate short gaps (max 3 months)",
+    },
+    "eurostat": {
+        "filter_non_monthly": "Filter non-monthly rows",
+        "remove_duplicates": "Remove duplicate rows (period x NACE)",
+        "interpolate_gaps": "Interpolate short IPI gaps (max 3 months)",
+    },
+    "dpe": {
+        "remove_duplicates": "Remove duplicate DPE (numero_dpe)",
+        "filter_invalid_dates": "Filter dates outside DPE v2 range (< 2021-07 or future)",
+        "filter_invalid_labels": "Filter invalid DPE/GES labels (only A-G kept)",
+        "clip_outliers": "Clip extreme numeric values (surface, conso, cost)",
+        "filter_invalid_depts": "Filter rows with unknown department codes",
+    },
+}
 
-    Chaque méthode clean_xxx() traite une source spécifique.
-    Les données nettoyées sont sauvegardées dans data/processed/
-    avec le même nom de fichier que le brut.
+
+class DataCleaner:
+    """Central cleaner for the HVAC project raw data.
+
+    Each clean_xxx() method processes a specific source.
+    Cleaned data is saved in data/processed/
+    with the same filename as the raw file.
 
     Attributes:
-        config: Configuration du projet (chemins, paramètres).
-        logger: Logger structuré pour le suivi des opérations.
-        stats: Dictionnaire des statistiques de nettoyage par source.
+        config: Project configuration (paths, parameters).
+        logger: Structured logger for operation tracking.
+        stats: Dictionary of cleaning statistics per source.
     """
 
-    def __init__(self, config: ProjectConfig) -> None:
-        """Initialise le nettoyeur avec la configuration projet.
+    def __init__(
+        self,
+        config: ProjectConfig,
+        skip_rules: Optional[Dict[str, Set[str]]] = None,
+    ) -> None:
+        """Initialize the cleaner with the project configuration.
 
         Args:
-            config: Configuration centralisée du projet.
+            config: Centralized project configuration.
+            skip_rules: Rules to skip per source.
+                Example: {"dpe": {"filter_invalid_dates", "filter_invalid_labels"}}
+                If None, all rules are applied (default behavior).
         """
         self.config = config
         self.logger = logging.getLogger("processing.clean")
         self.stats: Dict[str, Dict] = {}
+        self.skip_rules = skip_rules or {}
 
-        # S'assurer que le répertoire de sortie existe
+        # Ensure the output directory exists
         self.config.processed_data_dir.mkdir(parents=True, exist_ok=True)
 
-    def clean_all(self) -> Dict[str, Dict]:
-        """Nettoie toutes les sources de données dans l'ordre recommandé.
+    def _should_skip(self, source: str, rule: str) -> bool:
+        """Check if a cleaning rule should be skipped.
 
-        L'ordre n'a pas d'importance ici (pas de dépendance inter-sources),
-        mais on suit l'ordre du pipeline pour la cohérence des logs.
+        Args:
+            source: Data source name (weather, dpe, etc.).
+            rule: Rule name (remove_duplicates, clip_outliers, etc.).
 
         Returns:
-            Dictionnaire {source: {rows_in, rows_out, dropped, ...}}.
+            True if the rule should be skipped.
+        """
+        return rule in self.skip_rules.get(source, set())
+
+    def preview_all(self) -> Dict[str, List[Dict[str, Any]]]:
+        """Preview the impact of each cleaning rule without modifying data.
+
+        Reads each raw file and estimates how many rows would be affected
+        by each cleaning rule. Returns a structured impact report.
+
+        Returns:
+            Dictionary {source: [{rule, description, rows_affected, pct}]}.
         """
         self.logger.info("=" * 60)
-        self.logger.info("  PHASE 2.1 — Nettoyage des données brutes")
+        self.logger.info("  CLEANING PREVIEW (dry run)")
+        self.logger.info("=" * 60)
+
+        results: Dict[str, List[Dict[str, Any]]] = {}
+
+        results["weather"] = self._preview_weather()
+        results["insee"] = self._preview_insee()
+        results["eurostat"] = self._preview_eurostat()
+        results["dpe"] = self._preview_dpe()
+
+        return results
+
+    def _preview_weather(self) -> List[Dict[str, Any]]:
+        """Preview weather cleaning impact."""
+        filepath = self.config.raw_data_dir / "weather" / "weather_france.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        # Duplicates
+        date_col = "time" if "time" in df.columns else "date"
+        key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
+        dups = df.duplicated(subset=key_cols).sum()
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["weather"]["remove_duplicates"],
+            "rows_affected": int(dups), "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        # NaN temperatures
+        temp_cols = [c for c in df.columns if "temperature" in c.lower()]
+        null_temps = int(df[temp_cols].isna().all(axis=1).sum()) if temp_cols else 0
+        impacts.append({
+            "rule": "remove_nan_temps", "description": CLEANING_RULES["weather"]["remove_nan_temps"],
+            "rows_affected": null_temps, "pct": round(100 * null_temps / max(total, 1), 1),
+        })
+
+        # Outlier clipping
+        clip_count = 0
+        clip_rules = {
+            "temperature_2m_max": (-30, 50), "temperature_2m_min": (-30, 50),
+            "temperature_2m_mean": (-30, 50), "precipitation_sum": (0, 300),
+            "wind_speed_10m_max": (0, 200),
+        }
+        for col, (vmin, vmax) in clip_rules.items():
+            if col in df.columns:
+                clip_count += int(((df[col] < vmin) | (df[col] > vmax)).sum())
+        impacts.append({
+            "rule": "clip_outliers", "description": CLEANING_RULES["weather"]["clip_outliers"],
+            "rows_affected": clip_count, "pct": round(100 * clip_count / max(total, 1), 1),
+            "note": "values clipped, no rows deleted",
+        })
+
+        return impacts
+
+    def _preview_insee(self) -> List[Dict[str, Any]]:
+        """Preview INSEE cleaning impact."""
+        filepath = self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        # Non-monthly filter
+        if "period" in df.columns:
+            non_monthly = int((~df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")).sum())
+        else:
+            non_monthly = 0
+        impacts.append({
+            "rule": "filter_non_monthly", "description": CLEANING_RULES["insee"]["filter_non_monthly"],
+            "rows_affected": non_monthly, "pct": round(100 * non_monthly / max(total, 1), 1),
+        })
+
+        # Duplicates
+        dups = int(df.duplicated(subset=["period"]).sum()) if "period" in df.columns else 0
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["insee"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        return impacts
+
+    def _preview_eurostat(self) -> List[Dict[str, Any]]:
+        """Preview Eurostat cleaning impact."""
+        filepath = self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        df = pd.read_csv(filepath)
+        total = len(df)
+        impacts = []
+
+        if "period" in df.columns:
+            non_monthly = int((~df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")).sum())
+        else:
+            non_monthly = 0
+        impacts.append({
+            "rule": "filter_non_monthly", "description": CLEANING_RULES["eurostat"]["filter_non_monthly"],
+            "rows_affected": non_monthly, "pct": round(100 * non_monthly / max(total, 1), 1),
+        })
+
+        key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
+        dups = int(df.duplicated(subset=key_cols).sum())
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["eurostat"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        return impacts
+
+    def _preview_dpe(self) -> List[Dict[str, Any]]:
+        """Preview DPE cleaning impact — the most critical source."""
+        filepath = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
+        if not filepath.exists():
+            return [{"rule": "N/A", "description": "File not found", "rows_affected": 0, "pct": 0}]
+
+        # Read a sample to estimate (full read for files < 500k rows)
+        df = pd.read_csv(filepath, low_memory=False)
+        total = len(df)
+        impacts = []
+
+        # Duplicates
+        dups = int(df.duplicated(subset=["numero_dpe"]).sum()) if "numero_dpe" in df.columns else 0
+        impacts.append({
+            "rule": "remove_duplicates", "description": CLEANING_RULES["dpe"]["remove_duplicates"],
+            "rows_affected": dups, "pct": round(100 * dups / max(total, 1), 1),
+        })
+
+        # Invalid dates
+        if "date_etablissement_dpe" in df.columns:
+            dates = pd.to_datetime(df["date_etablissement_dpe"], errors="coerce")
+            date_min = pd.Timestamp("2021-07-01")
+            date_max = pd.Timestamp.now()
+            invalid_dates = int((dates.isna() | (dates < date_min) | (dates > date_max)).sum())
+        else:
+            invalid_dates = 0
+        impacts.append({
+            "rule": "filter_invalid_dates", "description": CLEANING_RULES["dpe"]["filter_invalid_dates"],
+            "rows_affected": invalid_dates, "pct": round(100 * invalid_dates / max(total, 1), 1),
+        })
+
+        # Invalid labels
+        valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
+        if "etiquette_dpe" in df.columns:
+            invalid_labels = int((~df["etiquette_dpe"].isin(valid_labels)).sum())
+        else:
+            invalid_labels = 0
+        impacts.append({
+            "rule": "filter_invalid_labels", "description": CLEANING_RULES["dpe"]["filter_invalid_labels"],
+            "rows_affected": invalid_labels, "pct": round(100 * invalid_labels / max(total, 1), 1),
+        })
+
+        # Outlier clipping
+        clip_count = 0
+        clip_rules = {
+            "surface_habitable_logement": (5, 1000),
+            "conso_5_usages_par_m2_ep": (0, 1000),
+            "cout_total_5_usages": (0, 50000),
+        }
+        for col, (vmin, vmax) in clip_rules.items():
+            if col in df.columns:
+                mask = df[col].notna() & ((df[col] < vmin) | (df[col] > vmax))
+                clip_count += int(mask.sum())
+        impacts.append({
+            "rule": "clip_outliers", "description": CLEANING_RULES["dpe"]["clip_outliers"],
+            "rows_affected": clip_count, "pct": round(100 * clip_count / max(total, 1), 1),
+            "note": "values clipped, no rows deleted",
+        })
+
+        # Invalid departments
+        if "code_departement_ban" in df.columns:
+            valid_depts = set(self.config.geo.departments)
+            dept_col = df["code_departement_ban"].astype(str).str.zfill(2)
+            invalid_depts = int((~dept_col.isin(valid_depts)).sum())
+        else:
+            invalid_depts = 0
+        impacts.append({
+            "rule": "filter_invalid_depts", "description": CLEANING_RULES["dpe"]["filter_invalid_depts"],
+            "rows_affected": invalid_depts, "pct": round(100 * invalid_depts / max(total, 1), 1),
+        })
+
+        return impacts
+
+    def clean_all(self) -> Dict[str, Dict]:
+        """Clean all data sources in the recommended order.
+
+        The order does not matter here (no inter-source dependency),
+        but we follow the pipeline order for log consistency.
+
+        Returns:
+            Dictionary {source: {rows_in, rows_out, dropped, ...}}.
+        """
+        self.logger.info("=" * 60)
+        self.logger.info("  PHASE 2.1 — Raw Data Cleaning")
         self.logger.info("=" * 60)
 
         self.clean_weather()
@@ -84,13 +329,13 @@ class DataCleaner:
         self.clean_eurostat()
         self.clean_dpe()
 
-        # Bilan
+        # Summary
         self.logger.info("=" * 60)
-        self.logger.info("  BILAN NETTOYAGE")
+        self.logger.info("  CLEANING SUMMARY")
         self.logger.info("=" * 60)
         for source, stat in self.stats.items():
             self.logger.info(
-                "  %-15s : %6d → %6d lignes (-%d doublons, -%d aberrants)",
+                "  %-15s : %6d → %6d rows (-%d duplicates, -%d outliers)",
                 source,
                 stat.get("rows_in", 0),
                 stat.get("rows_out", 0),
@@ -102,103 +347,114 @@ class DataCleaner:
         return self.stats
 
     # ==================================================================
-    # Nettoyage MÉTÉO (Open-Meteo)
+    # WEATHER cleaning (Open-Meteo)
     # ==================================================================
 
     def clean_weather(self) -> Optional[pd.DataFrame]:
-        """Nettoie les données météo brutes.
+        """Clean raw weather data.
 
-        Règles de nettoyage :
-        1. Conversion de la colonne date en datetime
-        2. Suppression des doublons (date × ville)
-        3. Suppression des lignes avec température NaN (critique)
-        4. Clipping des valeurs aberrantes :
-           - Température : [-30, +50] °C (bornes physiques AURA)
-           - Précipitations : [0, 300] mm/jour
-           - Vitesse vent : [0, 200] km/h
-        5. Recalcul HDD/CDD si nécessaire (base 18°C)
-        6. Ajout de colonnes dérivées (year, month, date_id)
+        Cleaning rules:
+        1. Convert the date column to datetime
+        2. Remove duplicates (date x city)
+        3. Remove rows with NaN temperature (critical)
+        4. Clip outlier values:
+           - Temperature: [-30, +50] °C (physical bounds for AURA region)
+           - Precipitation: [0, 300] mm/day
+           - Wind speed: [0, 200] km/h
+        5. Recompute HDD/CDD if necessary (base 18°C)
+        6. Add derived columns (year, month, date_id)
 
         Returns:
-            DataFrame nettoyé, ou None si le fichier source manque.
+            Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage MÉTÉO...")
-        filepath = self.config.raw_data_dir / "weather" / "weather_aura.csv"
+        self.logger.info("Cleaning WEATHER...")
+        filepath = self.config.raw_data_dir / "weather" / "weather_france.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
+        self.logger.info("  Raw rows: %d", rows_in)
 
-        # 1. Conversion date
+        # 1. Date conversion
         date_col = "time" if "time" in df.columns else "date"
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
         null_dates = df[date_col].isna().sum()
         if null_dates > 0:
-            self.logger.warning("  %d dates invalides supprimées", null_dates)
+            self.logger.warning("  %d invalid dates removed", null_dates)
             df = df.dropna(subset=[date_col])
 
-        # 2. Doublons (date × ville)
-        key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
-        dups = df.duplicated(subset=key_cols).sum()
-        df = df.drop_duplicates(subset=key_cols, keep="last")
-        self.logger.info("  Doublons supprimés : %d", dups)
+        # 2. Duplicates (date x city)
+        dups = 0
+        if not self._should_skip("weather", "remove_duplicates"):
+            key_cols = [date_col, "city"] if "city" in df.columns else [date_col]
+            dups = df.duplicated(subset=key_cols).sum()
+            df = df.drop_duplicates(subset=key_cols, keep="last")
+            self.logger.info("  Duplicates removed: %d", dups)
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
-        # 3. Valeurs manquantes critiques (température)
-        temp_cols = [c for c in df.columns if "temperature" in c.lower()]
-        null_temps = df[temp_cols].isna().all(axis=1).sum() if temp_cols else 0
-        if null_temps > 0:
-            df = df.dropna(subset=temp_cols, how="all")
-            self.logger.info("  Lignes sans aucune température : %d supprimées", null_temps)
+        # 3. Critical missing values (temperature)
+        null_temps = 0
+        if not self._should_skip("weather", "remove_nan_temps"):
+            temp_cols = [c for c in df.columns if "temperature" in c.lower()]
+            null_temps = df[temp_cols].isna().all(axis=1).sum() if temp_cols else 0
+            if null_temps > 0:
+                df = df.dropna(subset=temp_cols, how="all")
+                self.logger.info("  Rows with no temperature: %d removed", null_temps)
+        else:
+            self.logger.info("  [SKIPPED] Remove NaN temperatures")
 
-        # 4. Clipping des valeurs aberrantes
+        # 4. Clip outlier values
         outliers_removed = 0
-        clip_rules = {
-            "temperature_2m_max": (-30, 50),
-            "temperature_2m_min": (-30, 50),
-            "temperature_2m_mean": (-30, 50),
-            "precipitation_sum": (0, 300),
-            "wind_speed_10m_max": (0, 200),
-        }
-        for col, (vmin, vmax) in clip_rules.items():
-            if col in df.columns:
-                mask_out = (df[col] < vmin) | (df[col] > vmax)
-                n_out = mask_out.sum()
-                if n_out > 0:
-                    self.logger.info(
-                        "  %s : %d valeurs hors [%s, %s] clippées",
-                        col, n_out, vmin, vmax,
-                    )
-                    outliers_removed += n_out
-                df[col] = df[col].clip(vmin, vmax)
+        if not self._should_skip("weather", "clip_outliers"):
+            clip_rules = {
+                "temperature_2m_max": (-30, 50),
+                "temperature_2m_min": (-30, 50),
+                "temperature_2m_mean": (-30, 50),
+                "precipitation_sum": (0, 300),
+                "wind_speed_10m_max": (0, 200),
+            }
+            for col, (vmin, vmax) in clip_rules.items():
+                if col in df.columns:
+                    mask_out = (df[col] < vmin) | (df[col] > vmax)
+                    n_out = mask_out.sum()
+                    if n_out > 0:
+                        self.logger.info(
+                            "  %s: %d values outside [%s, %s] clipped",
+                            col, n_out, vmin, vmax,
+                        )
+                        outliers_removed += n_out
+                    df[col] = df[col].clip(vmin, vmax)
+        else:
+            self.logger.info("  [SKIPPED] Clip outlier values")
 
-        # 5. Recalcul HDD/CDD (base 18°C) pour cohérence
+        # 5. Recompute HDD/CDD (base 18°C) for consistency
         if "temperature_2m_mean" in df.columns:
             df["hdd"] = np.maximum(0, 18.0 - df["temperature_2m_mean"]).round(2)
             df["cdd"] = np.maximum(0, df["temperature_2m_mean"] - 18.0).round(2)
 
-        # 6. Colonnes dérivées pour faciliter les jointures
+        # 6. Derived columns to facilitate joins
         df["year"] = df[date_col].dt.year
         df["month"] = df[date_col].dt.month
         df["date_id"] = df["year"] * 100 + df["month"]
 
-        # S'assurer que dept est un string avec padding
+        # Ensure dept is a zero-padded string
         if "dept" in df.columns:
             df["dept"] = df["dept"].astype(str).str.zfill(2)
 
-        # Tri chronologique
+        # Chronological sort
         df = df.sort_values([date_col, "city"] if "city" in df.columns else [date_col])
         df = df.reset_index(drop=True)
 
-        # Arrondir les flottants
+        # Round floating-point values
         float_cols = df.select_dtypes(include=["float64"]).columns
         df[float_cols] = df[float_cols].round(2)
 
         rows_out = len(df)
-        self._save_cleaned(df, "weather", "weather_aura.csv")
+        self._save_cleaned(df, "weather", "weather_france.csv")
 
         self.stats["weather"] = {
             "rows_in": rows_in,
@@ -208,89 +464,100 @@ class DataCleaner:
             "null_dates_removed": null_dates,
         }
         self.logger.info(
-            "  ✓ Météo nettoyée : %d → %d lignes", rows_in, rows_out,
+            "  ✓ Weather cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
     # ==================================================================
-    # Nettoyage INSEE (Indicateurs économiques)
+    # INSEE cleaning (Economic indicators)
     # ==================================================================
 
     def clean_insee(self) -> Optional[pd.DataFrame]:
-        """Nettoie les indicateurs économiques INSEE.
+        """Clean INSEE economic indicators.
 
-        Règles de nettoyage :
-        1. Filtrage des périodes mensuelles uniquement (YYYY-MM)
-           — exclut les formats trimestriels (2019Q1)
-        2. Suppression des doublons sur la période
-        3. Interpolation linéaire des valeurs manquantes
-           (max 3 mois consécutifs, au-delà = NaN conservé)
-        4. Conversion date_id (YYYYMM) pour jointure
-        5. Tri chronologique
+        Cleaning rules:
+        1. Filter monthly periods only (YYYY-MM)
+           — excludes quarterly formats (2019Q1)
+        2. Remove duplicates on the period
+        3. Linear interpolation of missing values
+           (max 3 consecutive months, beyond that = NaN preserved)
+        4. Convert to date_id (YYYYMM) for joining
+        5. Chronological sort
 
         Returns:
-            DataFrame nettoyé, ou None si le fichier source manque.
+            Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage INSEE...")
+        self.logger.info("Cleaning INSEE...")
         filepath = self.config.raw_data_dir / "insee" / "indicateurs_economiques.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
-        self.logger.info("  Colonnes : %s", list(df.columns))
+        self.logger.info("  Raw rows: %d", rows_in)
+        self.logger.info("  Columns: %s", list(df.columns))
 
-        # 1. Filtrer les périodes mensuelles (YYYY-MM)
-        if "period" in df.columns:
-            mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
-            non_monthly = (~mask_monthly).sum()
-            if non_monthly > 0:
-                self.logger.info(
-                    "  %d lignes non mensuelles filtrées (trimestrielles, etc.)",
-                    non_monthly,
-                )
-            df = df[mask_monthly].copy()
+        # 1. Filter monthly periods (YYYY-MM)
+        non_monthly = 0
+        if not self._should_skip("insee", "filter_non_monthly"):
+            if "period" in df.columns:
+                mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
+                non_monthly = (~mask_monthly).sum()
+                if non_monthly > 0:
+                    self.logger.info(
+                        "  %d non-monthly rows filtered (quarterly, etc.)",
+                        non_monthly,
+                    )
+                df = df[mask_monthly].copy()
+        else:
+            self.logger.info("  [SKIPPED] Filter non-monthly rows")
 
-        # 2. Doublons
-        dups = df.duplicated(subset=["period"]).sum()
-        df = df.drop_duplicates(subset=["period"], keep="last")
+        # 2. Duplicates
+        dups = 0
+        if not self._should_skip("insee", "remove_duplicates"):
+            dups = df.duplicated(subset=["period"]).sum()
+            df = df.drop_duplicates(subset=["period"], keep="last")
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
-        # 3. Conversion date_id
+        # 3. Convert to date_id
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
 
-        # 4. Tri chronologique (nécessaire pour l'interpolation)
+        # 4. Chronological sort (required for interpolation)
         df = df.sort_values("date_id").reset_index(drop=True)
 
-        # 5. Interpolation linéaire des gaps courts (max 3 mois)
-        # Cela comble les trous ponctuels dans les séries INSEE
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        indicator_cols = [c for c in numeric_cols if c not in ["date_id"]]
-        nulls_before = df[indicator_cols].isna().sum().sum()
+        # 5. Linear interpolation for short gaps (max 3 months)
+        interpolated = 0
+        if not self._should_skip("insee", "interpolate_gaps"):
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            indicator_cols = [c for c in numeric_cols if c not in ["date_id"]]
+            nulls_before = df[indicator_cols].isna().sum().sum()
 
-        for col in indicator_cols:
-            df[col] = df[col].interpolate(method="linear", limit=3)
+            for col in indicator_cols:
+                df[col] = df[col].interpolate(method="linear", limit=3)
 
-        nulls_after = df[indicator_cols].isna().sum().sum()
-        interpolated = nulls_before - nulls_after
+            nulls_after = df[indicator_cols].isna().sum().sum()
+            interpolated = nulls_before - nulls_after
 
-        if interpolated > 0:
-            self.logger.info(
-                "  %d valeurs interpolées (gaps ≤ 3 mois)", interpolated,
-            )
+            if interpolated > 0:
+                self.logger.info(
+                    "  %d values interpolated (gaps ≤ 3 months)", interpolated,
+                )
+        else:
+            self.logger.info("  [SKIPPED] Interpolate gaps")
 
-        # 6. Log des NaN restants par colonne
+        # 6. Log remaining NaN per column
         remaining_nulls = df[indicator_cols].isna().sum()
         for col, count in remaining_nulls.items():
             if count > 0:
                 self.logger.warning(
-                    "  ⚠ %s : %d NaN restants (%.1f%%)",
+                    "  ⚠ %s: %d remaining NaN (%.1f%%)",
                     col, count, 100 * count / len(df),
                 )
 
-        # Arrondir
+        # Round
         df[indicator_cols] = df[indicator_cols].round(2)
 
         rows_out = len(df)
@@ -305,68 +572,75 @@ class DataCleaner:
             "non_monthly_filtered": non_monthly if "period" in df.columns else 0,
         }
         self.logger.info(
-            "  ✓ INSEE nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ INSEE cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
     # ==================================================================
-    # Nettoyage EUROSTAT (IPI)
+    # EUROSTAT cleaning (IPI)
     # ==================================================================
 
     def clean_eurostat(self) -> Optional[pd.DataFrame]:
-        """Nettoie les données Eurostat IPI.
+        """Clean Eurostat IPI data.
 
-        Règles de nettoyage :
-        1. Filtrage des périodes mensuelles (YYYY-MM)
-        2. Suppression des doublons (period × nace_r2)
-        3. Détection et flagging des ruptures de série
-           (variation > 30% d'un mois à l'autre = suspect)
-        4. Interpolation linéaire des gaps courts
-        5. Conversion date_id
+        Cleaning rules:
+        1. Filter monthly periods (YYYY-MM)
+        2. Remove duplicates (period x nace_r2)
+        3. Detect and flag series breaks
+           (variation > 30% from one month to the next = suspect)
+        4. Linear interpolation of short gaps
+        5. Convert to date_id
 
         Returns:
-            DataFrame nettoyé, ou None si le fichier source manque.
+            Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage EUROSTAT...")
+        self.logger.info("Cleaning EUROSTAT...")
         filepath = self.config.raw_data_dir / "eurostat" / "ipi_hvac_france.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
         df = pd.read_csv(filepath)
         rows_in = len(df)
-        self.logger.info("  Lignes brutes : %d", rows_in)
-        self.logger.info("  Colonnes : %s", list(df.columns))
+        self.logger.info("  Raw rows: %d", rows_in)
+        self.logger.info("  Columns: %s", list(df.columns))
 
-        # 1. Filtrer les périodes mensuelles
-        if "period" in df.columns:
-            mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
-            non_monthly = (~mask_monthly).sum()
-            if non_monthly > 0:
-                self.logger.info(
-                    "  %d lignes non mensuelles filtrées", non_monthly,
-                )
-            df = df[mask_monthly].copy()
+        # 1. Filter monthly periods
+        if not self._should_skip("eurostat", "filter_non_monthly"):
+            if "period" in df.columns:
+                mask_monthly = df["period"].astype(str).str.match(r"^\d{4}-\d{2}$")
+                non_monthly = (~mask_monthly).sum()
+                if non_monthly > 0:
+                    self.logger.info(
+                        "  %d non-monthly rows filtered", non_monthly,
+                    )
+                df = df[mask_monthly].copy()
+        else:
+            self.logger.info("  [SKIPPED] Filter non-monthly rows")
 
-        # 2. Doublons
-        key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
-        dups = df.duplicated(subset=key_cols).sum()
-        df = df.drop_duplicates(subset=key_cols, keep="last")
+        # 2. Duplicates
+        dups = 0
+        if not self._should_skip("eurostat", "remove_duplicates"):
+            key_cols = ["period", "nace_r2"] if "nace_r2" in df.columns else ["period"]
+            dups = df.duplicated(subset=key_cols).sum()
+            df = df.drop_duplicates(subset=key_cols, keep="last")
+        else:
+            self.logger.info("  [SKIPPED] Remove duplicates")
 
-        # 3. Conversion date_id
+        # 3. Convert to date_id
         df["date_id"] = df["period"].str.replace("-", "").astype(int)
 
-        # 4. Tri
+        # 4. Sort
         df = df.sort_values(["nace_r2", "date_id"] if "nace_r2" in df.columns else ["date_id"])
         df = df.reset_index(drop=True)
 
-        # 5. Interpolation par série NACE
+        # 5. Interpolation per NACE series
         interpolated = 0
         if "nace_r2" in df.columns and "ipi_value" in df.columns:
             nulls_before = df["ipi_value"].isna().sum()
 
-            # Interpoler par groupe NACE
+            # Interpolate per NACE group
             df["ipi_value"] = df.groupby("nace_r2")["ipi_value"].transform(
                 lambda s: s.interpolate(method="linear", limit=3)
             )
@@ -375,23 +649,23 @@ class DataCleaner:
             interpolated = nulls_before - nulls_after
             if interpolated > 0:
                 self.logger.info(
-                    "  %d valeurs IPI interpolées", interpolated,
+                    "  %d IPI values interpolated", interpolated,
                 )
 
-            # 6. Détection des variations suspectes (> 30%)
+            # 6. Detect suspicious variations (> 30%)
             df["ipi_pct_change"] = df.groupby("nace_r2")["ipi_value"].transform(
                 lambda s: s.pct_change().abs()
             )
             suspects = (df["ipi_pct_change"] > 0.30).sum()
             if suspects > 0:
                 self.logger.warning(
-                    "  ⚠ %d variations IPI > 30%% détectées (ruptures potentielles)",
+                    "  ⚠ %d IPI variations > 30%% detected (potential breaks)",
                     suspects,
                 )
-            # Garder la colonne pour diagnostic mais ne pas supprimer les lignes
+            # Keep the column for diagnosis but do not remove the rows
             df = df.drop(columns=["ipi_pct_change"])
 
-        # Arrondir
+        # Round
         if "ipi_value" in df.columns:
             df["ipi_value"] = df["ipi_value"].round(2)
 
@@ -406,45 +680,45 @@ class DataCleaner:
             "interpolated": interpolated,
         }
         self.logger.info(
-            "  ✓ Eurostat nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ Eurostat cleaned: %d → %d rows", rows_in, rows_out,
         )
         return df
 
     # ==================================================================
-    # Nettoyage DPE (ADEME)
+    # DPE cleaning (ADEME)
     # ==================================================================
 
     def clean_dpe(self) -> Optional[pd.DataFrame]:
-        """Nettoie les DPE bruts ADEME.
+        """Clean raw ADEME DPE data.
 
-        C'est la source la plus volumineuse (~1.4M lignes).
-        Le nettoyage est fait par chunks pour gérer la mémoire.
+        This is the most voluminous source (~1.4M rows).
+        Cleaning is done in chunks to manage memory.
 
-        Règles de nettoyage :
-        1. Suppression des doublons sur numero_dpe
-        2. Conversion et validation des dates
-           - date_etablissement_dpe doit être ≥ 2021-07-01 (DPE v2)
-           - date_etablissement_dpe doit être ≤ aujourd'hui
-        3. Validation des étiquettes DPE/GES (A-G uniquement)
-        4. Clipping des valeurs numériques :
-           - surface_habitable_logement : [5, 1000] m²
-           - conso_5_usages_par_m2_ep : [0, 1000] kWh/m².an
-           - cout_total_5_usages : [0, 50000] EUR/an
-        5. Nettoyage des chaînes de caractères (strip, lowercase partiel)
-        6. Validation du département (01-74, dans AURA)
-        7. Colonnes dérivées : year, month, date_id, is_pac, is_clim
+        Cleaning rules:
+        1. Remove duplicates on numero_dpe
+        2. Convert and validate dates
+           - date_etablissement_dpe must be >= 2021-07-01 (DPE v2)
+           - date_etablissement_dpe must be <= today
+        3. Validate DPE/GES labels (A-G only)
+        4. Clip numeric values:
+           - surface_habitable_logement: [5, 1000] m²
+           - conso_5_usages_par_m2_ep: [0, 1000] kWh/m².year
+           - cout_total_5_usages: [0, 50000] EUR/year
+        5. Clean character strings (strip, partial lowercase)
+        6. Validate the department code
+        7. Derived columns: year, month, date_id, is_pac, is_clim
 
         Returns:
-            DataFrame nettoyé, ou None si le fichier source manque.
+            Cleaned DataFrame, or None if the source file is missing.
         """
-        self.logger.info("Nettoyage DPE (volumétrie ~1.4M lignes)...")
-        filepath = self.config.raw_data_dir / "dpe" / "dpe_aura_all.csv"
+        self.logger.info("Cleaning DPE (~1.4M rows)...")
+        filepath = self.config.raw_data_dir / "dpe" / "dpe_france_all.csv"
 
         if not filepath.exists():
-            self.logger.warning("  Fichier manquant : %s", filepath)
+            self.logger.warning("  Missing file: %s", filepath)
             return None
 
-        # Lecture par chunks pour gérer la mémoire
+        # Read in chunks to manage memory
         chunks = []
         rows_in = 0
         dups = 0
@@ -453,81 +727,87 @@ class DataCleaner:
         outliers_removed = 0
 
         chunk_size = 200_000
-        self.logger.info("  Lecture par chunks de %d lignes...", chunk_size)
+        self.logger.info("  Reading in chunks of %d rows...", chunk_size)
 
         for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
             rows_in += len(chunk)
 
-            # 1. Doublons sur numero_dpe
-            n_before = len(chunk)
-            chunk = chunk.drop_duplicates(subset=["numero_dpe"], keep="last")
-            dups += n_before - len(chunk)
+            # 1. Duplicates on numero_dpe
+            if not self._should_skip("dpe", "remove_duplicates"):
+                n_before = len(chunk)
+                chunk = chunk.drop_duplicates(subset=["numero_dpe"], keep="last")
+                dups += n_before - len(chunk)
 
             # 2. Dates
             chunk["date_etablissement_dpe"] = pd.to_datetime(
                 chunk["date_etablissement_dpe"], errors="coerce"
             )
-            # Filtrer : DPE v2 seulement (≥ 2021-07-01) et pas dans le futur
-            date_min = pd.Timestamp("2021-07-01")
-            date_max = pd.Timestamp.now()
-            mask_date = (
-                chunk["date_etablissement_dpe"].notna()
-                & (chunk["date_etablissement_dpe"] >= date_min)
-                & (chunk["date_etablissement_dpe"] <= date_max)
-            )
-            n_invalid_date = (~mask_date).sum()
-            date_invalid += n_invalid_date
-            chunk = chunk[mask_date].copy()
+            if not self._should_skip("dpe", "filter_invalid_dates"):
+                date_min = pd.Timestamp("2021-07-01")
+                date_max = pd.Timestamp.now()
+                mask_date = (
+                    chunk["date_etablissement_dpe"].notna()
+                    & (chunk["date_etablissement_dpe"] >= date_min)
+                    & (chunk["date_etablissement_dpe"] <= date_max)
+                )
+                n_invalid_date = (~mask_date).sum()
+                date_invalid += n_invalid_date
+                chunk = chunk[mask_date].copy()
+            else:
+                # Still drop rows with unparseable dates
+                chunk = chunk.dropna(subset=["date_etablissement_dpe"]).copy()
 
-            # 3. Étiquettes DPE/GES valides (A-G)
-            valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
-            if "etiquette_dpe" in chunk.columns:
-                mask_etiq = chunk["etiquette_dpe"].isin(valid_labels)
-                n_invalid_etiq = (~mask_etiq).sum()
-                etiquette_invalid += n_invalid_etiq
-                chunk = chunk[mask_etiq].copy()
+            # 3. Valid DPE/GES labels (A-G)
+            if not self._should_skip("dpe", "filter_invalid_labels"):
+                valid_labels = {"A", "B", "C", "D", "E", "F", "G"}
+                if "etiquette_dpe" in chunk.columns:
+                    mask_etiq = chunk["etiquette_dpe"].isin(valid_labels)
+                    n_invalid_etiq = (~mask_etiq).sum()
+                    etiquette_invalid += n_invalid_etiq
+                    chunk = chunk[mask_etiq].copy()
 
-            # 4. Clipping des valeurs numériques
-            clip_rules = {
-                "surface_habitable_logement": (5, 1000),
-                "conso_5_usages_par_m2_ep": (0, 1000),
-                "conso_5_usages_par_m2_ef": (0, 1000),
-                "emission_ges_5_usages_par_m2": (0, 500),
-                "cout_total_5_usages": (0, 50000),
-                "cout_chauffage": (0, 30000),
-                "cout_ecs": (0, 10000),
-                "hauteur_sous_plafond": (1.5, 8.0),
-            }
-            for col, (vmin, vmax) in clip_rules.items():
-                if col in chunk.columns:
-                    mask_out = chunk[col].notna() & (
-                        (chunk[col] < vmin) | (chunk[col] > vmax)
-                    )
-                    outliers_removed += mask_out.sum()
-                    # On clipe plutôt que de supprimer (conserver le DPE)
-                    chunk[col] = chunk[col].clip(vmin, vmax)
+            # 4. Clip numeric values
+            if not self._should_skip("dpe", "clip_outliers"):
+                clip_rules_dpe = {
+                    "surface_habitable_logement": (5, 1000),
+                    "conso_5_usages_par_m2_ep": (0, 1000),
+                    "conso_5_usages_par_m2_ef": (0, 1000),
+                    "emission_ges_5_usages_par_m2": (0, 500),
+                    "cout_total_5_usages": (0, 50000),
+                    "cout_chauffage": (0, 30000),
+                    "cout_ecs": (0, 10000),
+                    "hauteur_sous_plafond": (1.5, 8.0),
+                }
+                for col, (vmin, vmax) in clip_rules_dpe.items():
+                    if col in chunk.columns:
+                        mask_out = chunk[col].notna() & (
+                            (chunk[col] < vmin) | (chunk[col] > vmax)
+                        )
+                        outliers_removed += mask_out.sum()
+                        chunk[col] = chunk[col].clip(vmin, vmax)
 
-            # 5. Nettoyage des chaînes (strip whitespace)
+            # 5. Clean strings (strip whitespace)
             str_cols = chunk.select_dtypes(include=["object"]).columns
             for col in str_cols:
                 chunk[col] = chunk[col].str.strip()
 
-            # 6. Validation département AURA
-            if "code_departement_ban" in chunk.columns:
-                valid_depts = set(self.config.geo.departments)
-                chunk["code_departement_ban"] = (
-                    chunk["code_departement_ban"].astype(str).str.zfill(2)
-                )
-                chunk = chunk[
-                    chunk["code_departement_ban"].isin(valid_depts)
-                ].copy()
+            # 6. Validate department code
+            if not self._should_skip("dpe", "filter_invalid_depts"):
+                if "code_departement_ban" in chunk.columns:
+                    valid_depts = set(self.config.geo.departments)
+                    chunk["code_departement_ban"] = (
+                        chunk["code_departement_ban"].astype(str).str.zfill(2)
+                    )
+                    chunk = chunk[
+                        chunk["code_departement_ban"].isin(valid_depts)
+                    ].copy()
 
-            # 7. Colonnes dérivées
+            # 7. Derived columns
             chunk["year"] = chunk["date_etablissement_dpe"].dt.year
             chunk["month"] = chunk["date_etablissement_dpe"].dt.month
             chunk["date_id"] = chunk["year"] * 100 + chunk["month"]
 
-            # Détection PAC (même logique que dans db_manager)
+            # Heat pump detection (same logic as in db_manager)
             pac_pattern = r"(?i)PAC |PAC$|pompe.*chaleur|thermodynamique"
             chauffage_str = chunk["type_generateur_chauffage_principal"].fillna("")
             froid_str = chunk["type_generateur_froid"].fillna("")
@@ -536,13 +816,13 @@ class DataCleaner:
                 | froid_str.str.contains(pac_pattern, regex=True)
             ).astype(int)
 
-            # Climatisation = generateur froid renseigné
+            # Air conditioning = cold generator filled in
             chunk["is_clim"] = (froid_str.str.len() > 0).astype(int)
 
-            # Classe A-B (bâtiment performant)
+            # Class A-B (high-performance building)
             chunk["is_classe_ab"] = chunk["etiquette_dpe"].isin(["A", "B"]).astype(int)
 
-            # Supprimer la colonne _score si elle existe (artefact API)
+            # Remove the _score column if it exists (API artifact)
             if "_score" in chunk.columns:
                 chunk = chunk.drop(columns=["_score"])
 
@@ -550,26 +830,26 @@ class DataCleaner:
 
             if (i + 1) % 5 == 0:
                 self.logger.info(
-                    "  Chunk %d : %d lignes traitées au total", i + 1, rows_in,
+                    "  Chunk %d: %d rows processed total", i + 1, rows_in,
                 )
 
         if not chunks:
-            self.logger.error("  Aucune donnée DPE après nettoyage")
+            self.logger.error("  No DPE data after cleaning")
             return None
 
         df = pd.concat(chunks, ignore_index=True)
 
-        # Dédoublonnage global (les chunks peuvent avoir des doublons inter-chunks)
+        # Global deduplication (chunks may have inter-chunk duplicates)
         n_before_global = len(df)
         df = df.drop_duplicates(subset=["numero_dpe"], keep="last")
         dups += n_before_global - len(df)
 
-        # Arrondir les flottants
+        # Round floating-point values
         float_cols = df.select_dtypes(include=["float64"]).columns
         df[float_cols] = df[float_cols].round(2)
 
         rows_out = len(df)
-        self._save_cleaned(df, "dpe", "dpe_aura_clean.csv")
+        self._save_cleaned(df, "dpe", "dpe_france_clean.csv")
 
         self.stats["dpe"] = {
             "rows_in": rows_in,
@@ -580,30 +860,30 @@ class DataCleaner:
             "outliers_removed": outliers_removed,
         }
 
-        # Log détaillé DPE
+        # Detailed DPE log
         self.logger.info(
-            "  ✓ DPE nettoyé : %d → %d lignes", rows_in, rows_out,
+            "  ✓ DPE cleaned: %d → %d rows", rows_in, rows_out,
         )
-        self.logger.info("    - Doublons supprimés : %d", dups)
-        self.logger.info("    - Dates invalides : %d", date_invalid)
-        self.logger.info("    - Étiquettes invalides : %d", etiquette_invalid)
-        self.logger.info("    - Valeurs clippées : %d", outliers_removed)
+        self.logger.info("    - Duplicates removed: %d", dups)
+        self.logger.info("    - Invalid dates: %d", date_invalid)
+        self.logger.info("    - Invalid labels: %d", etiquette_invalid)
+        self.logger.info("    - Values clipped: %d", outliers_removed)
 
-        # Distribution des étiquettes DPE après nettoyage
+        # DPE label distribution after cleaning
         if "etiquette_dpe" in df.columns:
             distrib = df["etiquette_dpe"].value_counts().sort_index()
-            self.logger.info("    Distribution DPE nettoyée :\n%s", distrib.to_string())
+            self.logger.info("    Cleaned DPE distribution:\n%s", distrib.to_string())
 
-        # Taux de PAC après nettoyage
+        # Heat pump rate after cleaning
         n_pac = df["is_pac"].sum()
         self.logger.info(
-            "    PAC détectées : %d (%.1f%%)", n_pac, 100 * n_pac / max(len(df), 1),
+            "    Heat pumps detected: %d (%.1f%%)", n_pac, 100 * n_pac / max(len(df), 1),
         )
 
         return df
 
     # ==================================================================
-    # Utilitaires
+    # Utilities
     # ==================================================================
 
     def _save_cleaned(
@@ -612,15 +892,15 @@ class DataCleaner:
         subdir: str,
         filename: str,
     ) -> Path:
-        """Sauvegarde un DataFrame nettoyé dans data/processed/.
+        """Save a cleaned DataFrame to data/processed/.
 
         Args:
-            df: DataFrame nettoyé.
-            subdir: Sous-répertoire (ex: 'weather', 'insee').
-            filename: Nom du fichier CSV.
+            df: Cleaned DataFrame.
+            subdir: Subdirectory (e.g., 'weather', 'insee').
+            filename: CSV filename.
 
         Returns:
-            Chemin complet du fichier sauvegardé.
+            Full path of the saved file.
         """
         output_dir = self.config.processed_data_dir / subdir
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -629,6 +909,6 @@ class DataCleaner:
         df.to_csv(output_path, index=False)
         size_mb = output_path.stat().st_size / (1024 * 1024)
         self.logger.info(
-            "  Sauvegardé → %s (%.1f Mo)", output_path, size_mb,
+            "  Saved → %s (%.1f MB)", output_path, size_mb,
         )
         return output_path
