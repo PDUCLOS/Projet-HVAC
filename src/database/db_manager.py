@@ -328,7 +328,7 @@ class DatabaseManager:
         """
         self.logger.info("Importing weather from %s ...", filepath.name)
 
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath, low_memory=False)
         self.logger.info("  Columns found: %s", list(df.columns))
 
         # The CSV contains: date, city, dept, temperature_2m_max, ..., hdd, cdd

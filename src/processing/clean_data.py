@@ -374,7 +374,7 @@ class DataCleaner:
             self.logger.warning("  Missing file: %s", filepath)
             return None
 
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath, low_memory=False)
         rows_in = len(df)
         self.logger.info("  Raw rows: %d", rows_in)
 
@@ -729,7 +729,7 @@ class DataCleaner:
         chunk_size = 200_000
         self.logger.info("  Reading in chunks of %d rows...", chunk_size)
 
-        for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size)):
+        for i, chunk in enumerate(pd.read_csv(filepath, chunksize=chunk_size, low_memory=False)):
             rows_in += len(chunk)
 
             # 1. Duplicates on numero_dpe
