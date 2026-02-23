@@ -662,7 +662,7 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
         from sklearn.impute import SimpleImputer
 
         X_val_raw, _ = trainer.prepare_features(df_val)
-        imputer = SimpleImputer(strategy="median")
+        imputer = SimpleImputer(strategy="median", keep_empty_features=True)
         X_train_raw, _ = trainer.prepare_features(
             df[df["date_id"] <= trainer.train_end]
         )

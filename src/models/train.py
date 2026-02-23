@@ -253,7 +253,16 @@ class ModelTrainer:
 
         # 5. Impute NaN in features (median)
         from sklearn.impute import SimpleImputer
-        imputer = SimpleImputer(strategy="median")
+        imputer = SimpleImputer(strategy="median", keep_empty_features=True)
+
+        # Log columns that are entirely NaN (will be filled with 0)
+        all_nan_cols = X_train.columns[X_train.isna().all()].tolist()
+        if all_nan_cols:
+            self.logger.warning(
+                "%d feature(s) entirely NaN in training set: %s",
+                len(all_nan_cols), all_nan_cols,
+            )
+
         X_train_imp = pd.DataFrame(
             imputer.fit_transform(X_train),
             columns=X_train.columns, index=X_train.index,
@@ -325,7 +334,7 @@ class ModelTrainer:
         X_test_exo = X_test_exo[mask_test]
 
         # Imputer + scaler for exogenous features
-        imputer_exo = SimpleImputer(strategy="median")
+        imputer_exo = SimpleImputer(strategy="median", keep_empty_features=True)
         X_train_exo_imp = pd.DataFrame(
             imputer_exo.fit_transform(X_train_exo),
             columns=X_train_exo.columns, index=X_train_exo.index,
