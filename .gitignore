@@ -52,6 +52,7 @@ data/analysis/
 .coverage
 htmlcov/
 .hypothesis/
+test_output.txt
 
 # ---- Environment / Secrets ----
 .env
