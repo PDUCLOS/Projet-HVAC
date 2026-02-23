@@ -251,7 +251,17 @@ class ModelTrainer:
             len(X_train), len(X_val), len(X_test),
         )
 
-        # 5. Impute NaN in features (median)
+        # 5. Drop all-NaN columns, then impute remaining NaN (median)
+        all_nan_cols = X_train.columns[X_train.isna().all()].tolist()
+        if all_nan_cols:
+            self.logger.warning(
+                "Dropping %d all-NaN columns: %s",
+                len(all_nan_cols), ", ".join(all_nan_cols),
+            )
+            X_train = X_train.drop(columns=all_nan_cols)
+            X_val = X_val.drop(columns=all_nan_cols)
+            X_test = X_test.drop(columns=all_nan_cols)
+
         from sklearn.impute import SimpleImputer
         imputer = SimpleImputer(strategy="median")
         X_train_imp = pd.DataFrame(
@@ -323,6 +333,17 @@ class ModelTrainer:
         X_train_exo = X_train_exo[mask_train]
         X_val_exo = X_val_exo[mask_val]
         X_test_exo = X_test_exo[mask_test]
+
+        # Drop all-NaN columns from exogenous features
+        all_nan_exo = X_train_exo.columns[X_train_exo.isna().all()].tolist()
+        if all_nan_exo:
+            self.logger.warning(
+                "Dropping %d all-NaN exo columns: %s",
+                len(all_nan_exo), ", ".join(all_nan_exo),
+            )
+            X_train_exo = X_train_exo.drop(columns=all_nan_exo)
+            X_val_exo = X_val_exo.drop(columns=all_nan_exo)
+            X_test_exo = X_test_exo.drop(columns=all_nan_exo)
 
         # Imputer + scaler for exogenous features
         imputer_exo = SimpleImputer(strategy="median")
@@ -398,6 +419,16 @@ class ModelTrainer:
                 X_test_scaled, y_test,
             )
             results["lstm"] = lstm_result
+            # Save LSTM model as .pt (PyTorch format)
+            try:
+                import torch
+                model_path = self.models_dir / "lstm_model.pt"
+                torch.save(
+                    lstm_result["model"].state_dict(), model_path,
+                )
+                self.logger.info("  LSTM model saved → %s", model_path)
+            except Exception as save_err:
+                self.logger.warning("  LSTM model save failed: %s", save_err)
         except ImportError:
             self.logger.warning(
                 "PyTorch not available — LSTM skipped. "
@@ -409,8 +440,10 @@ class ModelTrainer:
         # 8. Temporal cross-validation (on Ridge and LightGBM)
         self.logger.info("-" * 40)
         self.logger.info("Temporal cross-validation...")
+        best_ridge_alpha = ridge_result.get("alpha", 1.0)
         cv_results = self._cross_validate(
             X_train_imp, y_train, X_train_scaled, y_train, baseline,
+            ridge_alpha=best_ridge_alpha,
         )
         for model_name, cv_scores in cv_results.items():
             results[model_name]["cv_scores"] = cv_scores
@@ -438,6 +471,7 @@ class ModelTrainer:
         X_train_scaled: pd.DataFrame,
         y_train_scaled: pd.Series,
         baseline: Any,
+        ridge_alpha: float = 1.0,
     ) -> Dict[str, Dict[str, Any]]:
         """Temporal cross-validation with TimeSeriesSplit.
 
@@ -447,6 +481,7 @@ class ModelTrainer:
             X_train_scaled: Scaled features (for Ridge).
             y_train_scaled: Target (identical).
             baseline: BaselineModels instance.
+            ridge_alpha: Best alpha from Ridge tuning.
 
         Returns:
             CV scores per model.
@@ -467,7 +502,7 @@ class ModelTrainer:
 
             # Ridge
             from sklearn.linear_model import Ridge
-            ridge = Ridge(alpha=1.0)
+            ridge = Ridge(alpha=ridge_alpha)
             ridge.fit(
                 X_train_scaled.iloc[train_idx],
                 y_train_scaled.iloc[train_idx],

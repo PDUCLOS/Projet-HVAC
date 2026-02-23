@@ -157,9 +157,9 @@ class TestRegressions:
         import src.cli_menu
         assert hasattr(src.cli_menu, "main_menu")
         assert hasattr(src.cli_menu, "menu_collection")
-        assert hasattr(src.cli_menu, "menu_pcloud")
         assert hasattr(src.cli_menu, "menu_processing")
         assert hasattr(src.cli_menu, "menu_training")
+        assert hasattr(src.cli_menu, "menu_deep_learning")
 
     def test_pipeline_menu_stage(self):
         """Ensure pipeline.py accepts 'menu' as a valid stage."""

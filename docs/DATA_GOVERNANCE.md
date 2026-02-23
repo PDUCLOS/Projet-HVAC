@@ -215,10 +215,10 @@ En l'absence de support natif des radar charts en Mermaid, voici l'evaluation so
 | **Stockage** | 2/5 | SQLite local, pas de data warehouse, pas de versioning des donnees |
 | **Transformation** | 3/5 | Feature engineering structure, fusion multi-sources documentee |
 | **Qualite** | 2/5 | Detection d'outliers implementee, mais pas de monitoring continu |
-| **Documentation** | 3/5 | Docstrings, `DATA_SOURCES_REFERENCE.py`, ce document de gouvernance |
+| **Documentation** | 3/5 | Docstrings, collector module docs, ce document de gouvernance |
 | **Securite / RGPD** | 4/5 | Uniquement des donnees Open Data anonymisees, aucune donnee personnelle |
 | **ML / Modelisation** | 3/5 | 4 modeles (Ridge, LightGBM, Prophet, LSTM), evaluation SHAP, split temporel |
-| **Deploiement** | 2/5 | Application Streamlit locale, pas de CI/CD, pas de monitoring de drift |
+| **Deploiement** | 3/5 | Streamlit + FastAPI, Docker, GitHub Actions CI/CD, Kubernetes manifests |
 | **Gouvernance** | 3/5 | Ce document, catalogue de donnees, lignage trace |
 
 **Score global estime : 2.8 / 5** — Le projet se situe entre les niveaux "Reproductible" et "Defini". Les principaux axes d'amelioration sont le monitoring continu, le versioning des donnees et le deploiement CI/CD.

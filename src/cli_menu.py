@@ -4,10 +4,10 @@ Interactive CLI Menu — HVAC Market Analysis Pipeline.
 ======================================================
 
 Professional interactive menu for managing the full data pipeline:
-    1. Data Collection (local) with date verification
-    2. pCloud Data Management (sync, upload, status)
-    3. Data Processing (clean, merge, features, outliers)
-    4. ML Training & Notebooks
+    1. Data Collection & Data Sources (API + manual copy)
+    2. Data Processing (clean, merge, features, outliers)
+    3. ML Training & Notebooks
+    4. Deep Learning & RL (LSTM, Reinforcement Learning, results exploration)
 
 Usage:
     python -m src.cli_menu
@@ -277,8 +277,8 @@ def menu_collection() -> None:
         console.print()
         console.print(
             Panel(
-                "[bold]1 - DATA COLLECTION (Local)[/bold]\n"
-                "[dim]Collect data from external APIs and store locally[/dim]",
+                "[bold]1 - DATA COLLECTION & SOURCES[/bold]\n"
+                "[dim]Collect from APIs or manually copy pre-collected data[/dim]",
                 border_style="green",
                 box=box.HEAVY,
             )
@@ -290,17 +290,49 @@ def menu_collection() -> None:
             table = _build_collection_table()
         console.print(table)
 
+        # Data origin info
+        console.print()
+        console.print(
+            Panel(
+                "[bold cyan]Data Origin — Choose your method:[/bold cyan]\n\n"
+                "[bold]Option A — Collect from APIs[/bold] [dim](~1h for DPE)[/dim]\n"
+                "  Use options [bold]a[/bold] or [bold]1-5[/bold] below to collect "
+                "directly from Open Data APIs.\n"
+                "  All sources are Open Data — no API key, no GDPR constraints.\n\n"
+                "[bold]Option B — Manual copy from pCloud[/bold] [dim](fast, ~5 min)[/dim]\n"
+                "  Download pre-collected data from pCloud:\n"
+                "  [cyan]https://e.pcloud.link/publink/show?"
+                "code=kZbQQ3Zg1slD5WfRgh42fH5rRpDDYWyBEsy[/cyan]\n\n"
+                "  Copy files into these directories:\n"
+                "    [green]data/raw/weather/[/green]   <- weather_france.csv\n"
+                "    [green]data/raw/insee/[/green]     <- indicateurs_economiques.csv,"
+                " reference_departements.csv\n"
+                "    [green]data/raw/eurostat/[/green]  <- ipi_hvac_france.csv\n"
+                "    [green]data/raw/sitadel/[/green]   <- permis_construire_france.csv\n"
+                "    [green]data/raw/dpe/[/green]       <- dpe_france_all.csv"
+                " (or per-dept files)\n"
+                "    [green]data/[/green]               <- hvac_market.db (SQLite)\n"
+                "    [green]data/features/[/green]      <- hvac_ml_dataset.csv,"
+                " hvac_features_dataset.csv",
+                border_style="green",
+                box=box.ROUNDED,
+            )
+        )
+
         # Menu options
         console.print()
-        console.print("  [bold cyan]Options:[/bold cyan]")
+        console.print("  [bold cyan]API Collection:[/bold cyan]")
         console.print("    [bold]a[/bold]  Collect ALL sources (full pipeline)")
         console.print("    [bold]1-5[/bold]  Collect a specific source:")
 
         for i, (key, src) in enumerate(COLLECTION_SOURCES.items(), 1):
             console.print(f"         [bold]{i}[/bold]  {src['label']}  [dim]({src['estimate']})[/dim]")
 
+        console.print()
+        console.print("  [bold cyan]Verification & Analysis:[/bold cyan]")
         console.print("    [bold]v[/bold]  Verify data dates (detailed report)")
         console.print("    [bold]p[/bold]  PAC efficiency map (altitude & climate analysis)")
+        console.print()
         console.print("    [bold]0[/bold]  Back to main menu")
 
         choice = get_choice("Select")
@@ -647,397 +679,7 @@ def _show_pac_efficiency_map() -> None:
 
 
 # =====================================================================
-# MENU 2 — pCloud Data Management
-# =====================================================================
-
-def menu_pcloud() -> None:
-    """Display the pCloud Data Management menu."""
-    while True:
-        clear_screen()
-        show_header()
-
-        console.print()
-        console.print(
-            Panel(
-                "[bold]2 - PCLOUD DATA MANAGEMENT[/bold]\n"
-                "[dim]Sync, upload, and monitor data on pCloud[/dim]",
-                border_style="blue",
-                box=box.HEAVY,
-            )
-        )
-
-        # Show current sync status
-        _show_pcloud_status_summary()
-
-        console.print()
-        console.print("  [bold cyan]Options:[/bold cyan]")
-        console.print("    [bold]1[/bold]  Sync from pCloud (download new/modified files)")
-        console.print("    [bold]2[/bold]  Upload local data to pCloud")
-        console.print("    [bold]3[/bold]  Check for updates (compare local vs remote)")
-        console.print("    [bold]4[/bold]  View detailed sync status")
-        console.print("    [bold]5[/bold]  Force re-download ALL files")
-        console.print("    [bold]6[/bold]  List remote files on pCloud")
-        console.print("    [bold]0[/bold]  Back to main menu")
-
-        choice = get_choice("Select", ["0", "1", "2", "3", "4", "5", "6", ""])
-
-        if choice == "0":
-            return
-        elif choice == "1":
-            _run_pcloud_sync()
-        elif choice == "2":
-            _run_pcloud_upload()
-        elif choice == "3":
-            _run_pcloud_check_updates()
-        elif choice == "4":
-            _show_pcloud_detailed_status()
-        elif choice == "5":
-            _run_pcloud_force_sync()
-        elif choice == "6":
-            _run_pcloud_list_remote()
-
-
-def _show_pcloud_status_summary() -> None:
-    """Show a quick summary of pCloud sync state."""
-    import json
-
-    state_file = Path("data") / ".pcloud_sync_state.json"
-
-    if not state_file.exists():
-        console.print()
-        console.print(
-            "  [dim]No sync history found. Run a sync to get started.[/dim]"
-        )
-        return
-
-    try:
-        state = json.loads(state_file.read_text())
-    except (json.JSONDecodeError, IOError):
-        console.print("  [yellow]Sync state file corrupted.[/yellow]")
-        return
-
-    if not state:
-        console.print("  [dim]Sync state is empty.[/dim]")
-        return
-
-    table = Table(
-        title="Last Sync Status",
-        box=box.SIMPLE_HEAVY,
-        border_style="blue",
-        show_lines=False,
-    )
-    table.add_column("File", style="white", min_width=30)
-    table.add_column("Last Sync", style="cyan", min_width=20)
-
-    for filename, info in state.items():
-        last_sync = info.get("last_sync", "never")
-        if last_sync != "never":
-            try:
-                dt = datetime.fromisoformat(last_sync)
-                last_sync = dt.strftime("%Y-%m-%d %H:%M")
-            except (ValueError, TypeError):
-                pass
-        table.add_row(filename, last_sync)
-
-    console.print()
-    console.print(table)
-
-
-def _run_pcloud_sync() -> None:
-    """Run pCloud sync (download new/modified files)."""
-    console.print()
-    console.print(
-        Panel(
-            "[bold yellow]Syncing from pCloud...[/bold yellow]\n"
-            "Will download new or modified files and trigger the import pipeline.",
-            border_style="yellow",
-        )
-    )
-
-    confirm = get_choice("Proceed? [y/N]")
-    if confirm not in ("y", "yes"):
-        console.print("  [dim]Cancelled.[/dim]")
-        pause()
-        return
-
-    from src.pipeline import run_sync_pcloud, setup_logging
-    setup_logging("INFO")
-
-    try:
-        run_sync_pcloud()
-        console.print("\n  [bold green]Sync complete.[/bold green]")
-    except Exception as e:
-        console.print(f"\n  [bold red]Error:[/bold red] {e}")
-
-    pause()
-
-
-def _run_pcloud_upload() -> None:
-    """Upload local data to pCloud."""
-    console.print()
-
-    # Check for access token
-    token = os.getenv("PCLOUD_ACCESS_TOKEN", "")
-    if not token:
-        console.print(
-            Panel(
-                "[bold red]PCLOUD_ACCESS_TOKEN not found[/bold red]\n\n"
-                "To upload to pCloud, you need an access token.\n"
-                "Set it in your .env file:\n"
-                "  PCLOUD_ACCESS_TOKEN=your_token_here",
-                border_style="red",
-            )
-        )
-        pause()
-        return
-
-    console.print(
-        Panel(
-            "[bold yellow]Uploading local data to pCloud...[/bold yellow]\n"
-            "Will upload all collected CSV files, features datasets,\n"
-            "and the database to your pCloud folder.",
-            border_style="yellow",
-        )
-    )
-
-    confirm = get_choice("Proceed? [y/N]")
-    if confirm not in ("y", "yes"):
-        console.print("  [dim]Cancelled.[/dim]")
-        pause()
-        return
-
-    from src.pipeline import run_upload_pcloud, setup_logging
-    setup_logging("INFO")
-
-    try:
-        run_upload_pcloud()
-        console.print("\n  [bold green]Upload complete.[/bold green]")
-    except Exception as e:
-        console.print(f"\n  [bold red]Error:[/bold red] {e}")
-
-    pause()
-
-
-def _run_pcloud_check_updates() -> None:
-    """Check for updates on pCloud without downloading."""
-    console.print()
-    console.print("  [cyan]Checking for updates on pCloud...[/cyan]")
-
-    try:
-        from src.collectors.pcloud_sync import PCloudSync
-        sync = PCloudSync(config)
-        updates = sync.check_for_updates()
-
-        console.print()
-        if not updates:
-            console.print(
-                Panel(
-                    "[bold green]Everything is up to date![/bold green]\n"
-                    "No new or modified files on pCloud.",
-                    border_style="green",
-                )
-            )
-        else:
-            table = Table(
-                title=f"{len(updates)} Update(s) Available",
-                box=box.ROUNDED,
-                border_style="yellow",
-            )
-            table.add_column("File", style="white")
-            table.add_column("Reason", style="yellow")
-            table.add_column("Size", justify="right")
-
-            for f in updates:
-                table.add_row(
-                    f["name"],
-                    f.get("update_reason", "unknown"),
-                    _format_size(f.get("size", 0)),
-                )
-
-            console.print(table)
-            console.print(
-                "\n  [dim]Use option 1 to sync these files.[/dim]"
-            )
-    except Exception as e:
-        console.print(f"\n  [bold red]Error:[/bold red] {e}")
-
-    pause()
-
-
-def _show_pcloud_detailed_status() -> None:
-    """Show detailed pCloud sync status."""
-    import json
-
-    clear_screen()
-    show_header()
-
-    console.print()
-    console.print(
-        Panel(
-            "[bold]PCLOUD SYNC — DETAILED STATUS[/bold]",
-            border_style="blue",
-            box=box.DOUBLE,
-        )
-    )
-
-    # Environment variables check
-    env_table = Table(
-        title="Configuration",
-        box=box.SIMPLE,
-        border_style="blue",
-    )
-    env_table.add_column("Variable", style="white")
-    env_table.add_column("Status")
-
-    token = os.getenv("PCLOUD_ACCESS_TOKEN", "")
-    code = os.getenv("PCLOUD_PUBLIC_CODE", "")
-
-    env_table.add_row(
-        "PCLOUD_ACCESS_TOKEN",
-        "[green]Set[/green]" if token else "[red]Not set (upload disabled)[/red]",
-    )
-    env_table.add_row(
-        "PCLOUD_PUBLIC_CODE",
-        "[green]Set[/green]" if code else "[yellow]Not set (using default)[/yellow]",
-    )
-
-    console.print(env_table)
-
-    # Sync state
-    state_file = Path("data") / ".pcloud_sync_state.json"
-    if state_file.exists():
-        try:
-            state = json.loads(state_file.read_text())
-            if state:
-                sync_table = Table(
-                    title="Tracked Files",
-                    box=box.ROUNDED,
-                    border_style="cyan",
-                    show_lines=True,
-                )
-                sync_table.add_column("File", style="white", min_width=30)
-                sync_table.add_column("Hash", style="dim", min_width=10)
-                sync_table.add_column("Size", justify="right")
-                sync_table.add_column("Last Sync", style="cyan")
-
-                for name, info in state.items():
-                    sync_table.add_row(
-                        name,
-                        str(info.get("hash", "?"))[:12],
-                        _format_size(info.get("size", 0)),
-                        info.get("last_sync", "never")[:16],
-                    )
-                console.print()
-                console.print(sync_table)
-        except (json.JSONDecodeError, IOError):
-            console.print("  [yellow]Sync state file corrupted.[/yellow]")
-    else:
-        console.print("\n  [dim]No sync history (state file not found).[/dim]")
-
-    # Local file comparison
-    console.print()
-    local_table = Table(
-        title="Local Data Files",
-        box=box.ROUNDED,
-        border_style="green",
-    )
-    local_table.add_column("Source", style="white")
-    local_table.add_column("File", style="dim")
-    local_table.add_column("Size", justify="right")
-    local_table.add_column("Modified")
-
-    for key, src in COLLECTION_SOURCES.items():
-        filepath = config.raw_data_dir / src["file"]
-        info = _get_file_info(filepath)
-        local_table.add_row(
-            key.upper(),
-            src["file"],
-            info["size_str"] if info["exists"] else "[red]MISSING[/red]",
-            info["modified"] if info["exists"] else "-",
-        )
-
-    console.print(local_table)
-
-    pause()
-
-
-def _run_pcloud_force_sync() -> None:
-    """Force re-download all files from pCloud."""
-    console.print()
-    console.print(
-        Panel(
-            "[bold red]FORCE RE-DOWNLOAD ALL FILES[/bold red]\n\n"
-            "This will re-download ALL files from pCloud,\n"
-            "even if they haven't changed.\n"
-            "Existing local files will be overwritten.",
-            border_style="red",
-        )
-    )
-
-    confirm = get_choice("Are you sure? Type 'yes' to confirm")
-    if confirm != "yes":
-        console.print("  [dim]Cancelled.[/dim]")
-        pause()
-        return
-
-    from src.pipeline import run_sync_pcloud, setup_logging
-    setup_logging("INFO")
-
-    try:
-        run_sync_pcloud(force=True)
-        console.print("\n  [bold green]Force sync complete.[/bold green]")
-    except Exception as e:
-        console.print(f"\n  [bold red]Error:[/bold red] {e}")
-
-    pause()
-
-
-def _run_pcloud_list_remote() -> None:
-    """List files available on the pCloud public folder."""
-    console.print()
-    console.print("  [cyan]Listing remote pCloud files...[/cyan]")
-
-    try:
-        from src.collectors.pcloud_sync import PCloudSync
-        sync = PCloudSync(config)
-        files = sync.list_public_folder()
-
-        if not files:
-            console.print("\n  [yellow]No files found (or connection error).[/yellow]")
-            pause()
-            return
-
-        table = Table(
-            title=f"pCloud Remote Files ({len(files)} files)",
-            box=box.ROUNDED,
-            border_style="cyan",
-        )
-        table.add_column("#", style="dim", justify="center", width=3)
-        table.add_column("File", style="white", min_width=30)
-        table.add_column("Size", justify="right")
-        table.add_column("Modified", style="dim")
-        table.add_column("Folder", style="cyan")
-
-        for i, f in enumerate(files, 1):
-            table.add_row(
-                str(i),
-                f["name"],
-                _format_size(f.get("size", 0)),
-                f.get("modified", "")[:16],
-                f.get("folder", "-"),
-            )
-
-        console.print()
-        console.print(table)
-
-    except Exception as e:
-        console.print(f"\n  [bold red]Error:[/bold red] {e}")
-
-    pause()
-
-
-# =====================================================================
-# MENU 3 — Data Processing
+# MENU 2 — Data Processing
 # =====================================================================
 
 def menu_processing() -> None:
@@ -1049,7 +691,7 @@ def menu_processing() -> None:
         console.print()
         console.print(
             Panel(
-                "[bold]3 - DATA PROCESSING[/bold]\n"
+                "[bold]2 - DATA PROCESSING[/bold]\n"
                 "[dim]Clean, merge, feature engineering, and outlier detection[/dim]",
                 border_style="yellow",
                 box=box.HEAVY,
@@ -1380,7 +1022,7 @@ def _run_processing_stage(stage: str) -> None:
 
 
 # =====================================================================
-# MENU 4 — ML Training & Notebooks
+# MENU 3 — ML Training & Notebooks
 # =====================================================================
 
 NOTEBOOKS = {
@@ -1421,7 +1063,7 @@ def menu_training() -> None:
         console.print()
         console.print(
             Panel(
-                "[bold]4 - ML TRAINING & NOTEBOOKS[/bold]\n"
+                "[bold]3 - ML TRAINING & NOTEBOOKS[/bold]\n"
                 "[dim]Train models via CLI or launch Jupyter notebooks[/dim]",
                 border_style="magenta",
                 box=box.HEAVY,
@@ -1552,7 +1194,7 @@ def _open_notebook(key: str) -> None:
     try:
         console.print(f"\n  [cyan]Starting Jupyter for {nb['file']}...[/cyan]")
         subprocess.Popen(
-            ["jupyter", "notebook", str(filepath)],
+            [sys.executable, "-m", "jupyter", "notebook", str(filepath)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1595,7 +1237,7 @@ def _launch_jupyter(mode: str = "notebook") -> None:
     try:
         console.print(f"\n  [cyan]Starting Jupyter {cmd}...[/cyan]")
         subprocess.Popen(
-            ["jupyter", cmd, "--notebook-dir=notebooks/"],
+            [sys.executable, "-m", "jupyter", cmd, "--notebook-dir=notebooks/"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -1748,6 +1390,712 @@ def _run_eda() -> None:
 
 
 # =====================================================================
+# MENU 4 — Deep Learning & RL
+# =====================================================================
+
+
+def _check_pytorch_available() -> bool:
+    """Check if PyTorch is installed and importable."""
+    try:
+        import torch  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _check_gymnasium_available() -> bool:
+    """Check if gymnasium is installed and importable."""
+    try:
+        import gymnasium  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def _show_dl_rl_status() -> None:
+    """Show the status of Deep Learning and RL artifacts."""
+    table = Table(
+        title="DL & RL Artifacts",
+        box=box.SIMPLE_HEAVY,
+        border_style="bright_red",
+    )
+    table.add_column("Artifact", style="white", min_width=25)
+    table.add_column("Status", justify="center")
+    table.add_column("Size", justify="right")
+    table.add_column("Modified", style="dim")
+
+    artifacts = [
+        ("LSTM Model", Path("data/models/lstm_model.pt"), None),
+        ("Training Results", Path("data/models/training_results.csv"), None),
+        ("Evaluation JSON", Path("data/models/evaluation_results.json"), None),
+        (
+            "RL Learning Curve",
+            Path("reports/figures/rl_learning_curve.png"),
+            Path("reports/figures/rl_courbe_apprentissage.png"),
+        ),
+        ("RL Q-Values Heatmap", Path("reports/figures/rl_heatmap_q_values.png"), None),
+    ]
+
+    for name, filepath, alt_path in artifacts:
+        check_path = filepath
+        if not filepath.exists() and alt_path and alt_path.exists():
+            check_path = alt_path
+
+        info = _get_file_info(check_path)
+        if info["exists"]:
+            status = "[green]READY[/green]"
+        else:
+            status = "[dim]Not generated[/dim]"
+
+        table.add_row(
+            name,
+            status,
+            info["size_str"] if info["exists"] else "-",
+            info["modified"] if info["exists"] else "-",
+        )
+
+    console.print()
+    console.print(table)
+
+
+def _run_lstm_standalone() -> None:
+    """Train the LSTM model standalone with configurable hyperparameters."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]LSTM STANDALONE TRAINING[/bold bright_red]\n\n"
+            "Architecture:\n"
+            "  - 1-layer LSTM + Dropout(0.3) + Linear\n"
+            "  - HuberLoss (robust to outliers)\n"
+            "  - Adam optimizer (lr=0.001)\n"
+            "  - Early stopping on validation loss\n\n"
+            "[dim]Warning: With ~288 training rows, LSTM is pedagogical.\n"
+            "Classical models (Ridge, LightGBM) are expected to perform better.[/dim]",
+            border_style="bright_red",
+        )
+    )
+
+    # Check PyTorch
+    if not _check_pytorch_available():
+        console.print(
+            "\n  [bold red]PyTorch not available.[/bold red]"
+            "\n  [dim]Install via: pip install -r requirements-dl.txt[/dim]"
+        )
+        pause()
+        return
+
+    # Check features dataset
+    features_path = config.features_data_dir / "hvac_features_dataset.csv"
+    if not features_path.exists():
+        console.print(
+            "\n  [bold red]Features dataset not found.[/bold red]"
+            "\n  [dim]Run Menu 2 > Processing first.[/dim]"
+        )
+        pause()
+        return
+
+    # Hyperparameter configuration
+    console.print("\n  [cyan]Configure hyperparameters (press Enter for defaults):[/cyan]")
+
+    lookback_input = get_choice("  Lookback months [3]")
+    lookback = int(lookback_input) if lookback_input.isdigit() else 3
+
+    hidden_input = get_choice("  Hidden size [32]")
+    hidden_size = int(hidden_input) if hidden_input.isdigit() else 32
+
+    epochs_input = get_choice("  Max epochs [100]")
+    epochs = int(epochs_input) if epochs_input.isdigit() else 100
+
+    console.print(
+        f"\n  Configuration: lookback={lookback}, hidden_size={hidden_size}, "
+        f"epochs={epochs}"
+    )
+
+    confirm = get_choice("  Proceed with LSTM training? [y/N]")
+    if confirm not in ("y", "yes"):
+        console.print("  [dim]Cancelled.[/dim]")
+        pause()
+        return
+
+    from src.pipeline import setup_logging
+    setup_logging("INFO")
+
+    console.print()
+    console.rule("[bold bright_red]LSTM Training[/bold bright_red]")
+    console.print()
+
+    try:
+        from src.models.train import ModelTrainer
+        from src.models.deep_learning import LSTMModel
+        from sklearn.impute import SimpleImputer
+        from sklearn.preprocessing import RobustScaler
+        import pandas as pd
+
+        trainer = ModelTrainer(config, target="nb_installations_pac")
+        df = trainer.load_dataset()
+        df_train, df_val, df_test = trainer.temporal_split(df)
+
+        X_train, y_train = trainer.prepare_features(df_train)
+        X_val, y_val = trainer.prepare_features(df_val)
+        X_test, y_test = trainer.prepare_features(df_test)
+
+        # Remove NaN targets
+        mask_train = y_train.notna()
+        X_train, y_train = X_train[mask_train], y_train[mask_train]
+        mask_val = y_val.notna()
+        X_val, y_val = X_val[mask_val], y_val[mask_val]
+        mask_test = y_test.notna()
+        X_test, y_test = X_test[mask_test], y_test[mask_test]
+
+        # Drop all-NaN columns, then impute remaining NaN (same as train.py)
+        all_nan_cols = X_train.columns[X_train.isna().all()].tolist()
+        if all_nan_cols:
+            console.print(
+                f"  [yellow]Dropping {len(all_nan_cols)} all-NaN columns: "
+                f"{', '.join(all_nan_cols)}[/yellow]"
+            )
+            X_train = X_train.drop(columns=all_nan_cols)
+            X_val = X_val.drop(columns=all_nan_cols)
+            X_test = X_test.drop(columns=all_nan_cols)
+
+        imputer = SimpleImputer(strategy="median")
+        X_train_imp = pd.DataFrame(
+            imputer.fit_transform(X_train),
+            columns=X_train.columns, index=X_train.index,
+        )
+        X_val_imp = pd.DataFrame(
+            imputer.transform(X_val),
+            columns=X_val.columns, index=X_val.index,
+        )
+        X_test_imp = pd.DataFrame(
+            imputer.transform(X_test),
+            columns=X_test.columns, index=X_test.index,
+        )
+
+        scaler = RobustScaler()
+        X_train_scaled = pd.DataFrame(
+            scaler.fit_transform(X_train_imp),
+            columns=X_train_imp.columns, index=X_train_imp.index,
+        )
+        X_val_scaled = pd.DataFrame(
+            scaler.transform(X_val_imp),
+            columns=X_val_imp.columns, index=X_val_imp.index,
+        )
+        X_test_scaled = pd.DataFrame(
+            scaler.transform(X_test_imp),
+            columns=X_test_imp.columns, index=X_test_imp.index,
+        )
+
+        # Train LSTM with custom hyperparameters
+        lstm = LSTMModel(
+            config, target="nb_installations_pac",
+            lookback=lookback, hidden_size=hidden_size, epochs=epochs,
+        )
+        result = lstm.train_and_evaluate(
+            X_train_scaled, y_train,
+            X_val_scaled, y_val,
+            X_test_scaled, y_test,
+        )
+
+        # Save LSTM model
+        import torch
+        models_dir = Path(config.data_dir) / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        model_path = models_dir / "lstm_model.pt"
+        torch.save(result["model"].state_dict(), model_path)
+        console.print(f"\n  [green]Model saved → {model_path}[/green]")
+
+        # Save imputer and scaler for inference
+        import pickle
+        with open(models_dir / "lstm_imputer.pkl", "wb") as f:
+            pickle.dump(imputer, f)
+        with open(models_dir / "lstm_scaler.pkl", "wb") as f:
+            pickle.dump(scaler, f)
+        console.print(f"  [green]Imputer & scaler saved → {models_dir}[/green]")
+
+        # Display results in a rich table
+        console.print()
+        results_table = Table(
+            title="LSTM Results",
+            border_style="bright_red",
+            box=box.ROUNDED,
+        )
+        results_table.add_column("Metric", style="white")
+        results_table.add_column("Validation", justify="right", style="cyan")
+        results_table.add_column("Test", justify="right", style="green")
+
+        for metric in ["rmse", "mae", "mape", "r2"]:
+            val_v = result["metrics_val"].get(metric, float("nan"))
+            test_v = result["metrics_test"].get(metric, float("nan"))
+            results_table.add_row(metric.upper(), f"{val_v:.4f}", f"{test_v:.4f}")
+
+        results_table.add_row(
+            "Best Epoch", str(result.get("best_epoch", "N/A")), "-",
+        )
+        console.print(results_table)
+
+        console.print()
+        console.rule("[bold green]LSTM Training Complete[/bold green]")
+
+    except ImportError as e:
+        console.print(f"\n  [bold red]Import error:[/bold red] {e}")
+        console.print("  [dim]Install missing dependencies.[/dim]")
+    except Exception as e:
+        console.print(f"\n  [bold red]Error:[/bold red] {e}")
+        import traceback
+        console.print(f"  [dim]{traceback.format_exc()}[/dim]")
+
+    pause()
+
+
+def _run_rl_demo() -> None:
+    """Run the Reinforcement Learning Q-Learning demo."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]REINFORCEMENT LEARNING DEMO[/bold bright_red]\n\n"
+            "Q-Learning agent for HVAC maintenance optimization:\n"
+            "  - Environment: 12-month episodes, 6-dim state, 4 actions\n"
+            "  - Training: 1000 episodes, epsilon-greedy exploration\n"
+            "  - Comparison: Q-Learning vs random policy baseline\n"
+            "  - Output: learning curve + Q-values heatmap\n\n"
+            f"[dim]Gymnasium: "
+            f"{'installed' if _check_gymnasium_available() else 'not installed (simplified mode)'}"
+            f"[/dim]",
+            border_style="bright_red",
+        )
+    )
+
+    confirm = get_choice("  Run RL demo? [y/N]")
+    if confirm not in ("y", "yes"):
+        console.print("  [dim]Cancelled.[/dim]")
+        pause()
+        return
+
+    from src.pipeline import setup_logging
+    setup_logging("INFO")
+
+    console.print()
+    console.rule("[bold bright_red]RL Training[/bold bright_red]")
+    console.print()
+
+    try:
+        from src.models.reinforcement_learning_demo import main as rl_main
+        rl_main()
+        console.print()
+        console.rule("[bold green]RL Demo Complete[/bold green]")
+        console.print("  [dim]Figures saved in reports/figures/[/dim]")
+    except Exception as e:
+        console.print(f"\n  [bold red]Error:[/bold red] {e}")
+        import traceback
+        console.print(f"  [dim]{traceback.format_exc()}[/dim]")
+
+    pause()
+
+
+def _view_lstm_results() -> None:
+    """View LSTM training results and metrics."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]LSTM RESULTS[/bold bright_red]",
+            border_style="bright_red",
+        )
+    )
+
+    # Check for evaluation results JSON
+    json_path = Path("data/models/evaluation_results.json")
+    if json_path.exists():
+        import json
+
+        with open(json_path, encoding="utf-8") as f:
+            results = json.load(f)
+
+        if "lstm" in results:
+            lstm_data = results["lstm"]
+            table = Table(
+                title="LSTM Metrics (from evaluation)",
+                border_style="bright_red",
+                box=box.ROUNDED,
+            )
+            table.add_column("Metric", style="white")
+            table.add_column("Value", justify="right", style="cyan")
+
+            for key, value in lstm_data.items():
+                if isinstance(value, (int, float)):
+                    table.add_row(key, f"{value:.4f}")
+                else:
+                    table.add_row(key, str(value))
+
+            console.print(table)
+        else:
+            console.print("  [yellow]LSTM not found in evaluation results.[/yellow]")
+            console.print(
+                "  [dim]Train with Menu 3 > 't' or Menu 4 > '1' first, "
+                "then evaluate with Menu 3 > 'e'.[/dim]"
+            )
+    else:
+        console.print("  [yellow]No evaluation results found.[/yellow]")
+        console.print("  [dim]Run evaluation first (Menu 3 > 'e').[/dim]")
+
+    # Show LSTM prediction chart paths
+    console.print()
+    console.print("  [cyan]LSTM prediction charts:[/cyan]")
+    figures_dir = Path("data/models/figures")
+    lstm_figs = sorted(figures_dir.glob("*lstm*")) if figures_dir.exists() else []
+    if lstm_figs:
+        for fig in lstm_figs:
+            info = _get_file_info(fig)
+            console.print(
+                f"    [green]OK[/green]  {fig.name}  "
+                f"[dim]({info['size_str']}, {info['modified']})[/dim]"
+            )
+    else:
+        console.print("    [dim]No LSTM charts found.[/dim]")
+
+    pause()
+
+
+def _view_rl_results() -> None:
+    """View RL training results, plots, and policy summary."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]RL RESULTS[/bold bright_red]",
+            border_style="bright_red",
+        )
+    )
+
+    # List RL figures
+    console.print("  [cyan]RL figures:[/cyan]")
+    rl_files = [
+        ("Learning Curve", "rl_learning_curve.png", "rl_courbe_apprentissage.png"),
+        ("Q-Values Heatmap", "rl_heatmap_q_values.png", None),
+    ]
+
+    reports_dir = Path("reports/figures")
+    found_any = False
+    for label, primary, alternate in rl_files:
+        path = reports_dir / primary
+        if not path.exists() and alternate:
+            path = reports_dir / alternate
+        if path.exists():
+            found_any = True
+            info = _get_file_info(path)
+            console.print(
+                f"    [green]OK[/green]  {label}: {path.name}  "
+                f"[dim]({info['size_str']}, {info['modified']})[/dim]"
+            )
+        else:
+            console.print(f"    [dim]--[/dim]  {label}: [dim]Not generated[/dim]")
+
+    if not found_any:
+        console.print("\n  [yellow]No RL results found. Run the RL demo first (option 2).[/yellow]")
+
+    pause()
+
+
+def _open_figure(filepath: Path) -> None:
+    """Open a figure with the system's default viewer.
+
+    Args:
+        filepath: Path to the PNG file to open.
+    """
+    if not filepath.exists():
+        console.print(f"  [red]File not found: {filepath}[/red]")
+        return
+
+    console.print(f"\n  [cyan]Opening: {filepath}[/cyan]")
+    try:
+        if os.name == "nt":
+            os.startfile(str(filepath))
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(filepath)])
+        else:
+            subprocess.Popen(["xdg-open", str(filepath)])
+        console.print("  [green]Opened in system viewer.[/green]")
+    except Exception as e:
+        console.print(f"  [red]Could not open: {e}[/red]")
+
+
+def _browse_figures() -> None:
+    """Browse all generated figures across the project."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]FIGURE BROWSER[/bold bright_red]\n"
+            "[dim]Browse all generated charts and visualizations[/dim]",
+            border_style="bright_red",
+        )
+    )
+
+    figure_dirs = [
+        ("ML Model Figures", Path("data/models/figures")),
+        ("RL & Reports Figures", Path("reports/figures")),
+        ("EDA Figures", Path("data/analysis/figures")),
+    ]
+
+    all_figures = []
+    for section, dirpath in figure_dirs:
+        if dirpath.exists():
+            pngs = sorted(dirpath.glob("*.png"))
+            if pngs:
+                console.print(f"\n  [bold cyan]{section}[/bold cyan] ({dirpath})")
+                for png in pngs:
+                    idx = len(all_figures) + 1
+                    info = _get_file_info(png)
+                    console.print(
+                        f"    [bold]{idx:>3}[/bold]  {png.name}  "
+                        f"[dim]({info['size_str']}, {info['modified']})[/dim]"
+                    )
+                    all_figures.append(png)
+
+    if not all_figures:
+        console.print(
+            "\n  [yellow]No figures found. "
+            "Run training/evaluation/EDA first.[/yellow]"
+        )
+        pause()
+        return
+
+    console.print(f"\n  [dim]Total: {len(all_figures)} figures[/dim]")
+    choice = get_choice("  Enter figure number to open (or 0 to go back)")
+
+    if choice == "0" or not choice:
+        return
+
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(all_figures):
+            _open_figure(all_figures[idx])
+        else:
+            console.print("  [red]Invalid number.[/red]")
+    except ValueError:
+        console.print("  [red]Invalid input.[/red]")
+
+    pause()
+
+
+def _view_evaluation_metrics() -> None:
+    """Display evaluation metrics from evaluation_results.json in a rich table."""
+    console.print()
+    json_path = Path("data/models/evaluation_results.json")
+
+    if not json_path.exists():
+        console.print(
+            "  [yellow]No evaluation results found.[/yellow]\n"
+            "  [dim]Run evaluation first (Menu 3 > 'e').[/dim]"
+        )
+        pause()
+        return
+
+    import json
+
+    with open(json_path, encoding="utf-8") as f:
+        results = json.load(f)
+
+    table = Table(
+        title="Model Evaluation Results",
+        box=box.ROUNDED,
+        border_style="bright_red",
+        show_lines=True,
+    )
+    table.add_column("Model", style="bold white", min_width=15)
+    table.add_column("Val RMSE", justify="right", style="cyan")
+    table.add_column("Val MAE", justify="right")
+    table.add_column("Val R2", justify="right", style="green")
+    table.add_column("Test RMSE", justify="right", style="cyan")
+    table.add_column("Test MAE", justify="right")
+    table.add_column("Test R2", justify="right", style="green")
+
+    for model_name, metrics in results.items():
+        row = [model_name]
+        for key in ["val_rmse", "val_mae", "val_r2", "test_rmse", "test_mae", "test_r2"]:
+            val = metrics.get(key)
+            if isinstance(val, (int, float)):
+                row.append(f"{val:.4f}")
+            else:
+                row.append("N/A")
+        table.add_row(*row)
+
+    console.print()
+    console.print(table)
+    pause()
+
+
+def _view_text_report() -> None:
+    """View text reports inline in the terminal."""
+    console.print()
+    console.print(
+        Panel(
+            "[bold bright_red]TEXT REPORTS[/bold bright_red]",
+            border_style="bright_red",
+        )
+    )
+
+    reports = [
+        ("Evaluation Report", Path("data/models/evaluation_report.txt")),
+        ("Outlier Report", Path("data/analysis/outlier_report.txt")),
+    ]
+
+    for i, (label, path) in enumerate(reports, 1):
+        exists = path.exists()
+        status = "[green]Available[/green]" if exists else "[dim]Not found[/dim]"
+        console.print(f"    [bold]{i}[/bold]  {label}  {status}")
+
+    choice = get_choice("  Select report to view (or 0 to go back)")
+    if choice == "0" or not choice:
+        return
+
+    try:
+        idx = int(choice) - 1
+        if 0 <= idx < len(reports):
+            label, path = reports[idx]
+            if path.exists():
+                console.print()
+                console.rule(f"[bold]{label}[/bold]")
+                content = path.read_text(encoding="utf-8")
+                console.print(f"\n{content}")
+                console.rule()
+            else:
+                console.print(f"  [red]{label} not found at {path}[/red]")
+        else:
+            console.print("  [red]Invalid choice.[/red]")
+    except ValueError:
+        console.print("  [red]Invalid input.[/red]")
+
+    pause()
+
+
+def _open_notebook_from_dl(key: str) -> None:
+    """Open a notebook from the DL & RL menu.
+
+    Args:
+        key: Notebook key from NOTEBOOKS dict.
+    """
+    if key not in NOTEBOOKS:
+        console.print(f"  [red]Unknown notebook key: {key}[/red]")
+        pause()
+        return
+    _open_notebook(key)
+
+
+def menu_deep_learning() -> None:
+    """Display the Deep Learning & RL menu."""
+    while True:
+        clear_screen()
+        show_header()
+
+        console.print()
+        console.print(
+            Panel(
+                "[bold]4 - DEEP LEARNING & RL[/bold]\n"
+                "[dim]LSTM training, Q-Learning demo, results exploration[/dim]",
+                border_style="bright_red",
+                box=box.HEAVY,
+            )
+        )
+
+        # Show DL/RL artifact status
+        _show_dl_rl_status()
+
+        # Dependency status
+        pytorch_ok = _check_pytorch_available()
+        gym_ok = _check_gymnasium_available()
+        console.print()
+        console.print(
+            f"  Dependencies: "
+            f"PyTorch {'[green]OK[/green]' if pytorch_ok else '[red]MISSING[/red]'}"
+            f" | "
+            f"Gymnasium {'[green]OK[/green]' if gym_ok else '[yellow]Optional[/yellow]'}"
+        )
+
+        # Menu options
+        console.print()
+        console.print("  [bold cyan]Training:[/bold cyan]")
+        console.print(
+            "    [bold bright_red]1[/bold bright_red]  "
+            "Train LSTM standalone (configurable hyperparameters)"
+        )
+        console.print(
+            "    [bold bright_red]2[/bold bright_red]  "
+            "Run RL demo (Q-Learning training + visualization)"
+        )
+
+        console.print()
+        console.print("  [bold cyan]View Results:[/bold cyan]")
+        console.print(
+            "    [bold bright_red]3[/bold bright_red]  "
+            "View LSTM results (metrics, predictions)"
+        )
+        console.print(
+            "    [bold bright_red]4[/bold bright_red]  "
+            "View RL results (learning curves, Q-values)"
+        )
+
+        console.print()
+        console.print("  [bold cyan]Notebooks:[/bold cyan]")
+        console.print(
+            "    [bold bright_red]5[/bold bright_red]  "
+            "Open LSTM notebook (03_deep_learning_lstm.ipynb)"
+        )
+        console.print(
+            "    [bold bright_red]6[/bold bright_red]  "
+            "Open ML Modeling notebook (02_modeling_ml.ipynb)"
+        )
+        console.print(
+            "    [bold bright_red]7[/bold bright_red]  "
+            "Open Results Analysis notebook (04_results_analysis.ipynb)"
+        )
+
+        console.print()
+        console.print("  [bold cyan]Results Exploration:[/bold cyan]")
+        console.print(
+            "    [bold bright_red]8[/bold bright_red]  "
+            "Browse all figures (ML, RL, EDA)"
+        )
+        console.print(
+            "    [bold bright_red]9[/bold bright_red]  "
+            "View evaluation metrics (all models comparison)"
+        )
+        console.print(
+            "    [bold bright_red]r[/bold bright_red]  "
+            "View text reports (evaluation, outliers)"
+        )
+
+        console.print()
+        console.print("    [bold]0[/bold]  Back to main menu")
+
+        choice = get_choice(
+            "Select",
+            ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "r", ""],
+        )
+
+        if choice == "0":
+            return
+        elif choice == "1":
+            _run_lstm_standalone()
+        elif choice == "2":
+            _run_rl_demo()
+        elif choice == "3":
+            _view_lstm_results()
+        elif choice == "4":
+            _view_rl_results()
+        elif choice == "5":
+            _open_notebook_from_dl("3")
+        elif choice == "6":
+            _open_notebook_from_dl("2")
+        elif choice == "7":
+            _open_notebook_from_dl("4")
+        elif choice == "8":
+            _browse_figures()
+        elif choice == "9":
+            _view_evaluation_metrics()
+        elif choice == "r":
+            _view_text_report()
+
+
+# =====================================================================
 # MAIN MENU
 # =====================================================================
 
@@ -1794,24 +2142,24 @@ def main_menu() -> None:
         )
 
         console.print()
-        console.print("    [bold green]1[/bold green]  [bold]Data Collection (Local)[/bold]")
+        console.print("    [bold green]1[/bold green]  [bold]Data Collection & Sources[/bold]")
         console.print(
-            "       [dim]Collect from APIs, verify dates, download raw data[/dim]"
+            "       [dim]Collect from APIs, manual data copy, verify dates[/dim]"
         )
         console.print()
-        console.print("    [bold blue]2[/bold blue]  [bold]pCloud Data Management[/bold]")
-        console.print(
-            "       [dim]Sync, upload, and monitor data on pCloud[/dim]"
-        )
-        console.print()
-        console.print("    [bold yellow]3[/bold yellow]  [bold]Data Processing[/bold]")
+        console.print("    [bold yellow]2[/bold yellow]  [bold]Data Processing[/bold]")
         console.print(
             "       [dim]Clean, merge, feature engineering, outlier detection[/dim]"
         )
         console.print()
-        console.print("    [bold magenta]4[/bold magenta]  [bold]ML Training & Notebooks[/bold]")
+        console.print("    [bold magenta]3[/bold magenta]  [bold]ML Training & Notebooks[/bold]")
         console.print(
             "       [dim]Train models, evaluate, launch Jupyter notebooks[/dim]"
+        )
+        console.print()
+        console.print("    [bold bright_red]4[/bold bright_red]  [bold]Deep Learning & RL[/bold]")
+        console.print(
+            "       [dim]LSTM training, Q-Learning demo, results exploration[/dim]"
         )
         console.print()
         console.print("    [bold red]0[/bold red]  [bold]Exit[/bold]")
@@ -1824,11 +2172,11 @@ def main_menu() -> None:
         elif choice == "1":
             menu_collection()
         elif choice == "2":
-            menu_pcloud()
-        elif choice == "3":
             menu_processing()
-        elif choice == "4":
+        elif choice == "3":
             menu_training()
+        elif choice == "4":
+            menu_deep_learning()
 
 
 # =====================================================================
