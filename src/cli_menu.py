@@ -1272,8 +1272,8 @@ def _show_processing_status() -> None:
 
     stages = [
         ("Database", Path("data/hvac_market.db")),
-        ("Cleaned (weather)", config.processed_data_dir / "weather_cleaned.csv"),
-        ("Cleaned (DPE)", config.processed_data_dir / "dpe_cleaned.csv"),
+        ("Cleaned (weather)", config.processed_data_dir / "weather" / "weather_france.csv"),
+        ("Cleaned (DPE)", config.processed_data_dir / "dpe" / "dpe_france_clean.csv"),
         ("ML Dataset", config.features_data_dir / "hvac_ml_dataset.csv"),
         ("Features Dataset", config.features_data_dir / "hvac_features_dataset.csv"),
     ]

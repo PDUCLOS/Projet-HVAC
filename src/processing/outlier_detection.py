@@ -621,11 +621,41 @@ class OutlierDetector:
 
         lines.append("=" * 70)
 
-        # Save
+        # Save text report
         report_text = "\n".join(lines)
         path = self.report_dir / "outlier_report.txt"
         path.write_text(report_text, encoding="utf-8")
         self.logger.info("Outlier report saved → %s", path)
+
+        # Save JSON report for dashboard
+        import json
+
+        json_data = {
+            "summary": {
+                "n_rows": len(df),
+                "strategy": report.get("strategy", "unknown"),
+                "n_columns_analyzed": len(report.get("iqr", {}).get("details", {})),
+                "total_outliers_flagged": report.get("iqr", {}).get("n_outliers", 0),
+                "outlier_rate_pct": report.get("iqr", {}).get("pct", 0.0),
+            },
+            "methods": {
+                "iqr": report.get("iqr", {}),
+                "zscore": report.get("zscore", {}),
+                "isolation_forest": report.get("isolation_forest", {}),
+                "consensus": report.get("consensus", {}),
+            },
+        }
+        if "clip_details" in report:
+            json_data["clip_details"] = report["clip_details"]
+            json_data["summary"]["total_clipped"] = report.get("total_clipped", 0)
+        if temporal_report:
+            json_data["temporal_anomalies"] = temporal_report
+
+        json_path = self.report_dir / "outlier_report.json"
+        json_path.write_text(
+            json.dumps(json_data, indent=2, default=str), encoding="utf-8"
+        )
+        self.logger.info("Outlier JSON report saved → %s", json_path)
 
         return path
 

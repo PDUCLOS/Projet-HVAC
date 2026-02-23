@@ -630,7 +630,7 @@ class ProjectConfig:
     @property
     def outlier_report_path(self) -> Path:
         """Path to the outlier detection report."""
-        return self.features_data_dir / "outlier_report.json"
+        return Path("data/analysis") / "outlier_report.json"
 
     @property
     def evaluation_results_path(self) -> Path:

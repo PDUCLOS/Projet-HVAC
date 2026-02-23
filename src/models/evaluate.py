@@ -458,9 +458,36 @@ class ModelEvaluator:
         )
         report_lines.append("=" * 70)
 
-        # Save
+        # Save text report
         report = "\n".join(report_lines)
         path = Path("data/models") / "evaluation_report.txt"
         path.write_text(report, encoding="utf-8")
         self.logger.info("Evaluation report → %s", path)
+
+        # Save JSON report for dashboard
+        import json as json_mod
+
+        json_results = {}
+        for model_name, res in results.items():
+            model_data = {}
+            for split in ["val", "test"]:
+                metrics = res.get(f"metrics_{split}", {})
+                for k, v in metrics.items():
+                    model_data[f"{split}_{k}"] = (
+                        round(v, 4) if isinstance(v, float) else v
+                    )
+            cv = res.get("cv_scores", {})
+            if cv:
+                model_data["cv"] = {
+                    k: round(v, 4) if isinstance(v, float) else v
+                    for k, v in cv.items()
+                }
+            json_results[model_name] = model_data
+
+        json_path = Path("data/models") / "evaluation_results.json"
+        json_path.write_text(
+            json_mod.dumps(json_results, indent=2, default=str), encoding="utf-8"
+        )
+        self.logger.info("Evaluation JSON report → %s", json_path)
+
         return path
