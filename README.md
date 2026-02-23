@@ -1,7 +1,7 @@
 # HVAC Market Analysis — Metropolitan France
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![Tests](https://img.shields.io/badge/tests-451%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-545%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.989-orange)
 ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
@@ -45,7 +45,7 @@ graph LR
 | Period | 2019 - 2025 |
 | Best model | Ridge (R2 test = 0.989, RMSE = 0.93) |
 | Trained models | Ridge, LightGBM, Ridge exogenous, Prophet, LSTM |
-| Unit tests | 114 tests |
+| Unit tests | 513 tests |
 | Dashboard | Streamlit (6 interactive pages) |
 | API | FastAPI (6 endpoints, auto Swagger) |
 
@@ -117,7 +117,7 @@ Projet-HVAC/
 │   ├── processing/                 # Data processing
 │   │   ├── clean_data.py           # Cleaning by source (with skip rules + preview)
 │   │   ├── merge_datasets.py       # Multi-source merging (DPE + weather + SITADEL + INSEE ref)
-│   │   ├── feature_engineering.py  # ~90 ML features
+│   │   ├── feature_engineering.py  # ~100 ML features (incl. PAC efficiency + altitude distribution)
 │   │   └── outlier_detection.py    # IQR + Z-score + Isolation Forest
 │   ├── models/                     # Modeling
 │   │   ├── baseline.py             # Ridge, LightGBM, Prophet
@@ -139,7 +139,7 @@ Projet-HVAC/
 │   ├── DATABASE_ARCHITECTURE.md    # Module 3: Star schema, OLAP, NoSQL
 │   └── DATA_PIPELINE.md            # Module 4: ETL, monitoring, Airbyte
 ├── scripts/                        # Utility scripts
-├── tests/                          # 114 tests (pytest)
+├── tests/                          # 513 tests (pytest)
 ├── Dockerfile                      # Multi-stage build
 ├── docker-compose.yml              # API + Dashboard + PostgreSQL
 ├── Makefile                        # Shortcut commands
@@ -277,7 +277,8 @@ This project covers the 6 modules of the Bac+5 certification:
 | Source | API | Coverage | Data |
 |--------|-----|----------|------|
 | **DPE ADEME** | data.ademe.fr | 96 departments | Energy performance diagnostics |
-| **Open-Meteo** | archive-api.open-meteo.com | 96 prefectures, 7 years | Temperature, precipitation, HDD/CDD |
+| **Open-Meteo** | archive-api.open-meteo.com | 96 prefectures, 7 years | Temperature, precipitation, HDD/CDD, PAC inefficiency, elevation |
+| **INSEE Ref** | reference_departements.csv (curated) | 96 departments | altitude_mean, pct_zone_montagne, densite_pop, pct_maisons |
 | **INSEE BDM** | bdm.insee.fr (SDMX) | France, monthly | Economic indicators (confidence, IPI) |
 | **INSEE Filosofi** | Reference CSV | 96 departments (static) | Median income, price/m², housing stock, % houses |
 | **Eurostat** | package `eurostat` | France, monthly | IPI HVAC (C28, C2825) |
@@ -319,7 +320,7 @@ Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `n
 ## Tests
 
 ```bash
-python -m pytest tests/ -v                              # 114 tests
+python -m pytest tests/ -v                              # 513 tests
 python -m pytest tests/ -v --cov=src --cov-report=term  # With coverage
 ```
 

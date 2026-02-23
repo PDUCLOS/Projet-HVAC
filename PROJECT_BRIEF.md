@@ -58,7 +58,7 @@ hvac-market-analysis/
 │   │   ├── __init__.py
 │   │   ├── clean_data.py        # Source-by-source cleaning (skip rules + preview mode)
 │   │   ├── merge_datasets.py    # Multi-source merge (DPE+weather+SITADEL+INSEE ref)
-│   │   ├── feature_engineering.py  # Advanced features: lags, rolling, interactions
+│   │   ├── feature_engineering.py  # Advanced features: lags, rolling, interactions, PAC efficiency
 │   │   └── outlier_detection.py # IQR + Z-score + Isolation Forest (consensus 2/3)
 │   ├── database/
 │   │   ├── __init__.py
@@ -233,12 +233,20 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - **DB table**: `raw_dpe` (individual records) → aggregated into `fact_hvac_installations`
 
 ### 5.2 Historical Weather — Open-Meteo
-- **API**: `https://archive-api.open-meteo.com/v1/archive`
+- **API**: `https://archive-api.open-meteo.com/v1/archive` (weather)
+          `https://api.open-meteo.com/v1/elevation` (elevation, Copernicus DEM GLO-90)
 - **Auth**: None (free, fair use ~10,000 calls/day)
 - **Variables**: temperature_2m_max/min/mean, precipitation_sum, wind_speed_10m_max
-- **Computed**: HDD = max(0, 18 - temp_mean), CDD = max(0, temp_mean - 18)
+- **Computed**:
+  - HDD = max(0, 18 - temp_mean) — heating demand indicator
+  - CDD = max(0, temp_mean - 18) — cooling demand indicator
+  - pac_inefficient = 1 if temp_min < -7°C — heat pump COP critical flag
+  - elevation = altitude in meters from Elevation API (fallback: static PREFECTURE_ELEVATIONS)
 - **96 prefectures**: One per metropolitan department (configured in settings.py)
 - **Collector**: `src/collectors/weather.py` (WeatherCollector)
+- **PAC domain logic**: Below -7°C, air-source heat pump COP drops below ~2.0,
+  making it economically unviable. This threshold is configurable via
+  `ThresholdsConfig.pac_inefficiency_temp` in `config/settings.py`
 
 ### 5.3 INSEE BDM — Household Confidence & Business Climate
 - **SDMX API**: `https://www.bdm.insee.fr/series/sdmx/data/SERIES_BDM/{idbank}`
@@ -349,11 +357,12 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - **Sources merged**: DPE + Weather + INSEE BDM + Eurostat + SITADEL + INSEE Filosofi reference
 
 ### Features dataset (`data/features/hvac_features_dataset.csv`)
-- **Grain**: month x department (96 departments x N months, ~90+ columns)
+- **Grain**: month x department (96 departments x N months, ~100+ columns)
 - **Pipeline**: `python -m src.pipeline features`
 - **Module**: `src/processing/feature_engineering.py` (FeatureEngineer)
+- **Steps**: lags → rolling → variations → interactions → PAC efficiency → trends → completeness
 
-### Feature categories (~90+ columns)
+### Feature categories (~100+ columns)
 
 **Temporal (7)**
 - month, quarter, year, is_heating, is_cooling
@@ -377,10 +386,32 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - interact_confiance_bat: confidence x construction climate
 - jours_extremes: heatwave + frost
 
-**Weather (8)** — local per department
+**PAC (heat pump) efficiency (8)** — domain knowledge features
+- cop_proxy: estimated COP (Coefficient of Performance) from temperature and altitude
+  Formula: COP = 4.5 - 0.08 x frost_days - 0.0005 x altitude_mean, clipped [1.0, 5.0]
+  Uses `altitude_mean` (department average) when available, falls back to `altitude` (prefecture)
+- is_mountain: binary flag combining altitude_mean > 800m OR pct_zone_montagne > 50%
+- pac_viability_score: composite [0,1] score (0.5 x COP_norm + 0.3 x housing + 0.2 x frost_penalty)
+- interact_altitude_frost: normalized altitude x frost days interaction (cold mountain penalty)
+- interact_maisons_altitude: pct_maisons x normalized altitude (houses in mountains)
+- pct_jours_pac_inefficient: % of days with T_min < -7°C (PAC COP drops below ~2.0)
+- interact_cop_hdd: COP/5 x HDD/max (heating demand vs heat pump efficiency)
+- interact_montagne_densite: mountain zone % x inverse density (sparse mountain constraint)
+
+> **Domain logic**: Air-source heat pumps (PAC air-air/air-eau) lose efficiency in cold
+> weather. Below -7°C, COP drops below ~2.0, making PAC economically uncompetitive vs
+> gas/oil heating. Mountain departments (>800m mean altitude or >50% mountain zone) have
+> structurally colder base temperatures and different HVAC adoption patterns. Population
+> density inversely correlates with altitude — sparse mountain areas are the strongest
+> constraint for PAC adoption (few inhabitants, high altitude, cold climate, hard to service).
+> These features encode this domain knowledge so the ML model can learn
+> geographically-differentiated PAC viability.
+
+**Weather (9)** — local per department
 - temp_mean, temp_max, temp_min
 - hdd_sum (base 18°C), cdd_sum
 - precipitation_sum, nb_jours_canicule, nb_jours_gel
+- nb_jours_pac_inefficient (days with T_min < -7°C — PAC COP critical threshold)
 - delta_temp_vs_mean (deviation from historical average)
 
 **Economic (6)** — national
@@ -391,11 +422,15 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - nb_logements_autorises, nb_logements_individuels, nb_logements_collectifs
 - surface_autorisee_m2
 
-**Socioeconomic reference (4)** — per department, static
+**Socioeconomic & geographic reference (8)** — per department, static
 - revenu_median (INSEE Filosofi — linked to aid eligibility)
 - prix_m2_median (proxy for real estate market activity)
 - nb_logements_total (housing stock, enables normalization)
 - pct_maisons (structural differences: houses → more heat pumps)
+- altitude (prefecture elevation in meters, from PREFECTURE_ELEVATIONS / Open-Meteo Elevation API)
+- altitude_mean (department mean altitude in meters, IGN BD ALTI)
+- pct_zone_montagne (% territory classified as mountain zone, loi montagne)
+- densite_pop (population density in hab/km², INSEE Recensement)
 
 ### Target features (Y)
 - nb_installations_pac: DPE with heat pump per month/department

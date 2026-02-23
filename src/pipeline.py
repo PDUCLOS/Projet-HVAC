@@ -14,8 +14,12 @@ Orchestrates the different stages of the HVAC Market Analysis project:
     8. eda         — Exploratory analysis + correlations (Phase 3)
     9. train       — Model training (Phase 4)
    10. evaluate    — Evaluation and comparison (Phase 4)
+   11. menu        — Interactive menu (recommended for beginners)
 
 CLI usage:
+    # Interactive menu (recommended)
+    python -m src.pipeline menu
+
     # Run a specific stage
     python -m src.pipeline collect
     python -m src.pipeline collect --sources weather,insee
@@ -842,6 +846,7 @@ Examples:
   python -m src.pipeline upload_pcloud            # Upload data to pCloud
   python -m src.pipeline update_all               # Collect + process + train + upload
   python -m src.pipeline list                     # List collectors
+  python -m src.pipeline menu                     # Interactive menu (recommended)
         """,
     )
 
@@ -852,7 +857,7 @@ Examples:
             "clean", "merge", "features", "outliers", "process",
             "eda", "train", "evaluate",
             "sync_pcloud", "upload_pcloud", "update_all",
-            "list", "all",
+            "list", "all", "menu",
         ],
         help="Pipeline stage to execute",
     )
@@ -949,6 +954,11 @@ Examples:
 
     elif args.stage == "list":
         run_list()
+
+    elif args.stage == "menu":
+        from src.cli_menu import main as run_menu
+        run_menu()
+        return  # menu handles its own exit
 
     elif args.stage == "all":
         # Execute all pipeline stages end to end
