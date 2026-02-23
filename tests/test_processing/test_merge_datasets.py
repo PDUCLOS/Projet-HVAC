@@ -767,6 +767,48 @@ class TestPrepareSitadelFeatures:
         assert "nb_logements_autorises" in result.columns
         assert "nb_logements_individuels" not in result.columns
 
+    def test_yyyy_mm_dd_date_format(self, tmp_path):
+        """YYYY-MM-DD dates (actual CSV format) are parsed correctly."""
+        df_sitadel = pd.DataFrame({
+            "DATE_PRISE_EN_COMPTE": [
+                "2022-07-15", "2022-07-20", "2022-08-10",
+            ],
+            "DEP": ["69", "69", "69"],
+            "NB_LGT_TOT_CREES": [50, 100, 75],
+        })
+        cfg = _make_test_config(tmp_path)
+        _write_csv(
+            tmp_path / "raw" / "sitadel" / "permis_construire_france.csv",
+            df_sitadel,
+        )
+
+        merger = DatasetMerger(cfg)
+        result = merger._prepare_sitadel_features()
+        assert result is not None
+        # Two different months: 202207 and 202208
+        assert set(result["date_id"].values) == {202207, 202208}
+        # July rows should be summed
+        july_row = result[result["date_id"] == 202207]
+        assert july_row["nb_logements_autorises"].iloc[0] == 150
+
+    def test_mixed_date_formats(self, tmp_path):
+        """Handles mix of YYYY-MM and YYYY-MM-DD date formats."""
+        df_sitadel = pd.DataFrame({
+            "DATE_PRISE_EN_COMPTE": ["2022-07", "2022-08-15"],
+            "DEP": ["69", "69"],
+            "NB_LGT_TOT_CREES": [50, 75],
+        })
+        cfg = _make_test_config(tmp_path)
+        _write_csv(
+            tmp_path / "raw" / "sitadel" / "permis_construire_france.csv",
+            df_sitadel,
+        )
+
+        merger = DatasetMerger(cfg)
+        result = merger._prepare_sitadel_features()
+        assert result is not None
+        assert set(result["date_id"].values) == {202207, 202208}
+
 
 # ============================================================
 # Tests — _prepare_reference_features

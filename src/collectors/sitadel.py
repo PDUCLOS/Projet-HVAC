@@ -59,22 +59,34 @@ SITADEL_DIDO_API_URL = (
 SITADEL_MILLESIME = "2026-01"  # Latest known update
 
 # Columns of interest in the SITADEL CSV file
-# NOTE: The DiDo API renamed columns in early 2026:
-#   DEP → DEP_CODE, REG → REG_CODE
-# We handle both old and new names for backwards compatibility.
+# NOTE: The DiDo API and raw CSV use different column names than our
+# internal legacy names. The _DIDO_COLUMN_MAP below normalizes them.
+#
+# Actual CSV columns → Internal legacy names:
+#   DEP_CODE → DEP              (DiDo 2026 rename)
+#   REG_CODE → REG              (DiDo 2026 rename)
+#   DATE_REELLE_AUTORISATION → DATE_PRISE_EN_COMPTE  (date format: YYYY-MM-DD)
+#   NB_LGT_COL_CREES → NB_LGT_COLL_CREES            (typo: COL vs COLL)
+#   SURF_HAB_CREEE → SURF_TOT_M2                     (closest available surface)
 SITADEL_COLUMNS = [
-    "REG",                    # Region code (legacy name)
-    "DEP",                    # Department code (legacy name)
-    "DATE_PRISE_EN_COMPTE",   # Permit processing date
-    "NB_LGT_TOT_CREES",      # Total number of housing units created
+    "REG",                    # Region code (legacy name; actual: REG or REG_CODE)
+    "DEP",                    # Department code (legacy name; actual: DEP or DEP_CODE)
+    "DATE_PRISE_EN_COMPTE",   # Permit date (legacy; actual: DATE_REELLE_AUTORISATION)
+    "NB_LGT_TOT_CREES",      # Total housing units created
+    "NB_LGT_COLL_CREES",     # Collective housing (legacy; actual: NB_LGT_COL_CREES)
+    "SURF_TOT_M2",            # Surface area (legacy; actual: SURF_HAB_CREEE)
     "CAT_DEM",                # Applicant category
     "I_AUT_PC",               # Building permit indicator
 ]
 
-# Column renaming map: DiDo API 2026+ → legacy internal names
+# Column renaming map: actual CSV names → legacy internal names
+# Applied during collect() to normalize all column names.
 _DIDO_COLUMN_MAP = {
     "DEP_CODE": "DEP",
     "REG_CODE": "REG",
+    "DATE_REELLE_AUTORISATION": "DATE_PRISE_EN_COMPTE",
+    "NB_LGT_COL_CREES": "NB_LGT_COLL_CREES",
+    "SURF_HAB_CREEE": "SURF_TOT_M2",
 }
 
 
@@ -207,7 +219,7 @@ class SitadelCollector(BaseCollector):
         """Validate the structure and quality of SITADEL data.
 
         Checks:
-        1. Required columns present (DEP, DATE_PRISE_EN_COMPTE)
+        1. Required columns present (DEP)
         2. Correct departments (in the configured list)
         3. Minimum row count (at least 1000 permits expected)
         4. Positive NB_LGT_TOT_CREES values

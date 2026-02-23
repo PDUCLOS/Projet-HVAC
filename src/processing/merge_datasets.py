@@ -558,13 +558,11 @@ class DatasetMerger:
 
         df = pd.read_csv(filepath)
 
-        # Build date_id from DATE_PRISE_EN_COMPTE (format YYYY-MM)
+        # Build date_id from DATE_PRISE_EN_COMPTE
+        # Handles both YYYY-MM (legacy) and YYYY-MM-DD (actual CSV) formats
         if "DATE_PRISE_EN_COMPTE" in df.columns:
-            df["date_id"] = (
-                df["DATE_PRISE_EN_COMPTE"]
-                .str.replace("-", "")
-                .astype(int)
-            )
+            date_str = df["DATE_PRISE_EN_COMPTE"].astype(str).str[:7]  # YYYY-MM
+            df["date_id"] = date_str.str.replace("-", "").astype(int)
         else:
             self.logger.warning("  SITADEL: DATE_PRISE_EN_COMPTE column missing")
             return None
