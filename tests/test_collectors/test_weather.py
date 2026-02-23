@@ -11,6 +11,18 @@ import requests
 
 from src.collectors.weather import WeatherCollector
 
+# Test cities (2 cities) used in collect() tests to avoid loading all 96.
+_TEST_CITIES = {
+    "Lyon": {"lat": 45.76, "lon": 4.84, "dept": "69"},
+    "Grenoble": {"lat": 45.19, "lon": 5.72, "dept": "38"},
+}
+
+
+def _setup_mock_config(mock_config):
+    """Configure the mock config with 2 test cities."""
+    mock_config.geo.cities = dict(_TEST_CITIES)
+    mock_config.thresholds.pac_inefficiency_temp = -7.0
+
 
 class TestWeatherCollector:
     """Tests for WeatherCollector."""
@@ -42,8 +54,10 @@ class TestWeatherCollector:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_collect_success(self, mock_fetch, mock_elev, mock_sleep, collector_config):
+    @patch("config.settings.config")
+    def test_collect_success(self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config):
         """Test that collect returns a valid DataFrame with mocked data."""
+        _setup_mock_config(mock_config)
         # Simulate the Open-Meteo API response
         mock_fetch.return_value = {
             "daily": {
@@ -73,8 +87,10 @@ class TestWeatherCollector:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_collect_partial_failure(self, mock_fetch, mock_elev, mock_sleep, collector_config):
+    @patch("config.settings.config")
+    def test_collect_partial_failure(self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config):
         """Test resilience when a city fails."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -86,12 +102,13 @@ class TestWeatherCollector:
             }
         }
         # Pass 1: city1 OK, city2 fails
-        # Retry pass: city2 fails again
-        mock_fetch.side_effect = [
-            good_response,
-            Exception("API timeout"),
-            Exception("API timeout"),
-        ]
+        # All retry passes: city2 keeps failing
+        max_passes = WeatherCollector._MAX_RETRY_PASSES
+        max_retries = WeatherCollector._MAX_429_RETRIES
+        mock_fetch.side_effect = (
+            [good_response]
+            + [Exception("API timeout")] * (max_retries * max_passes)
+        )
         collector = WeatherCollector(collector_config)
         df = collector.collect()
 
@@ -205,10 +222,12 @@ class TestMultiPassRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
+    @patch("config.settings.config")
     def test_failed_cities_retried_on_pass_2(
-        self, mock_fetch, mock_elev, mock_sleep, collector_config
+        self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
         """Cities that fail on pass 1 are retried on pass 2."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -223,11 +242,12 @@ class TestMultiPassRetry:
             "too many 429 error responses"
         )
 
-        # Pass 1: city1 OK, city2 fails all 5 retries
+        max_retries = WeatherCollector._MAX_429_RETRIES
+        # Pass 1: city1 OK, city2 fails all retries
         # Pass 2: city2 succeeds on retry
-        side_effects = [good_response]  # city1 pass 1
-        side_effects += [conn_err] * 5  # city2 pass 1 (5 retries, all fail)
-        side_effects += [good_response]  # city2 pass 2 (succeeds)
+        side_effects = [good_response]         # city1 pass 1
+        side_effects += [conn_err] * max_retries  # city2 pass 1 (all retries fail)
+        side_effects += [good_response]         # city2 pass 2 (succeeds)
         mock_fetch.side_effect = side_effects
 
         collector = WeatherCollector(collector_config)
@@ -240,10 +260,12 @@ class TestMultiPassRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
+    @patch("config.settings.config")
     def test_retry_pass_waits_cooldown_before_starting(
-        self, mock_fetch, mock_elev, mock_sleep, collector_config
+        self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
         """Each retry pass waits _RETRY_PASS_PAUSE (60s) before starting."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -258,9 +280,10 @@ class TestMultiPassRetry:
             "too many 429 error responses"
         )
 
+        max_retries = WeatherCollector._MAX_429_RETRIES
         # city1 OK, city2 fails pass 1, succeeds pass 2
         side_effects = [good_response]
-        side_effects += [conn_err] * 5
+        side_effects += [conn_err] * max_retries
         side_effects += [good_response]
         mock_fetch.side_effect = side_effects
 
@@ -274,10 +297,12 @@ class TestMultiPassRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0})
     @patch.object(WeatherCollector, "fetch_json")
+    @patch("config.settings.config")
     def test_no_retry_pass_when_all_succeed(
-        self, mock_fetch, mock_elev, mock_sleep, collector_config
+        self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
         """No retry pass triggered when all cities succeed on pass 1."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -300,10 +325,12 @@ class TestMultiPassRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
-    def test_multi_pass_up_to_3_passes(
-        self, mock_fetch, mock_elev, mock_sleep, collector_config
+    @patch("config.settings.config")
+    def test_multi_pass_progressive_recovery(
+        self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
-        """Retry loop runs up to 3 passes, recovering cities progressively."""
+        """Retry loop recovers cities progressively across multiple passes."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -318,15 +345,16 @@ class TestMultiPassRetry:
             "too many 429 error responses"
         )
 
+        max_retries = WeatherCollector._MAX_429_RETRIES
         # Pass 1: both cities fail
         # Pass 2: city1 succeeds, city2 still fails
         # Pass 3: city2 finally succeeds
         side_effects = []
-        side_effects += [conn_err] * 5   # city1 pass 1 (fail)
-        side_effects += [conn_err] * 5   # city2 pass 1 (fail)
-        side_effects += [good_response]  # city1 pass 2 (OK)
-        side_effects += [conn_err] * 5   # city2 pass 2 (fail)
-        side_effects += [good_response]  # city2 pass 3 (OK)
+        side_effects += [conn_err] * max_retries  # city1 pass 1 (fail)
+        side_effects += [conn_err] * max_retries  # city2 pass 1 (fail)
+        side_effects += [good_response]            # city1 pass 2 (OK)
+        side_effects += [conn_err] * max_retries  # city2 pass 2 (fail)
+        side_effects += [good_response]            # city2 pass 3 (OK)
         mock_fetch.side_effect = side_effects
 
         collector = WeatherCollector(collector_config)
@@ -344,10 +372,12 @@ class TestMultiPassRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "_fetch_elevations", return_value={"69": 175.0, "38": 212.0})
     @patch.object(WeatherCollector, "fetch_json")
+    @patch("config.settings.config")
     def test_gives_up_after_max_passes(
-        self, mock_fetch, mock_elev, mock_sleep, collector_config
+        self, mock_config, mock_fetch, mock_elev, mock_sleep, collector_config
     ):
-        """After 3 passes, remaining failures are recorded as errors."""
+        """After all passes exhausted, remaining failures are recorded as errors."""
+        _setup_mock_config(mock_config)
         good_response = {
             "daily": {
                 "time": ["2023-01-01"],
@@ -362,11 +392,12 @@ class TestMultiPassRetry:
             "too many 429 error responses"
         )
 
-        # city1 always succeeds, city2 always fails (all 3 passes)
+        # city1 always succeeds, city2 always fails (all passes)
+        max_passes = WeatherCollector._MAX_RETRY_PASSES
+        max_retries = WeatherCollector._MAX_429_RETRIES
         side_effects = [good_response]    # city1 pass 1 (OK)
-        side_effects += [conn_err] * 5    # city2 pass 1 (fail)
-        side_effects += [conn_err] * 5    # city2 pass 2 (fail)
-        side_effects += [conn_err] * 5    # city2 pass 3 (fail)
+        # city2 fails on every pass (retries per pass x N passes)
+        side_effects += [conn_err] * (max_retries * max_passes)
         mock_fetch.side_effect = side_effects
 
         collector = WeatherCollector(collector_config)

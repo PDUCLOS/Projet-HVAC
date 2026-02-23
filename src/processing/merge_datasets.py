@@ -597,12 +597,15 @@ class DatasetMerger:
     def _prepare_reference_features(self) -> Optional[pd.DataFrame]:
         """Load department-level reference features (static per department).
 
-        Loads socioeconomic reference data from INSEE:
+        Loads socioeconomic and geographic reference data from INSEE:
         - revenu_median: median household income (Filosofi)
         - prix_m2_median: median property price per m2 (DVF/Notaires)
         - nb_logements_total: total housing stock (Recensement)
         - pct_maisons: percentage of houses (vs apartments)
         - altitude: reference city elevation in meters (from PREFECTURE_ELEVATIONS)
+        - altitude_mean: mean altitude of the department (IGN BD ALTI)
+        - pct_zone_montagne: % of territory classified as mountain zone (loi montagne)
+        - densite_pop: population density (hab/km2, INSEE Recensement)
 
         Returns:
             DataFrame with one row per department, or None if missing.
@@ -618,7 +621,7 @@ class DatasetMerger:
         # Keep only numeric features (drop dept_name which is metadata)
         keep_cols = ["dept"]
         for col in ["revenu_median", "prix_m2_median", "nb_logements_total", "pct_maisons",
-                     "altitude"]:
+                     "altitude", "altitude_mean", "pct_zone_montagne", "densite_pop"]:
             if col in df.columns:
                 keep_cols.append(col)
 

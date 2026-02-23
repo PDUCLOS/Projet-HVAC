@@ -3,15 +3,19 @@
 
 Covers:
 - COP proxy estimation
-- Mountain flag
+- Mountain flag (altitude + pct_zone_montagne)
 - PAC viability score
 - Altitude/frost interactions
+- Altitude distribution features (altitude_mean, pct_zone_montagne, densite_pop)
+- Mountain × density interaction
 - PAC inefficiency integration in weather collector
 - Altitude in reference features
 - Security and regression tests
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -467,3 +471,139 @@ class TestRegressionsPac:
         df = fe._add_pac_efficiency_features(df)
         assert "cop_proxy" not in df.columns
         assert "is_mountain" not in df.columns
+
+
+# =====================================================================
+# Altitude distribution features (altitude_mean, pct_zone_montagne, densite_pop)
+# =====================================================================
+
+class TestAltitudeDistribution:
+    """Tests for department-level altitude distribution features."""
+
+    def test_altitude_mean_preferred_over_altitude(self, test_config):
+        """When altitude_mean is available, COP uses it instead of altitude."""
+        fe = FeatureEngineer(test_config)
+        df = pd.DataFrame({
+            "dept": ["38"],
+            "date_id": [202301],
+            "nb_jours_gel": [10],
+            "altitude": [212],        # Grenoble prefecture
+            "altitude_mean": [740],    # Department mean (includes Alps)
+        })
+        df = fe._add_pac_efficiency_features(df)
+        # COP should use altitude_mean (740m), not altitude (212m)
+        expected_cop = 4.5 - 0.08 * 10 - 0.0005 * 740
+        assert df["cop_proxy"].iloc[0] == pytest.approx(expected_cop, abs=0.01)
+
+    def test_mountain_flag_uses_pct_zone_montagne(self, test_config):
+        """Departments with >50% mountain zone should be flagged."""
+        fe = FeatureEngineer(test_config)
+        df = pd.DataFrame({
+            "dept": ["06", "38"],
+            "date_id": [202301, 202301],
+            "nb_jours_gel": [5, 10],
+            "altitude_mean": [400, 400],       # Both below 800m
+            "pct_zone_montagne": [72, 55],     # Both >50% mountain zone
+        })
+        df = fe._add_pac_efficiency_features(df)
+        assert df["is_mountain"].iloc[0] == 1  # Nice: 72% mountain
+        assert df["is_mountain"].iloc[1] == 1  # Isere: 55% mountain
+
+    def test_not_mountain_if_low_zone(self, test_config):
+        """Departments with <50% mountain and <800m should NOT be flagged."""
+        fe = FeatureEngineer(test_config)
+        df = pd.DataFrame({
+            "dept": ["69"],
+            "date_id": [202301],
+            "nb_jours_gel": [5],
+            "altitude_mean": [320],
+            "pct_zone_montagne": [10],
+        })
+        df = fe._add_pac_efficiency_features(df)
+        assert df["is_mountain"].iloc[0] == 0
+
+    def test_interact_montagne_densite_created(self, test_config):
+        """Mountain × inverse density interaction should be created."""
+        fe = FeatureEngineer(test_config)
+        df = pd.DataFrame({
+            "dept": ["05", "75"],
+            "date_id": [202301, 202301],
+            "nb_jours_gel": [15, 2],
+            "altitude_mean": [1680, 35],
+            "pct_zone_montagne": [100, 0],
+            "densite_pop": [25, 20569],
+        })
+        df = fe._add_pac_efficiency_features(df)
+        assert "interact_montagne_densite" in df.columns
+        # Hautes-Alpes: 100% mountain, very low density → high interaction
+        # Paris: 0% mountain → interaction = 0
+        assert df.loc[0, "interact_montagne_densite"] > 0.9
+        assert df.loc[1, "interact_montagne_densite"] == 0.0
+
+    def test_interact_montagne_densite_range(self, test_config):
+        """Mountain × density interaction should be in [0, 1]."""
+        fe = FeatureEngineer(test_config)
+        df = pd.DataFrame({
+            "dept": ["05", "48", "69", "75"],
+            "date_id": [202301, 202301, 202301, 202301],
+            "nb_jours_gel": [15, 12, 5, 2],
+            "altitude_mean": [1680, 1020, 320, 35],
+            "pct_zone_montagne": [100, 90, 10, 0],
+            "densite_pop": [25, 15, 564, 20569],
+        })
+        df = fe._add_pac_efficiency_features(df)
+        assert df["interact_montagne_densite"].min() >= 0
+        assert df["interact_montagne_densite"].max() <= 1
+
+    def test_reference_csv_has_altitude_columns(self):
+        """reference_departements.csv must contain altitude distribution columns."""
+        import pandas as pd
+        ref_path = Path("data/raw/insee/reference_departements.csv")
+        if not ref_path.exists():
+            pytest.skip("Reference CSV not found")
+        df = pd.read_csv(ref_path)
+        for col in ["altitude_mean", "pct_zone_montagne", "densite_pop"]:
+            assert col in df.columns, f"Missing column: {col}"
+
+    def test_reference_csv_altitude_mean_range(self):
+        """Altitude mean values should be realistic (0-3000m)."""
+        import pandas as pd
+        ref_path = Path("data/raw/insee/reference_departements.csv")
+        if not ref_path.exists():
+            pytest.skip("Reference CSV not found")
+        df = pd.read_csv(ref_path)
+        assert df["altitude_mean"].min() >= 0
+        assert df["altitude_mean"].max() <= 3000
+
+    def test_reference_csv_pct_zone_montagne_range(self):
+        """Mountain zone % should be between 0 and 100."""
+        import pandas as pd
+        ref_path = Path("data/raw/insee/reference_departements.csv")
+        if not ref_path.exists():
+            pytest.skip("Reference CSV not found")
+        df = pd.read_csv(ref_path)
+        assert df["pct_zone_montagne"].min() >= 0
+        assert df["pct_zone_montagne"].max() <= 100
+
+    def test_reference_csv_densite_pop_positive(self):
+        """Population density should be positive."""
+        import pandas as pd
+        ref_path = Path("data/raw/insee/reference_departements.csv")
+        if not ref_path.exists():
+            pytest.skip("Reference CSV not found")
+        df = pd.read_csv(ref_path)
+        assert (df["densite_pop"] > 0).all()
+
+    def test_known_mountain_departments_high_zone(self):
+        """Known mountain departments should have high pct_zone_montagne."""
+        import pandas as pd
+        ref_path = Path("data/raw/insee/reference_departements.csv")
+        if not ref_path.exists():
+            pytest.skip("Reference CSV not found")
+        df = pd.read_csv(ref_path, dtype={"dept": str})
+        df["dept"] = df["dept"].astype(str).str.zfill(2)
+        # Hautes-Alpes (05) and Savoie (73) should be >80%
+        assert df.loc[df["dept"] == "05", "pct_zone_montagne"].iloc[0] >= 80
+        assert df.loc[df["dept"] == "73", "pct_zone_montagne"].iloc[0] >= 80
+        # Paris (75) should be 0%
+        assert df.loc[df["dept"] == "75", "pct_zone_montagne"].iloc[0] == 0

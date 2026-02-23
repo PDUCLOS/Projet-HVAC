@@ -383,14 +383,22 @@ class FeatureEngineer:
         - Below -7°C, COP drops below ~2.0, making PAC economically uncompetitive.
         - At high altitude (>800m), base temperatures are lower year-round.
         - Mountain departments have structurally different HVAC adoption patterns.
+        - Population density inversely correlates with altitude/mountain zones.
 
-        Features added:
-        - cop_proxy: estimated COP based on mean temperature and altitude
-          Formula: COP = 4.5 - 0.08 * frost_days - 0.0005 * altitude, clipped [1.0, 5.0]
-        - is_mountain: binary flag (altitude > 800m)
+        Features added (from prefecture altitude):
+        - cop_proxy: estimated COP based on frost days and department mean altitude
+          Formula: COP = 4.5 - 0.08 * frost_days - 0.0005 * altitude_mean, clipped [1.0, 5.0]
+        - is_mountain: binary flag (altitude_mean > 800m OR pct_zone_montagne > 50%)
         - pac_viability_score: composite [0, 1] score combining COP, housing type, frost
-        - interact_altitude_frost: altitude × frost interaction
-        - interact_maisons_altitude: pct_maisons × altitude (houses in mountains)
+
+        Features added (from altitude distribution):
+        - pct_zone_montagne: % territory classified as mountain zone (loi montagne)
+        - altitude_mean: mean altitude of the department (IGN BD ALTI)
+        - densite_pop: population density (hab/km2)
+        - interact_altitude_frost: altitude_mean × frost interaction
+        - interact_maisons_altitude: pct_maisons × altitude_mean
+        - interact_montagne_densite: mountain zone × inverse density
+          (sparse mountain areas = strongest PAC constraint)
 
         Args:
             df: DataFrame with weather, geographic, and reference features.
@@ -400,29 +408,43 @@ class FeatureEngineer:
         """
         n_features = 0
 
+        # --- Determine best altitude source ---
+        # Prefer altitude_mean (department average) over altitude (prefecture only)
+        has_alt_mean = "altitude_mean" in df.columns
+        has_altitude = "altitude" in df.columns
+        alt_col = "altitude_mean" if has_alt_mean else ("altitude" if has_altitude else None)
+
+        has_frost = "nb_jours_gel" in df.columns
+        has_pac_days = "nb_jours_pac_inefficient" in df.columns
+        has_montagne = "pct_zone_montagne" in df.columns
+        has_densite = "densite_pop" in df.columns
+
         # --- COP proxy estimation ---
         # Based on simplified ASHRAE/SEPEMO model for air-source heat pumps
-        has_frost = "nb_jours_gel" in df.columns
-        has_altitude = "altitude" in df.columns
-        has_pac_days = "nb_jours_pac_inefficient" in df.columns
-
-        if has_frost or has_altitude:
+        if has_frost or alt_col:
             cop = np.full(len(df), 4.5)  # Ideal COP at mild temperature
 
             if has_frost:
                 # Each frost day degrades COP
                 cop -= 0.08 * df["nb_jours_gel"].fillna(0)
 
-            if has_altitude:
+            if alt_col:
                 # Higher altitude = colder base temperature = lower COP
-                cop -= 0.0005 * df["altitude"].fillna(0)
+                cop -= 0.0005 * df[alt_col].fillna(0)
 
             df["cop_proxy"] = np.clip(cop, 1.0, 5.0).round(2)
             n_features += 1
 
         # --- Mountain flag ---
-        if has_altitude:
-            df["is_mountain"] = (df["altitude"] > 800).astype(int)
+        # Uses altitude_mean (more representative than prefecture altitude)
+        # Also considers pct_zone_montagne: >50% mountain territory = mountain dept
+        if alt_col or has_montagne:
+            is_mt = np.zeros(len(df), dtype=int)
+            if alt_col:
+                is_mt = is_mt | (df[alt_col].fillna(0) > 800).astype(int)
+            if has_montagne:
+                is_mt = is_mt | (df["pct_zone_montagne"].fillna(0) > 50).astype(int)
+            df["is_mountain"] = is_mt
             n_features += 1
 
         # --- PAC viability score (composite [0, 1]) ---
@@ -453,22 +475,34 @@ class FeatureEngineer:
 
         # --- Interaction: altitude × frost days ---
         # Mountains with cold winters = very hostile for PAC
-        if has_altitude and has_frost:
-            alt_max = max(df["altitude"].max(), 1)
+        if alt_col and has_frost:
+            alt_max = max(df[alt_col].max(), 1)
             frost_max = max(df["nb_jours_gel"].max(), 1)
             df["interact_altitude_frost"] = (
-                (df["altitude"].fillna(0) / alt_max)
+                (df[alt_col].fillna(0) / alt_max)
                 * (df["nb_jours_gel"].fillna(0) / frost_max)
             ).round(4)
             n_features += 1
 
         # --- Interaction: pct_maisons × altitude ---
         # Houses in mountains: potential for PAC but efficiency concern
-        if has_altitude and "pct_maisons" in df.columns:
-            alt_max = max(df["altitude"].max(), 1)
+        if alt_col and "pct_maisons" in df.columns:
+            alt_max = max(df[alt_col].max(), 1)
             df["interact_maisons_altitude"] = (
                 (df["pct_maisons"].fillna(50) / 100)
-                * (df["altitude"].fillna(0) / alt_max)
+                * (df[alt_col].fillna(0) / alt_max)
+            ).round(4)
+            n_features += 1
+
+        # --- Interaction: mountain zone × inverse density ---
+        # Sparse mountain areas are the strongest constraint for PAC adoption:
+        # few inhabitants, high altitude, cold climate, hard to service
+        if has_montagne and has_densite:
+            dens_max = max(df["densite_pop"].max(), 1)
+            inv_density = 1 - (df["densite_pop"].fillna(0) / dens_max).clip(0, 1)
+            df["interact_montagne_densite"] = (
+                (df["pct_zone_montagne"].fillna(0) / 100)
+                * inv_density
             ).round(4)
             n_features += 1
 

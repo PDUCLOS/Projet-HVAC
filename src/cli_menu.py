@@ -488,7 +488,15 @@ def _show_date_verification() -> None:
 
 
 def _show_pac_efficiency_map() -> None:
-    """Show PAC efficiency analysis by department (altitude + climate)."""
+    """Show PAC efficiency analysis by department (altitude + climate).
+
+    Displays a comprehensive table with:
+    - Prefecture altitude (point estimate for the reference city)
+    - Department mean altitude (full territory average from IGN BD ALTI)
+    - Mountain zone percentage (loi montagne classification)
+    - Population density (hab/km2, proxy for urbanization vs rural mountain)
+    - COP estimate and PAC viability rating
+    """
     clear_screen()
     show_header()
 
@@ -498,7 +506,9 @@ def _show_pac_efficiency_map() -> None:
             "[bold]PAC (HEAT PUMP) EFFICIENCY ANALYSIS[/bold]\n"
             f"[dim]Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n\n"
             "[dim]COP = Coefficient of Performance (higher = more efficient)\n"
-            "Below -7°C, air-source heat pump COP drops critically (<2.0)[/dim]",
+            "Below -7°C, air-source heat pump COP drops critically (<2.0)\n"
+            "Altitude mean = IGN BD ALTI department average (not just prefecture)\n"
+            "Zone montagne = % territory classified mountain (loi montagne)[/dim]",
             border_style="magenta",
             box=box.DOUBLE,
         )
@@ -506,45 +516,78 @@ def _show_pac_efficiency_map() -> None:
 
     from config.settings import PREFECTURE_ELEVATIONS, FRANCE_DEPARTMENTS
 
-    # Build department table sorted by altitude (highest first)
+    # Load altitude distribution data from reference CSV
+    import pandas as pd
+    ref_path = Path("data/raw/insee/reference_departements.csv")
+    ref_data = {}
+    if ref_path.exists():
+        ref_df = pd.read_csv(ref_path, dtype={"dept": str})
+        ref_df["dept"] = ref_df["dept"].astype(str).str.zfill(2)
+        for _, row in ref_df.iterrows():
+            ref_data[row["dept"]] = {
+                "altitude_mean": row.get("altitude_mean", 0),
+                "pct_zone_montagne": row.get("pct_zone_montagne", 0),
+                "densite_pop": row.get("densite_pop", 0),
+            }
+
+    # Build department table sorted by mean altitude (highest first)
     table = Table(
-        title="Department Analysis — Altitude & PAC Viability",
+        title="Department Analysis — Altitude Distribution & PAC Viability",
         box=box.ROUNDED,
         show_lines=False,
         border_style="magenta",
     )
 
     table.add_column("Dept", style="bold", width=5)
-    table.add_column("Prefecture", min_width=18)
-    table.add_column("Altitude", justify="right", min_width=8)
+    table.add_column("Prefecture", min_width=16)
+    table.add_column("Alt. Pref.", justify="right", min_width=8)
+    table.add_column("Alt. Moy.", justify="right", min_width=8)
+    table.add_column("Zone Mt.", justify="right", min_width=7)
+    table.add_column("Densité", justify="right", min_width=8)
     table.add_column("Mountain", justify="center", width=8)
-    table.add_column("COP Estimate", justify="center", min_width=12)
-    table.add_column("PAC Viability", min_width=14)
+    table.add_column("COP Est.", justify="center", min_width=8)
+    table.add_column("PAC", min_width=10)
 
-    # Collect data and sort by altitude descending
+    # Collect data and sort by mean altitude descending
     rows = []
     for city, info in FRANCE_DEPARTMENTS.items():
         dept = info["dept"]
-        alt = PREFECTURE_ELEVATIONS.get(dept, 0)
-        is_mountain = alt > 800
-        # Simplified COP estimate (full version uses actual frost days)
-        cop_base = max(1.0, min(5.0, 4.5 - 0.0005 * alt))
-        rows.append((dept, city, alt, is_mountain, cop_base))
+        alt_pref = PREFECTURE_ELEVATIONS.get(dept, 0)
+        ref = ref_data.get(dept, {})
+        alt_mean = ref.get("altitude_mean", alt_pref)
+        pct_mt = ref.get("pct_zone_montagne", 0)
+        densite = ref.get("densite_pop", 0)
+        # Use mean altitude for COP (more representative)
+        is_mountain = alt_mean > 800 or pct_mt > 50
+        cop_base = max(1.0, min(5.0, 4.5 - 0.0005 * alt_mean))
+        rows.append((dept, city, alt_pref, alt_mean, pct_mt, densite,
+                      is_mountain, cop_base))
 
-    rows.sort(key=lambda x: x[2], reverse=True)
+    rows.sort(key=lambda x: x[3], reverse=True)
 
-    for dept, city, alt, is_mountain, cop_base in rows:
-        # Color coding
-        if alt > 800:
+    for dept, city, alt_pref, alt_mean, pct_mt, densite, is_mountain, cop_base in rows:
+        # Color coding for altitude
+        if alt_mean > 800:
             alt_style = "[bold red]"
             mountain = "[bold red]YES[/bold red]"
-        elif alt > 400:
+        elif alt_mean > 400:
             alt_style = "[yellow]"
-            mountain = "[dim]-[/dim]"
+            mountain = "[bold yellow]PARTIAL[/bold yellow]" if pct_mt > 30 else "[dim]-[/dim]"
         else:
             alt_style = "[green]"
             mountain = "[dim]-[/dim]"
 
+        # Mountain zone color
+        if pct_mt >= 70:
+            mt_str = f"[bold red]{pct_mt}%[/bold red]"
+        elif pct_mt >= 30:
+            mt_str = f"[yellow]{pct_mt}%[/yellow]"
+        elif pct_mt > 0:
+            mt_str = f"[dim]{pct_mt}%[/dim]"
+        else:
+            mt_str = "[dim]-[/dim]"
+
+        # COP and viability
         if cop_base < 3.0:
             cop_str = f"[bold red]{cop_base:.1f}[/bold red]"
             viability = "[bold red]LOW[/bold red]"
@@ -555,10 +598,20 @@ def _show_pac_efficiency_map() -> None:
             cop_str = f"[green]{cop_base:.1f}[/green]"
             viability = "[green]HIGH[/green]"
 
+        # Density formatting
+        if densite > 1000:
+            dens_str = f"[cyan]{densite:,}[/cyan]"
+        elif densite > 100:
+            dens_str = f"{densite:,}"
+        else:
+            dens_str = f"[dim]{densite:,}[/dim]"
+
         table.add_row(
-            dept,
-            city,
-            f"{alt_style}{alt}m",
+            dept, city,
+            f"{alt_pref}m",
+            f"{alt_style}{alt_mean}m",
+            mt_str,
+            dens_str,
             mountain,
             cop_str,
             viability,
@@ -567,22 +620,25 @@ def _show_pac_efficiency_map() -> None:
     console.print()
     console.print(table)
 
-    # Summary stats
-    altitudes = list(PREFECTURE_ELEVATIONS.values())
-    n_mountain = sum(1 for a in altitudes if a > 800)
-    n_moderate = sum(1 for a in altitudes if 400 < a <= 800)
-    n_low = sum(1 for a in altitudes if a <= 400)
+    # Summary stats using mean altitude and mountain zone
+    n_mountain = sum(1 for r in rows if r[3] > 800 or r[4] > 50)
+    n_partial = sum(1 for r in rows if not (r[3] > 800 or r[4] > 50) and r[4] > 15)
+    n_low = sum(1 for r in rows if r[3] <= 400 and r[4] == 0)
+    n_other = len(rows) - n_mountain - n_partial - n_low
 
     console.print()
     console.print(
         Panel(
-            f"[bold]Summary:[/bold]\n"
-            f"  [red]Mountain (>800m):[/red]   {n_mountain} departments — PAC viability LOW\n"
-            f"  [yellow]Elevated (400-800m):[/yellow] {n_moderate} departments — PAC viability MODERATE\n"
-            f"  [green]Lowland (<400m):[/green]     {n_low} departments — PAC viability HIGH\n\n"
-            f"[dim]Note: COP estimates are based on altitude only.\n"
-            f"After data collection, full estimates will include actual frost days,\n"
-            f"temperature data, and housing structure (pct_maisons).[/dim]",
+            f"[bold]Summary (based on mean altitude + mountain zone %):[/bold]\n"
+            f"  [red]Mountain (alt>800m or >50% zone):[/red]  {n_mountain} departments — PAC viability LOW\n"
+            f"  [yellow]Partial mountain (15-50% zone):[/yellow]   {n_partial} departments — PAC viability MODERATE\n"
+            f"  [green]Lowland (<400m, no mountain):[/green]     {n_low} departments — PAC viability HIGH\n"
+            f"  [white]Other (mixed):[/white]                    {n_other} departments\n\n"
+            f"[dim]Sources:\n"
+            f"  - Alt. Pref.: Open-Meteo Elevation API (Copernicus DEM GLO-90)\n"
+            f"  - Alt. Moy.: IGN BD ALTI (department mean altitude)\n"
+            f"  - Zone Mt.: Loi montagne classification (%% territory)\n"
+            f"  - Densité: INSEE Recensement (hab/km²)[/dim]",
             border_style="cyan",
         )
     )
@@ -1014,11 +1070,12 @@ def menu_processing() -> None:
         console.print("    [bold]7[/bold]  Initialize database  [dim](create/reset tables)[/dim]")
         console.print("    [bold]8[/bold]  Import CSVs into database")
         console.print("    [bold]9[/bold]  Import CSVs INTERACTIVE  [dim](choose sources)[/dim]")
+        console.print("    [bold]g[/bold]  Geographic profile  [dim](altitude, mountain zones, density)[/dim]")
         console.print("    [bold]0[/bold]  Back to main menu")
 
         choice = get_choice(
             "Select",
-            ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ""],
+            ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "g", ""],
         )
 
         if choice == "0":
@@ -1041,6 +1098,162 @@ def menu_processing() -> None:
             _run_processing_stage("import_data")
         elif choice == "9":
             _run_processing_stage("import_interactive")
+        elif choice == "g":
+            _show_geographic_profile()
+
+
+def _show_geographic_profile() -> None:
+    """Show geographic profile of reference departments (altitude distribution).
+
+    Displays altitude_mean, pct_zone_montagne, and densite_pop from
+    reference_departements.csv, giving a complete picture of each
+    department's geographic characteristics for HVAC analysis.
+    """
+    clear_screen()
+    show_header()
+
+    console.print()
+    console.print(
+        Panel(
+            "[bold]GEOGRAPHIC PROFILE — Altitude & Population Distribution[/bold]\n"
+            f"[dim]Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/dim]\n\n"
+            "[dim]Data sources:\n"
+            "  - altitude_mean: Department average altitude (IGN BD ALTI)\n"
+            "  - pct_zone_montagne: % territory classified mountain (loi montagne)\n"
+            "  - densite_pop: Population density in hab/km² (INSEE Recensement)\n"
+            "  - pct_maisons: % houses vs apartments (INSEE Recensement)[/dim]",
+            border_style="magenta",
+            box=box.DOUBLE,
+        )
+    )
+
+    import pandas as pd
+    ref_path = Path("data/raw/insee/reference_departements.csv")
+
+    if not ref_path.exists():
+        console.print("\n  [bold red]Reference file not found:[/bold red] "
+                       f"{ref_path}")
+        pause()
+        return
+
+    ref_df = pd.read_csv(ref_path, dtype={"dept": str})
+    ref_df["dept"] = ref_df["dept"].astype(str).str.zfill(2)
+
+    # Check required columns
+    required = ["altitude_mean", "pct_zone_montagne", "densite_pop"]
+    missing = [c for c in required if c not in ref_df.columns]
+    if missing:
+        console.print(f"\n  [bold red]Missing columns:[/bold red] {missing}")
+        console.print("  Run [bold]git pull[/bold] to get the updated reference file.")
+        pause()
+        return
+
+    # Build table sorted by altitude_mean descending
+    table = Table(
+        title="Department Geographic Profile (sorted by mean altitude)",
+        box=box.ROUNDED,
+        show_lines=False,
+        border_style="magenta",
+    )
+
+    table.add_column("Dept", style="bold", width=5)
+    table.add_column("Name", min_width=20)
+    table.add_column("Alt. Moy.", justify="right", min_width=8)
+    table.add_column("Zone Mt.", justify="right", min_width=7)
+    table.add_column("Densité", justify="right", min_width=9)
+    table.add_column("% Maisons", justify="right", min_width=8)
+    table.add_column("Classification", min_width=14)
+
+    ref_df = ref_df.sort_values("altitude_mean", ascending=False)
+
+    for _, row in ref_df.iterrows():
+        alt_mean = int(row.get("altitude_mean", 0))
+        pct_mt = int(row.get("pct_zone_montagne", 0))
+        densite = int(row.get("densite_pop", 0))
+        pct_m = int(row.get("pct_maisons", 0))
+
+        # Classification
+        if alt_mean > 800 or pct_mt > 50:
+            classif = "[bold red]MOUNTAIN[/bold red]"
+            alt_style = "[bold red]"
+        elif pct_mt > 15 or alt_mean > 400:
+            classif = "[yellow]SEMI-MOUNTAIN[/yellow]"
+            alt_style = "[yellow]"
+        elif densite > 500:
+            classif = "[cyan]URBAN[/cyan]"
+            alt_style = "[green]"
+        else:
+            classif = "[green]LOWLAND[/green]"
+            alt_style = "[green]"
+
+        # Mountain zone color
+        if pct_mt >= 70:
+            mt_str = f"[bold red]{pct_mt}%[/bold red]"
+        elif pct_mt >= 30:
+            mt_str = f"[yellow]{pct_mt}%[/yellow]"
+        elif pct_mt > 0:
+            mt_str = f"[dim]{pct_mt}%[/dim]"
+        else:
+            mt_str = "[dim]-[/dim]"
+
+        # Density color
+        if densite > 1000:
+            dens_str = f"[cyan]{densite:,}[/cyan]"
+        elif densite > 100:
+            dens_str = f"{densite:,}"
+        else:
+            dens_str = f"[dim]{densite:,}[/dim]"
+
+        table.add_row(
+            str(row["dept"]),
+            str(row.get("dept_name", "")),
+            f"{alt_style}{alt_mean}m",
+            mt_str,
+            dens_str,
+            f"{pct_m}%",
+            classif,
+        )
+
+    console.print()
+    console.print(table)
+
+    # Summary
+    n_mountain = len(ref_df[(ref_df["altitude_mean"] > 800) | (ref_df["pct_zone_montagne"] > 50)])
+    n_semi = len(ref_df[
+        ~((ref_df["altitude_mean"] > 800) | (ref_df["pct_zone_montagne"] > 50))
+        & ((ref_df["pct_zone_montagne"] > 15) | (ref_df["altitude_mean"] > 400))
+    ])
+    n_urban = len(ref_df[
+        ~((ref_df["altitude_mean"] > 800) | (ref_df["pct_zone_montagne"] > 50))
+        & ~((ref_df["pct_zone_montagne"] > 15) | (ref_df["altitude_mean"] > 400))
+        & (ref_df["densite_pop"] > 500)
+    ])
+    n_lowland = len(ref_df) - n_mountain - n_semi - n_urban
+
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]Classification Summary:[/bold]\n"
+            f"  [red]Mountain[/red]       {n_mountain:>2} depts  "
+            f"[dim](alt>800m or >50% zone montagne)[/dim]\n"
+            f"  [yellow]Semi-Mountain[/yellow]  {n_semi:>2} depts  "
+            f"[dim](15-50% zone montagne or alt 400-800m)[/dim]\n"
+            f"  [cyan]Urban[/cyan]          {n_urban:>2} depts  "
+            f"[dim](lowland + density > 500 hab/km²)[/dim]\n"
+            f"  [green]Lowland[/green]        {n_lowland:>2} depts  "
+            f"[dim](plain, low density)[/dim]\n\n"
+            f"[bold]Key Stats:[/bold]\n"
+            f"  Mean altitude range: {int(ref_df['altitude_mean'].min())}m "
+            f"- {int(ref_df['altitude_mean'].max())}m\n"
+            f"  Density range: {int(ref_df['densite_pop'].min())} "
+            f"- {int(ref_df['densite_pop'].max()):,} hab/km²\n"
+            f"  Departments with mountain zone: "
+            f"{len(ref_df[ref_df['pct_zone_montagne'] > 0])}/96",
+            border_style="cyan",
+        )
+    )
+
+    pause()
 
 
 def _show_processing_status() -> None:

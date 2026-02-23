@@ -174,6 +174,7 @@ flowchart TD
 | Variations | `nb_pac_diff_1m` | Acceleration marche |
 | Interactions | `interact_hdd_confiance` | Hypotheses metier croisees |
 | **Efficacite PAC** | `cop_proxy`, `pac_viability_score` | **Viabilite pompe a chaleur** |
+| **Geo/Altitude** | `altitude_mean`, `pct_zone_montagne`, `densite_pop` | **Profil geographique** |
 | Tendance | `year_trend`, `delta_temp_vs_mean` | Croissance, anomalies meteo |
 
 #### Focus : PAC Efficiency Features (Step 5)
@@ -183,28 +184,42 @@ weather. Below -7°C, the COP (Coefficient of Performance) drops below ~2.0, mak
 PAC economically uncompetitive vs gas/oil. Altitude is a structural proxy for colder base
 temperatures.
 
+**Altitude data**: Two levels of granularity are available:
+- `altitude` (prefecture): Point elevation of the reference city (Open-Meteo Elevation API)
+- `altitude_mean` (department): Average altitude of the entire department territory (IGN BD ALTI)
+- `pct_zone_montagne`: % of territory classified as mountain zone (loi montagne)
+- `densite_pop`: Population density in hab/km² (INSEE Recensement)
+
+The COP proxy uses `altitude_mean` when available (more representative than prefecture
+altitude alone), and `is_mountain` combines both altitude and mountain zone classification.
+
 ```mermaid
 flowchart LR
     subgraph Inputs["Input Signals"]
         T["nb_jours_gel\n(frost days)"]
-        A["altitude\n(meters ASL)"]
+        A["altitude_mean\n(dept mean altitude)"]
         H["pct_maisons\n(housing type)"]
         P["nb_jours_pac_inefficient\n(T_min < -7°C)"]
         HDD["hdd_sum\n(heating demand)"]
+        MT["pct_zone_montagne\n(% mountain territory)"]
+        D["densite_pop\n(hab/km²)"]
     end
     subgraph Features["PAC Efficiency Features"]
-        COP["cop_proxy\n4.5 - 0.08×frost - 0.0005×alt"]
-        MTN["is_mountain\naltitude > 800m"]
+        COP["cop_proxy\n4.5 - 0.08×frost - 0.0005×alt_mean"]
+        MTN["is_mountain\nalt>800 OR montagne>50%"]
         VIA["pac_viability_score\n0.5×COP + 0.3×housing + 0.2×frost"]
         IAF["interact_altitude_frost\nalt_norm × frost_norm"]
         IMA["interact_maisons_altitude\npct_maisons × alt_norm"]
         PCT["pct_jours_pac_inefficient\n% days T_min < -7°C"]
         ICH["interact_cop_hdd\nCOP/5 × HDD/max"]
+        IMD["interact_montagne_densite\nmontagne × inv_density"]
     end
     T --> COP & VIA & IAF
     A --> COP & MTN & IAF & IMA
     H --> VIA & IMA
     P --> PCT
+    MT --> MTN & IMD
+    D --> IMD
     COP --> VIA & ICH
     HDD --> ICH
     style Features fill:#e8f5e9,stroke:#2e7d32
@@ -212,16 +227,20 @@ flowchart LR
 
 | Feature | Formula | Range | Business Meaning |
 |---------|---------|-------|-----------------|
-| `cop_proxy` | 4.5 - 0.08×frost - 0.0005×alt | [1.0, 5.0] | Estimated heat pump efficiency |
-| `is_mountain` | altitude > 800m | 0/1 | High-altitude structural flag |
+| `cop_proxy` | 4.5 - 0.08×frost - 0.0005×alt_mean | [1.0, 5.0] | Estimated heat pump efficiency |
+| `is_mountain` | alt_mean>800 OR montagne>50% | 0/1 | Mountain department flag |
 | `pac_viability_score` | 0.5×COP_norm + 0.3×housing + 0.2×frost_penalty | [0, 1] | Composite PAC suitability |
 | `interact_altitude_frost` | alt_norm × frost_norm | [0, 1] | Cold mountain penalty |
 | `interact_maisons_altitude` | pct_maisons/100 × alt_norm | [0, 1] | Mountain houses potential |
 | `pct_jours_pac_inefficient` | nb_jours_pac_ineff / 30 × 100 | [0, 100] | % days with critical COP |
 | `interact_cop_hdd` | COP/5 × HDD/max | [0, 1] | Heating demand vs efficiency |
+| `interact_montagne_densite` | montagne/100 × (1 - density/max) | [0, 1] | Sparse mountain constraint |
 
 **Data sources for PAC features:**
 - `altitude`: Static reference (`PREFECTURE_ELEVATIONS` in `config/settings.py`, 96 departments)
+- `altitude_mean`: Department mean altitude (IGN BD ALTI, in `reference_departements.csv`)
+- `pct_zone_montagne`: % territory classified mountain (loi montagne, in `reference_departements.csv`)
+- `densite_pop`: Population density hab/km² (INSEE Recensement, in `reference_departements.csv`)
 - `nb_jours_gel`: Weather aggregation (days with T_min < 0°C)
 - `nb_jours_pac_inefficient`: Weather aggregation (days with T_min < -7°C)
 - `pct_maisons`: INSEE Filosofi reference data (% houses vs apartments)

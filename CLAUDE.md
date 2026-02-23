@@ -18,6 +18,12 @@
 - **Update documentation** (`docs/`, `README.md`, `PROJECT_BRIEF.md`) whenever code changes affect architecture, features, or usage
 - Keep documentation in sync with the codebase at all times
 - Document new features, API changes, and configuration updates
+- **Always update ALL related doc files** when a change impacts multiple documents:
+  - `docs/DATA_PIPELINE.md` — pipeline stages, feature tables, data flow diagrams
+  - `PROJECT_BRIEF.md` — feature counts, formulas, domain logic, data sources
+  - `README.md` — test count badge, data sources table, architecture tree
+  - `CLAUDE.md` — project rules (if new conventions are added)
+- **Update the test count badge** in `README.md` after every test suite run
 
 ## Project Purpose
 

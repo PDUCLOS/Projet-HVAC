@@ -78,9 +78,9 @@ class WeatherCollector(BaseCollector):
     _MAX_429_RETRIES: ClassVar[int] = 5           # Max retries on 429 per city
     _INITIAL_BACKOFF: ClassVar[float] = 5.0        # Initial wait on 429 (seconds)
     _BATCH_SIZE: ClassVar[int] = 10                # Cities per batch before extra pause
-    _BATCH_PAUSE: ClassVar[float] = 10.0           # Extra pause between batches (seconds)
+    _BATCH_PAUSE: ClassVar[float] = 30.0           # Extra pause between batches (seconds)
     _RETRY_PASS_PAUSE: ClassVar[float] = 60.0      # Cooldown before retrying failed cities
-    _MAX_RETRY_PASSES: ClassVar[int] = 3           # Max number of retry passes
+    _MAX_RETRY_PASSES: ClassVar[int] = 5           # Max number of retry passes
 
     def _fetch_with_retry(
         self, url: str, params: Dict[str, Any], city: str

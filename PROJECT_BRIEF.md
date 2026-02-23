@@ -386,21 +386,26 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - interact_confiance_bat: confidence x construction climate
 - jours_extremes: heatwave + frost
 
-**PAC (heat pump) efficiency (7)** — domain knowledge features
+**PAC (heat pump) efficiency (8)** — domain knowledge features
 - cop_proxy: estimated COP (Coefficient of Performance) from temperature and altitude
-  Formula: COP = 4.5 - 0.08 x frost_days - 0.0005 x altitude, clipped [1.0, 5.0]
-- is_mountain: binary flag for high-altitude departments (altitude > 800m)
+  Formula: COP = 4.5 - 0.08 x frost_days - 0.0005 x altitude_mean, clipped [1.0, 5.0]
+  Uses `altitude_mean` (department average) when available, falls back to `altitude` (prefecture)
+- is_mountain: binary flag combining altitude_mean > 800m OR pct_zone_montagne > 50%
 - pac_viability_score: composite [0,1] score (0.5 x COP_norm + 0.3 x housing + 0.2 x frost_penalty)
 - interact_altitude_frost: normalized altitude x frost days interaction (cold mountain penalty)
 - interact_maisons_altitude: pct_maisons x normalized altitude (houses in mountains)
 - pct_jours_pac_inefficient: % of days with T_min < -7°C (PAC COP drops below ~2.0)
 - interact_cop_hdd: COP/5 x HDD/max (heating demand vs heat pump efficiency)
+- interact_montagne_densite: mountain zone % x inverse density (sparse mountain constraint)
 
 > **Domain logic**: Air-source heat pumps (PAC air-air/air-eau) lose efficiency in cold
 > weather. Below -7°C, COP drops below ~2.0, making PAC economically uncompetitive vs
-> gas/oil heating. Mountain departments (>800m altitude) have structurally colder base
-> temperatures and different HVAC adoption patterns. These features encode this domain
-> knowledge so the ML model can learn geographically-differentiated PAC viability.
+> gas/oil heating. Mountain departments (>800m mean altitude or >50% mountain zone) have
+> structurally colder base temperatures and different HVAC adoption patterns. Population
+> density inversely correlates with altitude — sparse mountain areas are the strongest
+> constraint for PAC adoption (few inhabitants, high altitude, cold climate, hard to service).
+> These features encode this domain knowledge so the ML model can learn
+> geographically-differentiated PAC viability.
 
 **Weather (9)** — local per department
 - temp_mean, temp_max, temp_min
@@ -417,12 +422,15 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - nb_logements_autorises, nb_logements_individuels, nb_logements_collectifs
 - surface_autorisee_m2
 
-**Socioeconomic & geographic reference (5)** — per department, static
+**Socioeconomic & geographic reference (8)** — per department, static
 - revenu_median (INSEE Filosofi — linked to aid eligibility)
 - prix_m2_median (proxy for real estate market activity)
 - nb_logements_total (housing stock, enables normalization)
 - pct_maisons (structural differences: houses → more heat pumps)
 - altitude (prefecture elevation in meters, from PREFECTURE_ELEVATIONS / Open-Meteo Elevation API)
+- altitude_mean (department mean altitude in meters, IGN BD ALTI)
+- pct_zone_montagne (% territory classified as mountain zone, loi montagne)
+- densite_pop (population density in hab/km², INSEE Recensement)
 
 ### Target features (Y)
 - nb_installations_pac: DPE with heat pump per month/department
