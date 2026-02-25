@@ -18,19 +18,25 @@ venv/
 env/
 ENV/
 
-# ---- Data (trop volumineux pour Git — régénérable via pipeline) ----
+# ---- Data (regenerable via pipeline — kept out of git except deployment files) ----
 data/raw/
 data/processed/
-data/features/
-data/models/
 data/analysis/
-*.csv
 *.parquet
 *.zip
 !requirements.txt
 !requirements-dl.txt
 !requirements-api.txt
 !data/sample/
+
+# ---- Models + features: included for Streamlit Cloud deployment ----
+# Uncomment lines below to exclude them from git (local-only workflow):
+# data/features/
+# data/models/
+# *.csv
+
+# Exclude large/noisy data files not needed for the dashboard
+data/features/hvac_ml_dataset.csv
 
 # ---- Base de données ----
 *.db
