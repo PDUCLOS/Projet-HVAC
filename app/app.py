@@ -24,6 +24,13 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Hide Streamlit's auto-generated page navigation (pages/ directory discovery)
+# so that only the custom radio menu below is visible.
+st.markdown(
+    "<style>[data-testid='stSidebarNav'] {display: none;}</style>",
+    unsafe_allow_html=True,
+)
+
 # --- Sidebar: Navigation ---
 st.sidebar.title("HVAC Market Analysis")
 st.sidebar.caption("HVAC market analysis in France")
@@ -63,5 +70,7 @@ try:
     module = __import__(f"pages.{module_name}", fromlist=[module_name])
     module.render()
 except Exception as e:
+    import traceback
     st.error(f"Error loading page '{page}' : {e}")
+    st.code(traceback.format_exc(), language="python")
     st.info("Check that all dependencies are installed.")
