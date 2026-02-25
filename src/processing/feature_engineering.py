@@ -197,6 +197,10 @@ class FeatureEngineer:
         target_cols = [
             "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
             "pac_per_1000_logements", "clim_per_1000_logements",
+            # nb_dpe_classe_ab: DPE A/B = high-efficiency buildings → strong PAC driver.
+            # Added as a LAG feature (not direct predictor) to avoid contemporaneous
+            # leakage. LAG versions are not in TARGET_COLS and are available to the model.
+            "nb_dpe_classe_ab",
         ]
         feature_cols = [
             "temp_mean", "hdd_sum", "cdd_sum",
@@ -246,6 +250,8 @@ class FeatureEngineer:
             "nb_dpe_total", "nb_installations_pac",
             "pac_per_1000_logements",
             "temp_mean", "hdd_sum", "cdd_sum",
+            # nb_dpe_classe_ab rolling: captures medium-term DPE A/B activity trend
+            "nb_dpe_classe_ab",
         ]
         roll_cols = [c for c in roll_cols if c in df.columns]
 

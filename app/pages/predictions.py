@@ -64,8 +64,20 @@ def get_department_options(df):
     return options
 
 
+
 def predict_department(artifacts, df, dept, horizon, model_name):
-    """Generate auto-regressive predictions for a department."""
+    """Generate auto-regressive predictions for a department.
+
+    Seasonality strategy:
+    - Weather/climate features: injected from historical monthly averages so
+      the model sees realistic temperature, HDD, CDD, etc. per season.
+    - PAC lag + derived features: maintained via a rolling pac_buffer.
+      Historical values anchor the start; future months use seasonal proxies
+      (same calendar month mean × recent-trend scale), so rmean_3m, rstd_3m,
+      diff_1m, pct_1m all vary with the seasonal cycle instead of freezing at
+      the last observed value.  Using the proxy (not our own prediction) avoids
+      error amplification while preserving seasonal patterns.
+    """
     model = artifacts.get(model_name)
     ridge = artifacts.get("ridge")
     imputer = artifacts.get("imputer")
@@ -76,22 +88,122 @@ def predict_department(artifacts, df, dept, horizon, model_name):
 
     feature_names = list(ridge.feature_names_in_)
 
-    df_dept = df[df["dept"] == dept].sort_values("date_id")
+    df_dept = df[df["dept"] == dept].sort_values("date_id").reset_index(drop=True)
     if df_dept.empty:
         return []
 
+    # --- Seasonal weather profile (historical monthly means) ---
+    SEASONAL_KEYWORDS = (
+        "temp", "precip", "wind", "hdd", "cdd",
+        "canicule", "gel", "pac_ineff", "delta_temp",
+    )
+    seasonal_feats = [
+        f for f in feature_names
+        if any(k in f.lower() for k in SEASONAL_KEYWORDS)
+    ]
+    monthly_weather = (
+        df_dept.groupby("month")[seasonal_feats].mean() if seasonal_feats else None
+    )
+
+    # --- Seasonal PAC profile and trend scale ---
+    monthly_pac = df_dept.groupby("month")["nb_installations_pac"].mean()
+    hist_mean = df_dept["nb_installations_pac"].mean()
+    recent_mean = df_dept["nb_installations_pac"].tail(12).mean()
+    seasonal_scale = recent_mean / hist_mean if hist_mean > 0 else 1.0
+
+    # --- Seasonal DPE A/B profile and trend scale ---
+    dpe_ab_col = "nb_dpe_classe_ab"
+    has_dpe_ab = dpe_ab_col in df_dept.columns and not df_dept[dpe_ab_col].isna().all()
+    if has_dpe_ab:
+        monthly_dpe_ab = df_dept.groupby("month")[dpe_ab_col].mean()
+        dpe_ab_hist_mean = df_dept[dpe_ab_col].mean()
+        dpe_ab_recent_mean = df_dept[dpe_ab_col].tail(12).mean()
+        dpe_ab_scale = dpe_ab_recent_mean / dpe_ab_hist_mean if dpe_ab_hist_mean > 0 else 1.0
+        dpe_ab_buffer = list(df_dept[dpe_ab_col].tail(24).values)
+    else:
+        dpe_ab_buffer = []
+
     last_row = df_dept.iloc[-1].copy()
     last_date_str = str(int(last_row["date_id"]))
-
     rmse = _get_rmse(artifacts, model_name)
+
+    # pac_buffer: rolling window of PAC values used to compute ALL derived
+    # features (lags, rmean, rstd, diff, pct).  Starts from actual historical
+    # data; each step appends a seasonal proxy for that month so future
+    # derived features vary with the seasonal cycle.
+    pac_buffer = list(df_dept["nb_installations_pac"].tail(24).values)
 
     results = []
     current_row = last_row.copy()
 
     for step in range(1, horizon + 1):
         next_date = _next_month(last_date_str, step)
+        target_month = int(next_date[4:])
+
         current_row = _advance_features(current_row, next_date)
 
+        # Inject seasonal weather
+        if monthly_weather is not None and target_month in monthly_weather.index:
+            for feat in seasonal_feats:
+                current_row[feat] = monthly_weather.loc[target_month, feat]
+
+        # --- Update ALL PAC-derived features from pac_buffer ---
+        # buffer[-1] = pac at (t + step - 1), i.e. the month just before
+        # the one we are predicting, so features are consistent with training.
+        n = len(pac_buffer)
+
+        # Direct lag features
+        for lag_col, lag_months in [
+            ("nb_installations_pac_lag_1m", 1),
+            ("nb_installations_pac_lag_3m", 3),
+            ("nb_installations_pac_lag_6m", 6),
+            ("nb_installations_pac_lag_12m", 12),
+        ]:
+            if lag_col in current_row.index and n >= lag_months:
+                current_row[lag_col] = float(pac_buffer[-lag_months])
+
+        # Rolling mean and std (windows 3 and 6)
+        for window in (3, 6):
+            slice_ = pac_buffer[-window:] if n >= window else pac_buffer[:]
+            mean_col = f"nb_installations_pac_rmean_{window}m"
+            std_col = f"nb_installations_pac_rstd_{window}m"
+            if mean_col in current_row.index:
+                current_row[mean_col] = float(np.mean(slice_))
+            if std_col in current_row.index:
+                current_row[std_col] = float(np.std(slice_)) if len(slice_) >= 2 else 0.0
+
+        # Absolute diff and pct change vs previous month
+        if n >= 2:
+            diff_col = "nb_installations_pac_diff_1m"
+            pct_col = "nb_installations_pac_pct_1m"
+            delta = pac_buffer[-1] - pac_buffer[-2]
+            if diff_col in current_row.index:
+                current_row[diff_col] = float(delta)
+            if pct_col in current_row.index:
+                prev = pac_buffer[-2]
+                pct = float(delta / prev * 100) if prev > 0 else 0.0
+                current_row[pct_col] = float(np.clip(pct, -200, 500))
+
+        # --- Update nb_dpe_classe_ab lag/rolling features from dpe_ab_buffer ---
+        if dpe_ab_buffer:
+            nb = len(dpe_ab_buffer)
+            for lag_col, lag_months in [
+                ("nb_dpe_classe_ab_lag_1m", 1),
+                ("nb_dpe_classe_ab_lag_3m", 3),
+                ("nb_dpe_classe_ab_lag_6m", 6),
+            ]:
+                if lag_col in current_row.index and nb >= lag_months:
+                    current_row[lag_col] = float(dpe_ab_buffer[-lag_months])
+            for window in (3, 6):
+                ab_slice = dpe_ab_buffer[-window:] if nb >= window else dpe_ab_buffer[:]
+                m_col = f"nb_dpe_classe_ab_rmean_{window}m"
+                s_col = f"nb_dpe_classe_ab_rstd_{window}m"
+                if m_col in current_row.index:
+                    current_row[m_col] = float(np.mean(ab_slice))
+                if s_col in current_row.index:
+                    current_row[s_col] = float(np.std(ab_slice)) if len(ab_slice) >= 2 else 0.0
+
+        # --- Predict ---
         X = current_row[feature_names].values.reshape(1, -1).astype(float)
         X = imputer.transform(X)
 
@@ -103,7 +215,6 @@ def predict_department(artifacts, df, dept, horizon, model_name):
 
         pred = max(pred, 0.0)
         margin = 1.96 * rmse
-
         year = int(next_date[:4])
         month = int(next_date[4:])
 
@@ -114,8 +225,17 @@ def predict_department(artifacts, df, dept, horizon, model_name):
             "upper": round(pred + margin, 1),
         })
 
-        if "nb_installations_pac_lag_1m" in current_row.index:
-            current_row["nb_installations_pac_lag_1m"] = pred
+        # Extend buffers with seasonal proxies for the next step's features.
+        pac_seasonal = float(monthly_pac.get(target_month, hist_mean)) * seasonal_scale
+        pac_buffer.append(pac_seasonal)
+        if len(pac_buffer) > 36:
+            pac_buffer = pac_buffer[-36:]
+
+        if dpe_ab_buffer:
+            ab_seasonal = float(monthly_dpe_ab.get(target_month, dpe_ab_hist_mean)) * dpe_ab_scale
+            dpe_ab_buffer.append(ab_seasonal)
+            if len(dpe_ab_buffer) > 36:
+                dpe_ab_buffer = dpe_ab_buffer[-36:]
 
     return results
 
