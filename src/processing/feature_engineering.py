@@ -196,6 +196,7 @@ class FeatureEngineer:
         # Columns on which to create lags
         target_cols = [
             "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
+            "pac_per_1000_logements", "clim_per_1000_logements",
         ]
         feature_cols = [
             "temp_mean", "hdd_sum", "cdd_sum",
@@ -243,6 +244,7 @@ class FeatureEngineer:
         """
         roll_cols = [
             "nb_dpe_total", "nb_installations_pac",
+            "pac_per_1000_logements",
             "temp_mean", "hdd_sum", "cdd_sum",
         ]
         roll_cols = [c for c in roll_cols if c in df.columns]
@@ -291,6 +293,7 @@ class FeatureEngineer:
         """
         var_cols = [
             "nb_dpe_total", "nb_installations_pac", "nb_installations_clim",
+            "pac_per_1000_logements", "clim_per_1000_logements",
         ]
         var_cols = [c for c in var_cols if c in df.columns]
 

@@ -69,6 +69,7 @@ class ModelTrainer:
     TARGET_COLS = {
         "nb_installations_pac", "nb_installations_clim",
         "nb_dpe_total", "nb_dpe_classe_ab",
+        "pac_per_1000_logements", "clim_per_1000_logements",
     }
 
     # Auto-regressive features of the target (lags, rolling, diff of the target)
@@ -263,7 +264,16 @@ class ModelTrainer:
             X_test = X_test.drop(columns=all_nan_cols)
 
         from sklearn.impute import SimpleImputer
-        imputer = SimpleImputer(strategy="median")
+        imputer = SimpleImputer(strategy="median", keep_empty_features=True)
+
+        # Log columns that are entirely NaN (will be filled with 0)
+        all_nan_cols = X_train.columns[X_train.isna().all()].tolist()
+        if all_nan_cols:
+            self.logger.warning(
+                "%d feature(s) entirely NaN in training set: %s",
+                len(all_nan_cols), all_nan_cols,
+            )
+
         X_train_imp = pd.DataFrame(
             imputer.fit_transform(X_train),
             columns=X_train.columns, index=X_train.index,
@@ -346,7 +356,7 @@ class ModelTrainer:
             X_test_exo = X_test_exo.drop(columns=all_nan_exo)
 
         # Imputer + scaler for exogenous features
-        imputer_exo = SimpleImputer(strategy="median")
+        imputer_exo = SimpleImputer(strategy="median", keep_empty_features=True)
         X_train_exo_imp = pd.DataFrame(
             imputer_exo.fit_transform(X_train_exo),
             columns=X_train_exo.columns, index=X_train_exo.index,

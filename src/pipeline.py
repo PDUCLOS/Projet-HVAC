@@ -195,7 +195,7 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
 
             # Count rows (fast line count)
             try:
-                with open(filepath) as f:
+                with open(filepath, encoding="utf-8", errors="replace") as f:
                     info["rows"] = sum(1 for _ in f) - 1
             except (OSError, UnicodeDecodeError):
                 info["rows"] = 0
@@ -361,7 +361,7 @@ def _interactive_cleaning_menu(cfg) -> dict:
         raw_path = raw_paths.get(source)
         total_str = ""
         if raw_path and raw_path.exists():
-            with open(raw_path) as f:
+            with open(raw_path, encoding="utf-8", errors="replace") as f:
                 total = sum(1 for _ in f) - 1
             total_str = f" ({total:,} rows)"
 
@@ -662,7 +662,7 @@ def run_evaluate(target: str = "nb_installations_pac") -> None:
         from sklearn.impute import SimpleImputer
 
         X_val_raw, _ = trainer.prepare_features(df_val)
-        imputer = SimpleImputer(strategy="median")
+        imputer = SimpleImputer(strategy="median", keep_empty_features=True)
         X_train_raw, _ = trainer.prepare_features(
             df[df["date_id"] <= trainer.train_end]
         )
