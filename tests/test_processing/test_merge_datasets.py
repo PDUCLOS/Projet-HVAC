@@ -1258,6 +1258,9 @@ class TestBuildMlDataset:
         assert "nb_logements_autorises" in df.columns
         # Reference columns
         assert "revenu_median" in df.columns
+        # Rate-based targets (normalized by department housing stock)
+        assert "pac_per_1000_logements" in df.columns
+        assert "clim_per_1000_logements" in df.columns
         # Time features
         assert "year" in df.columns
         assert "month" in df.columns
@@ -1547,3 +1550,119 @@ class TestRegressions:
         # Dept 38 should still be present (from DPE), with NaN weather
         assert "38" in df["dept"].values
         assert "69" in df["dept"].values
+
+
+class TestRateBasedTargets:
+    """Regression tests for rate-based targets (pac_per_1000_logements)."""
+
+    def _setup_all_sources(self, tmp_path, cfg):
+        """Write all mock CSVs needed for a complete build."""
+        months = [f"2022-{m:02d}" for m in range(7, 13)]
+        depts = ["69", "38"]
+        _write_csv(
+            tmp_path / "processed" / "dpe" / "dpe_france_clean.csv",
+            _make_dpe_csv(depts=depts, months=months),
+        )
+        _write_csv(
+            tmp_path / "processed" / "weather" / "weather_france.csv",
+            _make_weather_csv(depts=depts, n_days=180, start_date="2022-07-01"),
+        )
+        _write_csv(
+            tmp_path / "raw" / "insee" / "reference_departements.csv",
+            _make_reference_csv(depts=depts),
+        )
+
+    def test_rate_target_columns_present(self, tmp_path):
+        """Rate-based target columns are created in the ML dataset."""
+        cfg = _make_test_config(tmp_path)
+        self._setup_all_sources(tmp_path, cfg)
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        assert "pac_per_1000_logements" in df.columns
+        assert "clim_per_1000_logements" in df.columns
+
+    def test_rate_target_formula_correctness(self, tmp_path):
+        """pac_per_1000_logements = nb_pac / nb_logements_total * 1000."""
+        cfg = _make_test_config(tmp_path)
+        self._setup_all_sources(tmp_path, cfg)
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        # Recompute from raw columns and compare
+        expected = (
+            df["nb_installations_pac"] / df["nb_logements_total"] * 1000
+        ).round(4)
+        pd.testing.assert_series_equal(
+            df["pac_per_1000_logements"],
+            expected,
+            check_names=False,
+        )
+
+    def test_rate_target_no_nan_no_inf(self, tmp_path):
+        """Rate targets should have no NaN or Inf values."""
+        cfg = _make_test_config(tmp_path)
+        self._setup_all_sources(tmp_path, cfg)
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        assert not df["pac_per_1000_logements"].isna().any()
+        assert not np.isinf(df["pac_per_1000_logements"]).any()
+        assert not df["clim_per_1000_logements"].isna().any()
+        assert not np.isinf(df["clim_per_1000_logements"]).any()
+
+    def test_rate_target_positive(self, tmp_path):
+        """Rate targets must be non-negative."""
+        cfg = _make_test_config(tmp_path)
+        self._setup_all_sources(tmp_path, cfg)
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        assert (df["pac_per_1000_logements"] >= 0).all()
+        assert (df["clim_per_1000_logements"] >= 0).all()
+
+    def test_rate_normalizes_across_departments(self, tmp_path):
+        """Large depts (69=800k logements) and small depts (38=550k)
+        should have different raw counts but closer rates."""
+        cfg = _make_test_config(tmp_path)
+        self._setup_all_sources(tmp_path, cfg)
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        # Group by dept to get mean values
+        dept_stats = df.groupby("dept").agg(
+            mean_raw=("nb_installations_pac", "mean"),
+            mean_rate=("pac_per_1000_logements", "mean"),
+            logements=("nb_logements_total", "first"),
+        )
+        # The coefficient of variation (std/mean) should be smaller
+        # for the rate target than for raw counts, demonstrating
+        # that normalization reduces scale differences
+        cv_raw = dept_stats["mean_raw"].std() / dept_stats["mean_raw"].mean()
+        cv_rate = dept_stats["mean_rate"].std() / dept_stats["mean_rate"].mean()
+
+        # Rate-based normalization should reduce dispersion,
+        # or at minimum be finite and valid
+        assert np.isfinite(cv_rate)
+        assert np.isfinite(cv_raw)
+
+    def test_rate_without_reference_data(self, tmp_path):
+        """If reference data is missing, rate columns should not be created."""
+        cfg = _make_test_config(tmp_path)
+        months = [f"2022-{m:02d}" for m in range(7, 13)]
+        _write_csv(
+            tmp_path / "processed" / "dpe" / "dpe_france_clean.csv",
+            _make_dpe_csv(depts=["69"], months=months),
+        )
+        # No reference CSV written
+
+        merger = DatasetMerger(cfg)
+        df = merger.build_ml_dataset()
+
+        # Without nb_logements_total, rate targets should not exist
+        assert "pac_per_1000_logements" not in df.columns

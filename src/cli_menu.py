@@ -1633,12 +1633,22 @@ def _run_training() -> None:
     console.print("    [bold]1[/bold]  nb_installations_pac  [dim](heat pump installs — default)[/dim]")
     console.print("    [bold]2[/bold]  nb_installations_clim  [dim](air conditioning installs)[/dim]")
     console.print("    [bold]3[/bold]  nb_dpe_total  [dim](total DPE count)[/dim]")
+    console.print(
+        "    [bold]4[/bold]  pac_per_1000_logements  "
+        "[dim](heat pumps per 1k housing units — normalized)[/dim]"
+    )
+    console.print(
+        "    [bold]5[/bold]  clim_per_1000_logements  "
+        "[dim](AC per 1k housing units — normalized)[/dim]"
+    )
 
     target_choice = get_choice("Target [1]")
     targets = {
         "1": "nb_installations_pac",
         "2": "nb_installations_clim",
         "3": "nb_dpe_total",
+        "4": "pac_per_1000_logements",
+        "5": "clim_per_1000_logements",
         "": "nb_installations_pac",
     }
     target = targets.get(target_choice, "nb_installations_pac")

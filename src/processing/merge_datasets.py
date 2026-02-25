@@ -187,7 +187,23 @@ class DatasetMerger:
         # 8. Add geographic metadata
         df = self._add_geo_features(df)
 
-        # 7. Filter DPE v2 period (>= 2021-07)
+        # 9. Rate-based target: installations per 1,000 housing units
+        # Normalizes raw counts by department size so the model is not
+        # biased toward large departments (e.g. Rhône ≈300/month raw).
+        if "nb_logements_total" in df.columns:
+            denom = df["nb_logements_total"].clip(lower=1)
+            df["pac_per_1000_logements"] = (
+                df["nb_installations_pac"] / denom * 1000
+            ).round(4)
+            df["clim_per_1000_logements"] = (
+                df["nb_installations_clim"] / denom * 1000
+            ).round(4)
+            self.logger.info(
+                "  Rate targets added: pac_per_1000_logements, "
+                "clim_per_1000_logements",
+            )
+
+        # 10. Filter DPE v2 period (>= 2021-07)
         dpe_start = int(
             self.config.time.dpe_start_date[:4]
             + self.config.time.dpe_start_date[5:7]

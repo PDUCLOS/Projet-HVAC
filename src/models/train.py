@@ -69,6 +69,7 @@ class ModelTrainer:
     TARGET_COLS = {
         "nb_installations_pac", "nb_installations_clim",
         "nb_dpe_total", "nb_dpe_classe_ab",
+        "pac_per_1000_logements", "clim_per_1000_logements",
     }
 
     # Auto-regressive features of the target (lags, rolling, diff of the target)

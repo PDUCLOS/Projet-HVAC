@@ -153,7 +153,9 @@ flowchart TD
     METEO["Meteo agregee\nmois x dept"] --> J1
     J1 -->|"LEFT JOIN\nON date_id"| J2[" "]
     ECO["INSEE + Eurostat\nmois (national)"] --> J2
-    J2 -->|"Filtre >= 202107"| DATASET["hvac_ml_dataset.csv\ngrain: mois x departement"]
+    J2 -->|"LEFT JOIN\nON dept"| J3[" "]
+    REF["Reference dept\n(nb_logements, revenus)"] --> J3
+    J3 -->|"Rate targets\n+ Filtre >= 202107"| DATASET["hvac_ml_dataset.csv\ngrain: mois x departement\n+ pac_per_1000_logements"]
     style DATASET fill:#c8e6c9,stroke:#2e7d32
 ```
 

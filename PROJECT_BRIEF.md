@@ -308,8 +308,10 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 │ dept_name    │   │ nb_dpe_total             │ ← Target variable
 │ city_ref     │   │ nb_installations_pac     │ ← Target variable
 │ latitude     │   │ nb_installations_clim    │
-│ longitude    │   │ temp_mean, HDD, CDD      │ ← Local weather
-│ region_code  │   │ nb_permis_construire     │ ← Local real estate
+│ longitude    │   │ pac_per_1000_logements   │ ← Normalized target
+│ region_code  │   │ clim_per_1000_logements  │ ← Normalized target
+│              │   │ temp_mean, HDD, CDD      │ ← Local weather
+│              │   │ nb_permis_construire     │ ← Local real estate
 └──────────────┘   │ UNIQUE(date_id, geo_id)  │
                    └──────┬────────────────────┘
                           │
@@ -369,16 +371,19 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - month_sin, month_cos (cyclical encoding)
 - year_trend (normalized linear trend)
 
-**Temporal lags (21)** — per department
+**Temporal lags (27)** — per department
 - lag_1m, lag_3m, lag_6m on: nb_dpe_total, nb_installations_pac,
-  nb_installations_clim, temp_mean, hdd_sum, cdd_sum, confiance_menages
+  nb_installations_clim, pac_per_1000_logements, clim_per_1000_logements,
+  temp_mean, hdd_sum, cdd_sum, confiance_menages
 
-**Rolling windows (20)** — per department
+**Rolling windows (24)** — per department
 - rolling_mean_3m, rolling_mean_6m, rolling_std_3m, rolling_std_6m
-  on: nb_dpe_total, nb_installations_pac, temp_mean, hdd_sum, cdd_sum
+  on: nb_dpe_total, nb_installations_pac, pac_per_1000_logements,
+  temp_mean, hdd_sum, cdd_sum
 
-**Variations (6)**
-- diff_1m, pct_change_1m on: nb_dpe_total, nb_installations_pac, nb_installations_clim
+**Variations (10)**
+- diff_1m, pct_change_1m on: nb_dpe_total, nb_installations_pac,
+  nb_installations_clim, pac_per_1000_logements, clim_per_1000_logements
 
 **Interactions (4)**
 - interact_hdd_confiance: HDD x household confidence
@@ -433,11 +438,15 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - densite_pop (population density in hab/km², INSEE Recensement)
 
 ### Target features (Y)
-- nb_installations_pac: DPE with heat pump per month/department
-- nb_installations_clim: DPE with air conditioning
+- nb_installations_pac: DPE with heat pump per month/department (raw count)
+- nb_installations_clim: DPE with air conditioning (raw count)
 - nb_dpe_total: total DPE volume
 - nb_dpe_classe_ab: DPE class A-B (high-performance building)
-- pct_pac, pct_clim, pct_classe_ab: derived percentages
+- **pac_per_1000_logements**: heat pump installations per 1,000 housing units (recommended)
+  Formula: `nb_installations_pac / nb_logements_total * 1000`
+  Normalizes by department size — avoids scale bias (e.g. Rhône ~300/mo vs rural ~10/mo)
+- **clim_per_1000_logements**: AC installations per 1,000 housing units (normalized)
+- pct_pac, pct_clim, pct_classe_ab: derived percentages (normalized by DPE count)
 
 ## 8. ML / Deep Learning Modeling
 
