@@ -46,7 +46,9 @@ NON_FEATURE_COLS: set[str] = {
     "dept_name", "city_ref", "latitude", "longitude",
     "n_valid_features", "pct_valid_features",
     "_outlier_iqr", "_outlier_zscore", "_outlier_iforest",
-    "_outlier_consensus",
+    "_outlier_consensus", "_outlier_score",
+    # Derived from targets — data leakage if included as features
+    "pct_pac", "pct_clim", "pct_classe_ab",
 }
 
 # Single source of truth for department names (imported from config)

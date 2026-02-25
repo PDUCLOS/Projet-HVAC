@@ -1,9 +1,9 @@
 # HVAC Market Analysis — Metropolitan France
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
-![Tests](https://img.shields.io/badge/tests-551%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-561%20passed-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.989-orange)
+![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.9996-orange)
 ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi)
 ![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?logo=streamlit)
@@ -32,7 +32,7 @@ This project builds an **end-to-end data pipeline** to analyze and predict HVAC 
 ```mermaid
 graph LR
     A[6 Sources<br/>Open Data] -->|Collection| B[Data Lake<br/>CSV/SQLite]
-    B -->|ETL| C[Features<br/>~90 variables]
+    B -->|ETL| C[Features<br/>109 columns / 92 model]
     C -->|ML| D[Models<br/>Ridge, LightGBM]
     D -->|Serving| E[API FastAPI<br/>+ Dashboard]
 ```
@@ -43,9 +43,9 @@ graph LR
 |----------|--------|
 | Geographic coverage | 96 departments (Metropolitan France) |
 | Period | 2019 - 2025 |
-| Best model | Ridge (R2 test = 0.989, RMSE = 0.93) |
+| Best model | Ridge (R² test = 0.9996, RMSE = 9.2) |
 | Trained models | Ridge, LightGBM, Ridge exogenous, Prophet, LSTM |
-| Unit tests | 513 tests |
+| Unit tests | 561 tests |
 | Dashboard | Streamlit (6 interactive pages) |
 | API | FastAPI (6 endpoints, auto Swagger) |
 
@@ -117,7 +117,7 @@ Projet-HVAC/
 │   ├── processing/                 # Data processing
 │   │   ├── clean_data.py           # Cleaning by source (with skip rules + preview)
 │   │   ├── merge_datasets.py       # Multi-source merging (DPE + weather + SITADEL + INSEE ref)
-│   │   ├── feature_engineering.py  # ~100 ML features (incl. PAC efficiency + altitude distribution)
+│   │   ├── feature_engineering.py  # 109 features total, 92 used in model (lags, rolling, DPE A/B)
 │   │   └── outlier_detection.py    # IQR + Z-score + Isolation Forest
 │   ├── models/                     # Modeling
 │   │   ├── baseline.py             # Ridge, LightGBM, Prophet
@@ -139,7 +139,7 @@ Projet-HVAC/
 │   ├── DATABASE_ARCHITECTURE.md    # Module 3: Star schema, OLAP, NoSQL
 │   └── DATA_PIPELINE.md            # Module 4: ETL, monitoring, Airbyte
 ├── scripts/                        # Utility scripts
-├── tests/                          # 513 tests (pytest)
+├── tests/                          # 561 tests (pytest)
 ├── Dockerfile                      # Multi-stage build
 ├── docker-compose.yml              # API + Dashboard + PostgreSQL
 ├── Makefile                        # Shortcut commands
@@ -291,13 +291,17 @@ This project covers the 6 modules of the Bac+5 certification:
 ## ML Results
 
 ```
-Model              Val RMSE   Val R2    Test RMSE   Test R2
-ridge              1.178      0.9798    0.929       0.9885
-lightgbm           1.456      0.9691    1.283       0.9781
-ridge_exogenes     1.535      0.9657    1.339       0.9762
+Model              Val RMSE   Val R2     Test RMSE   Test R2
+ridge              3.76       0.9999     9.18        0.9996
+lightgbm           63.5       0.9737    105.2        0.9452
+ridge_exogenes     10.1       0.9994     23.1        0.9982
+prophet            65.1       0.7870    221.8        0.7564
+lstm              393.2       0.1193    449.9        0.0560
 ```
 
-Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `nb_dpe_total_rmean_3m`, `temp_mean_rmean_6m`, `hdd_sum_rmean_6m`
+Target: `nb_installations_pac` (actual count per department per month)
+
+Top features (LightGBM importance): `nb_installations_pac_rmean_3m`, `nb_installations_pac_diff_1m`, `nb_installations_pac_lag_1m`, `nb_installations_pac_pct_1m`, `nb_dpe_classe_ab_lag_6m`
 
 ---
 
@@ -320,7 +324,7 @@ Top features : `nb_installations_pac_lag_1m`, `nb_installations_pac_diff_1m`, `n
 ## Tests
 
 ```bash
-python -m pytest tests/ -v                              # 513 tests
+python -m pytest tests/ -v                              # 561 tests
 python -m pytest tests/ -v --cov=src --cov-report=term  # With coverage
 ```
 

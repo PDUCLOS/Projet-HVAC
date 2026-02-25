@@ -68,6 +68,42 @@
   and feature importance analysis must be written up in a notebook (not just in code comments)
   to serve as a clear, readable deliverable for the portfolio
 
+## Data Quality — NaN Detection & Traceability
+
+### Mandatory NaN Controls
+
+Every notebook and pipeline stage that loads data MUST include a **systematic NaN audit**:
+
+1. **Per-column NaN count and percentage** — identify which columns are affected
+2. **Per-source NaN tracing** — determine the origin of each NaN:
+   - `weather_*` columns → check `data/raw/weather/weather_france.csv` (all 96 depts collected?)
+   - `lag_*` / `rolling_*` columns → structural NaN from feature engineering (expected at series start)
+   - `insee_*` / `eurostat_*` columns → national indicators not yet published for recent months
+   - `sitadel_*` columns → SITADEL construction permits data coverage
+   - `dpe_*` columns → check DPE collection completeness by department
+3. **Department coverage check** — verify that all 96 metropolitan departments are present
+4. **Temporal coverage check** — verify no months are missing in the expected date range
+5. **Threshold alerts**:
+   - Any column with **>5% NaN** must be flagged with a WARNING
+   - Any column with **>50% NaN** must trigger an investigation of the data source
+   - **0 NaN** after imputation must be confirmed before training
+
+### Root Cause Documentation
+
+When NaN are found, **always document the root cause and provenance**:
+- Which raw data source is incomplete?
+- Is it a collection failure (API rate limit, network error)?
+- Is it a structural gap (feature engineering lag at series start)?
+- Is it a temporal coverage issue (data not yet available)?
+
+### Where to Apply
+
+- **Notebook 01** (EDA): Full NaN heatmap + per-source breakdown + department coverage
+- **Notebook 02** (ML): Pre-training NaN audit + post-imputation verification
+- **Notebook 03** (LSTM): Pre-training NaN audit + post-imputation verification
+- **Notebook 04** (Results): Verify dataset used for evaluation is NaN-free
+- **Pipeline** (`merge`, `features`, `train`): Log NaN stats at each stage
+
 ## Git Workflow
 
 - Commit messages in English, clear and descriptive

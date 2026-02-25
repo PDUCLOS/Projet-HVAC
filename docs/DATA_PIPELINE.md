@@ -425,11 +425,11 @@ source disponible sans modifier aucun fichier existant.
 2026-02-21 14:48:01 | processing.clean          | INFO     |   Lignes brutes : 254016
 2026-02-21 14:48:02 | processing.clean          | INFO     |   Meteo nettoyee : 254016 -> 254016 lignes
 ...
-2026-02-21 14:52:00 | processing.merge          | INFO     | Dataset ML : 4032 lignes x 35 colonnes
-2026-02-21 14:52:30 | processing.features       | INFO     | Features ajoutees : 52 nouvelles colonnes
+2026-02-21 14:52:00 | processing.merge          | INFO     | Dataset ML : 5376 lignes x 36 colonnes
+2026-02-21 14:52:30 | processing.features       | INFO     | Features ajoutees : 73 nouvelles colonnes (36 → 109)
 2026-02-21 14:53:00 | processing.outliers       | INFO     | Winsorization : 127 valeurs clippees
 ...
-2026-02-21 14:58:00 | models.train              | INFO     | Phase 4 terminee : 4 modeles entraines.
+2026-02-21 14:58:00 | models.train              | INFO     | Phase 4 terminee : 5 modeles entraines.
 2026-02-21 15:01:00 | models.evaluate           | INFO     | Phase 4 (evaluate) terminee.
 2026-02-21 15:01:00 | pipeline                  | INFO     | Pipeline termine.
 ```

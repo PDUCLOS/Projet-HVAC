@@ -359,27 +359,29 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
 - **Sources merged**: DPE + Weather + INSEE BDM + Eurostat + SITADEL + INSEE Filosofi reference
 
 ### Features dataset (`data/features/hvac_features_dataset.csv`)
-- **Grain**: month x department (96 departments x N months, ~100+ columns)
+- **Grain**: month x department (96 departments x 56 months = 5,376 rows, 109 columns)
 - **Pipeline**: `python -m src.pipeline features`
 - **Module**: `src/processing/feature_engineering.py` (FeatureEngineer)
 - **Steps**: lags → rolling → variations → interactions → PAC efficiency → trends → completeness
+- **Model features**: 92 used in training (excludes identifiers, direct targets, leakage-risk columns)
 
-### Feature categories (~100+ columns)
+### Feature categories (109 columns total)
 
 **Temporal (7)**
 - month, quarter, year, is_heating, is_cooling
 - month_sin, month_cos (cyclical encoding)
 - year_trend (normalized linear trend)
 
-**Temporal lags (27)** — per department
+**Temporal lags (30)** — per department
 - lag_1m, lag_3m, lag_6m on: nb_dpe_total, nb_installations_pac,
   nb_installations_clim, pac_per_1000_logements, clim_per_1000_logements,
+  **nb_dpe_classe_ab** (added — DPE A/B lag is a strong PAC predictor, r=+0.71),
   temp_mean, hdd_sum, cdd_sum, confiance_menages
 
-**Rolling windows (24)** — per department
+**Rolling windows (28)** — per department
 - rolling_mean_3m, rolling_mean_6m, rolling_std_3m, rolling_std_6m
   on: nb_dpe_total, nb_installations_pac, pac_per_1000_logements,
-  temp_mean, hdd_sum, cdd_sum
+  **nb_dpe_classe_ab**, temp_mean, hdd_sum, cdd_sum
 
 **Variations (10)**
 - diff_1m, pct_change_1m on: nb_dpe_total, nb_installations_pac,
@@ -447,6 +449,7 @@ python -m src.pipeline update_all                      # Full pipeline (collect 
   Normalizes by department size — avoids scale bias (e.g. Rhône ~300/mo vs rural ~10/mo)
 - **clim_per_1000_logements**: AC installations per 1,000 housing units (normalized)
 - pct_pac, pct_clim, pct_classe_ab: derived percentages (normalized by DPE count)
+  ⚠ **Excluded from model features** — directly derived from target → data leakage risk
 
 ## 8. ML / Deep Learning Modeling
 
@@ -512,7 +515,7 @@ Phase 2 — Processing (COMPLETED ✓)
   │       Sources: DPE + Weather + SITADEL + INSEE ref + Economic
   │       → data/features/hvac_ml_dataset.csv
   ├── 2.5 Feature engineering (feature_engineering.py)           ✓
-  │       ~90+ columns (lags, rolling, interactions, static)
+  │       109 columns total, 92 used in model (lags, rolling, DPE A/B, interactions)
   │       → data/features/hvac_features_dataset.csv
   └── 2.6 Outlier detection (IQR + Z-score + Isolation Forest)  ✓
           Consensus 2/3, outlier flags excluded from training

@@ -35,7 +35,8 @@ from __future__ import annotations
 
 import time
 from datetime import date, timedelta
-from typing import Any, ClassVar, Dict, List, Optional
+from pathlib import Path
+from typing import Any, ClassVar, Dict, List, Optional, Set
 
 import pandas as pd
 import requests
@@ -75,12 +76,15 @@ class WeatherCollector(BaseCollector):
     output_filename: ClassVar[str] = "weather_france.csv"
 
     # Rate-limiting constants for Open-Meteo free tier
-    _MAX_429_RETRIES: ClassVar[int] = 5           # Max retries on 429 per city
-    _INITIAL_BACKOFF: ClassVar[float] = 5.0        # Initial wait on 429 (seconds)
-    _BATCH_SIZE: ClassVar[int] = 10                # Cities per batch before extra pause
-    _BATCH_PAUSE: ClassVar[float] = 30.0           # Extra pause between batches (seconds)
-    _RETRY_PASS_PAUSE: ClassVar[float] = 60.0      # Cooldown before retrying failed cities
-    _MAX_RETRY_PASSES: ClassVar[int] = 5           # Max number of retry passes
+    # Tuned for collecting all 96 departments without hitting 429 errors.
+    # The free tier allows ~10,000 calls/day but enforces per-minute limits.
+    _MAX_429_RETRIES: ClassVar[int] = 8            # Max retries on 429 per city
+    _INITIAL_BACKOFF: ClassVar[float] = 15.0       # Initial wait on 429 (seconds)
+    _BATCH_SIZE: ClassVar[int] = 5                 # Cities per batch before extra pause
+    _BATCH_PAUSE: ClassVar[float] = 90.0           # Extra pause between batches (seconds)
+    _RETRY_PASS_PAUSE: ClassVar[float] = 180.0     # Cooldown before retrying failed cities
+    _MAX_RETRY_PASSES: ClassVar[int] = 8           # Max number of retry passes
+    _INTER_CALL_PAUSE: ClassVar[float] = 12.0      # Courtesy pause between individual calls
 
     def _fetch_with_retry(
         self, url: str, params: Dict[str, Any], city: str
@@ -201,8 +205,73 @@ class WeatherCollector(BaseCollector):
             self.logger.error("  ✗ Failed for %s: %s", city, exc)
             return None
 
+    def _load_existing_depts(self) -> tuple[Set[str], pd.DataFrame]:
+        """Load already-collected departments from existing raw CSV.
+
+        Enables resume capability: on re-run, departments already
+        present in the raw CSV are skipped. This is critical for
+        handling API rate limits across multiple runs.
+
+        Returns:
+            Tuple of (set of dept codes already collected,
+                      existing DataFrame or empty DataFrame).
+        """
+        raw_path = self._resolve_output_path()
+        if raw_path.exists():
+            try:
+                existing = pd.read_csv(raw_path, dtype={"dept": str})
+                collected_depts = set(existing["dept"].unique())
+                self.logger.info(
+                    "Resume mode: found %d existing department(s) in %s",
+                    len(collected_depts), raw_path,
+                )
+                return collected_depts, existing
+            except Exception as exc:
+                self.logger.warning(
+                    "Could not read existing file %s: %s — starting fresh",
+                    raw_path, exc,
+                )
+        return set(), pd.DataFrame()
+
+    def _save_incremental(self, all_frames: List[pd.DataFrame],
+                          existing_df: pd.DataFrame) -> None:
+        """Save progress incrementally to avoid losing data on crash.
+
+        Merges newly collected frames with existing data and writes
+        to the raw output path. Called after each batch.
+
+        Args:
+            all_frames: List of newly collected DataFrames.
+            existing_df: Previously existing data (from resume load).
+        """
+        if not all_frames:
+            return
+        parts = [existing_df] if not existing_df.empty else []
+        parts.extend(all_frames)
+        combined = pd.concat(parts, ignore_index=True)
+        combined = combined.drop_duplicates(
+            subset=["time", "dept"], keep="last",
+        )
+        raw_path = self._resolve_output_path()
+        raw_path.parent.mkdir(parents=True, exist_ok=True)
+        combined.to_csv(raw_path, index=False)
+        n_depts = combined["dept"].nunique()
+        self.logger.info(
+            "  💾 Incremental save: %d rows, %d/96 departments → %s",
+            len(combined), n_depts, raw_path,
+        )
+
     def collect(self) -> pd.DataFrame:
         """Collect weather data for all reference cities.
+
+        Features:
+        - **Resume capability**: Loads existing raw CSV and skips
+          departments already collected. Safe to re-run after a crash
+          or rate-limit interruption.
+        - **Incremental save**: Writes progress to disk after each
+          batch so data is never lost.
+        - **Patient rate limiting**: Long pauses between calls and
+          batches to stay well under the Open-Meteo free tier limits.
 
         For each city, makes a single API call covering the entire
         configured period (2019-2025). The API returns daily data
@@ -221,6 +290,9 @@ class WeatherCollector(BaseCollector):
         from config.settings import config as project_config
         cities = project_config.geo.cities
 
+        # --- Resume: load existing data and skip collected depts ---
+        already_collected, existing_df = self._load_existing_depts()
+
         all_frames: List[pd.DataFrame] = []
         errors: List[str] = []
 
@@ -237,7 +309,29 @@ class WeatherCollector(BaseCollector):
 
         city_items = list(cities.items())
         total_cities = len(city_items)
-        pending_cities: List[tuple] = list(city_items)
+
+        # Filter out already-collected cities (resume)
+        pending_cities: List[tuple] = [
+            (city, coords) for city, coords in city_items
+            if coords["dept"] not in already_collected
+        ]
+        skipped = total_cities - len(pending_cities)
+        if skipped > 0:
+            self.logger.info(
+                "  ⏩ Skipping %d already-collected department(s) — "
+                "%d remaining to collect",
+                skipped, len(pending_cities),
+            )
+
+        # If everything is already collected, return existing data
+        if not pending_cities:
+            self.logger.info(
+                "All %d departments already collected — nothing to do!",
+                total_cities,
+            )
+            if not existing_df.empty:
+                return self._finalize_result(existing_df, project_config, errors)
+            return pd.DataFrame()
 
         # Multi-pass collection: pass 1 collects all, subsequent passes
         # retry only the cities that failed (up to _MAX_RETRY_PASSES total).
@@ -270,16 +364,21 @@ class WeatherCollector(BaseCollector):
                 else:
                     still_failed.append((city, coords))
 
-                # Courtesy pause between calls (10s)
-                self.rate_limit_pause()
+                # Courtesy pause between individual calls
+                time.sleep(self._INTER_CALL_PAUSE)
 
                 # Extra pause between batches to stay well under rate limits
                 if idx % self._BATCH_SIZE == 0 and idx < len(pending_cities):
+                    # Incremental save after each batch
+                    self._save_incremental(all_frames, existing_df)
                     self.logger.info(
                         "  Batch pause (%d/%d cities done) — waiting %.0fs...",
                         idx, len(pending_cities), self._BATCH_PAUSE,
                     )
                     time.sleep(self._BATCH_PAUSE)
+
+            # Incremental save at end of each pass
+            self._save_incremental(all_frames, existing_df)
 
             # Summary for this pass
             succeeded = len(pending_cities) - len(still_failed)
@@ -302,15 +401,39 @@ class WeatherCollector(BaseCollector):
                 f"exhausted all {self._MAX_RETRY_PASSES} passes"
             )
 
-        # Check that at least one city was collected
-        if not all_frames:
+        # Merge new data with existing data
+        if not all_frames and existing_df.empty:
             self.logger.error(
                 "No weather data collected. Errors: %s", errors
             )
             return pd.DataFrame()
 
-        # Concatenate all cities
-        result = pd.concat(all_frames, ignore_index=True)
+        # Concatenate all: existing + newly collected
+        parts = [existing_df] if not existing_df.empty else []
+        parts.extend(all_frames)
+        result = pd.concat(parts, ignore_index=True)
+        result = result.drop_duplicates(subset=["time", "dept"], keep="last")
+
+        return self._finalize_result(result, project_config, errors)
+
+    def _finalize_result(
+        self, result: pd.DataFrame, project_config: Any,
+        errors: List[str],
+    ) -> pd.DataFrame:
+        """Apply computed columns (HDD, CDD, PAC flag, elevation).
+
+        Separated from collect() so it can be called on resumed data too.
+
+        Args:
+            result: Raw concatenated weather DataFrame.
+            project_config: Project configuration for thresholds.
+            errors: List of error messages to log.
+
+        Returns:
+            Finalized DataFrame with all computed columns.
+        """
+        from config.settings import config as cfg
+        cities = cfg.geo.cities
 
         # Compute HDD and CDD (base 18degC)
         # HDD = heating demand: the colder it is, the higher the HDD
@@ -347,12 +470,25 @@ class WeatherCollector(BaseCollector):
             result["elevation"].min(), result["elevation"].max(),
         )
 
+        # Final coverage report
+        n_depts = result["dept"].nunique()
+        self.logger.info(
+            "Final coverage: %d/96 departments, %d total rows",
+            n_depts, len(result),
+        )
+        if n_depts < 96:
+            missing = set(self.config.departments) - set(result["dept"].unique())
+            self.logger.warning(
+                "⚠ Missing %d department(s): %s",
+                len(missing), sorted(missing),
+            )
+
         # Log summary if partial collection
         if errors:
             self.logger.warning(
-                "⚠ Partial collection: %d/%d cities succeeded. "
-                "Cities with errors: %s",
-                len(all_frames), len(cities), errors,
+                "⚠ Partial collection: %d/96 departments. "
+                "Errors: %s",
+                n_depts, errors,
             )
 
         return result
