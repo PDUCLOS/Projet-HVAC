@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python)
 ![Tests](https://img.shields.io/badge/tests-561%20passed-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue)
 ![ML](https://img.shields.io/badge/ML-Ridge%20R%C2%B2%3D0.9996-orange)
 ![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)
 ![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi)
@@ -332,7 +332,7 @@ python -m pytest tests/ -v --cov=src --cov-report=term  # With coverage
 
 ## Author
 
-**Patrice DUCLOS** — Senior Data Analyst (20 years of experience)
+**Patrice DUCLOS** — Data Analyst (20 years of experience)
 
 Portfolio project for the **Data Science Lead** program (Jedha Bootcamp, Bac+5 RNCP Level 7 certification).
 
@@ -340,4 +340,6 @@ Portfolio project for the **Data Science Lead** program (Jedha Bootcamp, Bac+5 R
 
 ## License
 
-[MIT](LICENSE) — This project is open source.
+[PolyForm Noncommercial 1.0.0](LICENSE) — Free for non-commercial use
+(research, learning, portfolio review, personal projects). Commercial
+use requires explicit written permission from the author.
