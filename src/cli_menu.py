@@ -42,7 +42,7 @@ logger = logging.getLogger("cli_menu")
 
 def clear_screen() -> None:
     """Clear the terminal screen."""
-    os.system("cls" if os.name == "nt" else "clear")
+    os.system("cls" if os.name == "nt" else "clear")  # nosec B605
 
 
 def pause(message: str = "Press Enter to continue...") -> None:

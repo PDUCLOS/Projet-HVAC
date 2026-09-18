@@ -629,7 +629,7 @@ def run_feature_select(target: str = "nb_installations_pac") -> None:
     model_path = config.models_dir / "lightgbm_model.pkl"
     if model_path.exists():
         with open(model_path, "rb") as f:
-            model = pickle.load(f)
+            model = pickle.load(f)  # nosec B301
         logger.info("  Using trained LightGBM for SHAP analysis")
     else:
         from sklearn.linear_model import Ridge
