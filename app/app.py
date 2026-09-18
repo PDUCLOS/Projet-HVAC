@@ -43,6 +43,7 @@ page = st.sidebar.radio(
         "France Map",
         "ML Predictions",
         "Model Comparison",
+        "What-If Simulator",
         "Pipeline & Update",
     ],
     index=0,
@@ -62,6 +63,7 @@ PAGE_MODULES = {
     "France Map": "carte",
     "ML Predictions": "predictions",
     "Model Comparison": "models",
+    "What-If Simulator": "whatif",
     "Pipeline & Update": "pipeline_page",
 }
 

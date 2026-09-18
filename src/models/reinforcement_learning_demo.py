@@ -39,7 +39,7 @@ import numpy as np
 
 # --- Optional Gymnasium management ---
 try:
-    import gymnasium as gym
+    import gymnasium  # noqa: F401
     from gymnasium import spaces
     GYM_AVAILABLE = True
 except ImportError:
@@ -461,7 +461,7 @@ def main() -> None:
 
     # --- Comparison ---
     improvement = ((avg_ql - avg_rand) / abs(avg_rand)) * 100 if avg_rand != 0 else 0
-    print(f"\n--- Comparison ---")
+    print("\n--- Comparison ---")
     print(f"  Q-Learning: {avg_ql:.2f}  |  Random: {avg_rand:.2f}  |  {improvement:+.1f}%")
 
     # --- Visualizations ---

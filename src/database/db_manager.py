@@ -146,8 +146,8 @@ class DatabaseManager:
                 # Remove comment lines and empty lines at the beginning of the block
                 lines = statement.split("\n")
                 sql_lines = [
-                    l for l in lines
-                    if l.strip() and not l.strip().startswith("--")
+                    line for line in lines
+                    if line.strip() and not line.strip().startswith("--")
                 ]
                 clean = "\n".join(sql_lines).strip()
 
@@ -858,7 +858,7 @@ class DatabaseManager:
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {table_name}")
+                    text(f"SELECT COUNT(*) FROM {table_name}")  # nosec B608
                 )
                 return result.scalar() or 0
         except Exception as exc:
@@ -882,7 +882,7 @@ class DatabaseManager:
             self.logger.warning("Rejected unknown table name: %s", table_name)
             return None
         try:
-            df = self.query(f"SELECT * FROM {table_name}")
+            df = self.query(f"SELECT * FROM {table_name}")  # nosec B608
             return df if len(df) > 0 else None
         except Exception as exc:
             self.logger.debug("Read failed for '%s': %s", table_name, exc)

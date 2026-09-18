@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -10,6 +11,17 @@ import pytest
 import requests
 
 from src.collectors.weather import WeatherCollector
+
+
+@pytest.fixture(autouse=True)
+def _clean_weather_output():
+    """Remove leftover weather CSV so resume mode does not interfere."""
+    output = Path("/tmp/hvac_test/raw/weather/weather_france.csv")
+    if output.exists():
+        output.unlink()
+    yield
+    if output.exists():
+        output.unlink()
 
 # Test cities (2 cities) used in collect() tests to avoid loading all 96.
 _TEST_CITIES = {
@@ -202,7 +214,7 @@ class TestFetchWithRetry:
     @patch("src.collectors.weather.time.sleep")
     @patch.object(WeatherCollector, "fetch_json")
     def test_exponential_backoff_timing(self, mock_fetch, mock_sleep, collector_config):
-        """Backoff follows exponential pattern: 5, 10, 20, 40, 80."""
+        """Backoff follows exponential pattern based on _INITIAL_BACKOFF."""
         resp_429 = MagicMock()
         resp_429.status_code = 429
         http_429 = requests.exceptions.HTTPError(response=resp_429)
@@ -211,7 +223,9 @@ class TestFetchWithRetry:
         collector = WeatherCollector(collector_config)
         collector._fetch_with_retry("http://test", {}, "TestCity")
 
-        expected_waits = [5.0, 10.0, 20.0, 40.0, 80.0]
+        base = WeatherCollector._INITIAL_BACKOFF
+        max_retries = WeatherCollector._MAX_429_RETRIES
+        expected_waits = [base * (2 ** i) for i in range(max_retries)]
         actual_waits = [call.args[0] for call in mock_sleep.call_args_list]
         assert actual_waits == expected_waits
 

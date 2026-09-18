@@ -57,7 +57,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -210,7 +209,7 @@ class FeatureEngineer:
 
         # Lags to generate
         lags = [1, 3, 6]
-        lags = [l for l in lags if l <= self.max_lag]
+        lags = [lag for lag in lags if lag <= self.max_lag]
 
         n_features = 0
         for col in lag_cols:

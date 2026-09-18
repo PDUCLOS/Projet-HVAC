@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from config.settings import DEPT_NAMES
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -51,8 +52,6 @@ NON_FEATURE_COLS: set[str] = {
     "pct_pac", "pct_clim", "pct_classe_ab",
 }
 
-# Single source of truth for department names (imported from config)
-from config.settings import DEPT_NAMES
 DEPARTEMENTS: dict[str, str] = DEPT_NAMES
 
 

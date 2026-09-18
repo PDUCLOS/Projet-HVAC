@@ -15,35 +15,58 @@ import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import AsyncGenerator
 
 import numpy as np
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import (
     API_VERSION,
     DEPARTEMENTS,
-    FEATURES_CSV,
     RAW_DIR,
     TARGET_COL,
     state,
 )
 from api.models import (
+    ALLOWED_METRICS,
+    ComparisonDepartment,
+    ComparisonResponse,
+    ComparisonValue,
     CustomPredictRequest,
     CustomPredictResponse,
     DataSummaryResponse,
     DepartmentInfo,
     DepartmentsResponse,
+    FeatureImportance,
+    FeatureImportanceResponse,
     HealthResponse,
     ModelMetric,
     ModelMetricsResponse,
     PredictionPoint,
     PredictionResponse,
+    ScenarioPoint,
+    ScenarioRequest,
+    ScenarioResponse,
     SourceSummary,
+    TrendPoint,
+    TrendResponse,
 )
+
+# ---------------------------------------------------------------------------
+# Rate limiting (optional — graceful fallback if slowapi is not installed)
+# ---------------------------------------------------------------------------
+
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.errors import RateLimitExceeded
+    from slowapi.util import get_remote_address
+
+    limiter = Limiter(key_func=get_remote_address, default_limits=["30/minute"])
+    _RATE_LIMITING_ENABLED = True
+except ImportError:
+    limiter = None  # type: ignore[assignment]
+    _RATE_LIMITING_ENABLED = False
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +94,11 @@ app = FastAPI(
     version=API_VERSION,
     lifespan=lifespan,
 )
+
+# Attach rate limiter (if available)
+if _RATE_LIMITING_ENABLED:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — restrict origins in production via CORS_ORIGINS env var
 _cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8501,http://localhost:3000").split(",")
@@ -315,6 +343,281 @@ async def list_departments() -> DepartmentsResponse:
     return DepartmentsResponse(
         department_count=len(dept_list),
         departments=dept_list,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /trends/{dept}
+# ---------------------------------------------------------------------------
+
+@app.get("/trends/{dept}", response_model=TrendResponse, tags=["Analysis"])
+async def get_trends(dept: str) -> TrendResponse:
+    """
+    Monthly trend data for a specific department.
+
+    Returns historical actual values and in-sample model predictions
+    for each month in the dataset.
+    """
+    dept = dept.upper().zfill(2)
+    if dept not in DEPARTEMENTS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid department code '{dept}'. "
+                "Must be a valid French metropolitan department (01-95, 2A, 2B)."
+            ),
+        )
+    _validate_department_in_data(dept)
+
+    df = state.features_df
+    df_dept = df[df["dept"] == dept].sort_values("date_id").copy()
+    if df_dept.empty:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for department {dept}",
+        )
+
+    # Generate in-sample predictions using the Ridge model
+    points: list[TrendPoint] = []
+    for _, row in df_dept.iterrows():
+        date_str = str(int(row["date_id"]))
+        date_label = f"{date_str[:4]}-{date_str[4:]}"
+        actual = _safe_float(row.get(TARGET_COL))
+
+        # Compute in-sample prediction
+        predicted = None
+        try:
+            feat_vals = row[state.feature_names].values.reshape(1, -1).astype(float)
+            feat_vals = state.imputer.transform(feat_vals)
+            feat_scaled = state.scaler.transform(feat_vals)
+            pred = float(state.ridge_model.predict(feat_scaled)[0])
+            predicted = round(max(pred, 0.0), 2)
+        except Exception:
+            predicted = None
+
+        points.append(TrendPoint(
+            date=date_label,
+            actual=actual,
+            predicted=predicted,
+        ))
+
+    return TrendResponse(
+        departement=dept,
+        dept_name=DEPARTEMENTS.get(dept, dept),
+        points=points,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /comparison
+# ---------------------------------------------------------------------------
+
+@app.get("/comparison", response_model=ComparisonResponse, tags=["Analysis"])
+async def get_comparison(
+    depts: str = Query(
+        ...,
+        description="Comma-separated department codes (max 5)",
+        examples=["69,38,75"],
+    ),
+    metric: str = Query(
+        default="nb_installations_pac",
+        description="Metric column to compare",
+    ),
+) -> ComparisonResponse:
+    """
+    Compare a metric across multiple departments.
+
+    Returns time-series data for up to 5 departments for a given
+    metric column from the features dataset.
+    """
+    # Parse and validate department codes
+    dept_list = [d.strip().upper().zfill(2) for d in depts.split(",") if d.strip()]
+    if not dept_list:
+        raise HTTPException(status_code=400, detail="No department codes provided.")
+    if len(dept_list) > 5:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum 5 departments allowed, got {len(dept_list)}.",
+        )
+    for d in dept_list:
+        if d not in DEPARTEMENTS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Invalid department code '{d}'. "
+                    "Must be a valid French metropolitan department (01-95, 2A, 2B)."
+                ),
+            )
+
+    # Validate metric
+    if metric not in ALLOWED_METRICS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid metric '{metric}'. "
+                f"Allowed values: {sorted(ALLOWED_METRICS)}"
+            ),
+        )
+
+    df = state.features_df
+    if df is None:
+        raise HTTPException(status_code=503, detail="Data not loaded.")
+
+    if metric not in df.columns:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Metric '{metric}' not found in dataset.",
+        )
+
+    departments: list[ComparisonDepartment] = []
+    for d in dept_list:
+        df_dept = df[df["dept"] == d].sort_values("date_id")
+        if df_dept.empty:
+            continue
+        values: list[ComparisonValue] = []
+        for _, row in df_dept.iterrows():
+            date_str = str(int(row["date_id"]))
+            date_label = f"{date_str[:4]}-{date_str[4:]}"
+            val = _safe_float(row.get(metric))
+            if val is not None:
+                values.append(ComparisonValue(date=date_label, value=val))
+        departments.append(ComparisonDepartment(
+            dept=d,
+            dept_name=DEPARTEMENTS.get(d, d),
+            values=values,
+        ))
+
+    return ComparisonResponse(metric=metric, departments=departments)
+
+
+# ---------------------------------------------------------------------------
+# GET /features/importance
+# ---------------------------------------------------------------------------
+
+@app.get(
+    "/features/importance",
+    response_model=FeatureImportanceResponse,
+    tags=["Models"],
+)
+async def feature_importance() -> FeatureImportanceResponse:
+    """
+    Feature importance from the trained LightGBM model.
+
+    Returns the top 20 features ranked by importance. Falls back
+    to the Ridge model coefficients if LightGBM is unavailable.
+    """
+    # Try LightGBM first (has .feature_importances_)
+    if state.lgb_model is not None:
+        try:
+            importances = state.lgb_model.feature_importances_
+            names = list(state.lgb_model.feature_name_)
+            model_name = "lightgbm"
+        except AttributeError:
+            importances = None
+            names = None
+            model_name = "lightgbm"
+    else:
+        importances = None
+        names = None
+        model_name = "lightgbm"
+
+    # Fallback to Ridge coefficients
+    if importances is None and state.ridge_model is not None:
+        try:
+            importances = np.abs(state.ridge_model.coef_)
+            names = list(state.ridge_model.feature_names_in_)
+            model_name = "ridge"
+        except AttributeError:
+            pass
+
+    if importances is None or names is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No model with feature importance data available.",
+        )
+
+    # Sort by importance descending and take top 20
+    pairs = sorted(zip(names, importances), key=lambda x: x[1], reverse=True)
+    top_20 = pairs[:20]
+
+    features = [
+        FeatureImportance(feature=name, importance=round(float(imp), 6))
+        for name, imp in top_20
+    ]
+
+    return FeatureImportanceResponse(
+        model=model_name,
+        feature_count=len(features),
+        features=features,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /scenario
+# ---------------------------------------------------------------------------
+
+@app.post("/scenario", response_model=ScenarioResponse, tags=["Predictions"])
+async def run_scenario(body: ScenarioRequest) -> ScenarioResponse:
+    """
+    What-if scenario analysis.
+
+    Generates a baseline prediction and an adjusted prediction
+    with feature multipliers applied, then computes the percentage
+    impact on total installations.
+    """
+    dept = body.dept
+    _validate_department_in_data(dept)
+
+    # Generate baseline predictions
+    baseline_raw = state.predict(dept, body.horizon_months)
+    if not baseline_raw:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No data found for department {dept}",
+        )
+
+    baseline = [
+        ScenarioPoint(date=p["date"], value=p["predicted_value"])
+        for p in baseline_raw
+    ]
+
+    # Generate adjusted predictions (apply multipliers)
+    if body.adjustments:
+        extra: dict[str, float] = {}
+        df = state.features_df
+        df_dept = df[df["dept"] == dept].sort_values("date_id")
+        if not df_dept.empty:
+            last_row = df_dept.iloc[-1]
+            for feat, multiplier in body.adjustments.items():
+                if feat in last_row.index:
+                    extra[feat] = float(last_row[feat]) * multiplier
+
+        adjusted_raw = state.predict(
+            dept, body.horizon_months, extra_features=extra if extra else None
+        )
+    else:
+        adjusted_raw = baseline_raw
+
+    adjusted = [
+        ScenarioPoint(date=p["date"], value=p["predicted_value"])
+        for p in adjusted_raw
+    ]
+
+    # Compute impact percentage
+    baseline_total = sum(p.value for p in baseline)
+    adjusted_total = sum(p.value for p in adjusted)
+    if baseline_total > 0:
+        impact_pct = round(
+            (adjusted_total - baseline_total) / baseline_total * 100, 2
+        )
+    else:
+        impact_pct = 0.0
+
+    return ScenarioResponse(
+        departement=dept,
+        baseline=baseline,
+        adjusted=adjusted,
+        impact_pct=impact_pct,
     )
 
 

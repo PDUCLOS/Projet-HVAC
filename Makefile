@@ -1,15 +1,15 @@
 # =============================================================================
 # HVAC Market Analysis — Makefile
 # =============================================================================
-# Shortcut commands for project deployment and usage.
+# Professional shortcut commands for project deployment, testing, and usage.
 #
-# Usage :
-#   make install       Create venv + install dependencies
-#   make demo          Generate demonstration data
-#   make pipeline      Run the full pipeline (process + train + evaluate)
-#   make dashboard     Launch the Streamlit dashboard
-#   make test          Run unit tests
-#   make all           install + demo + pipeline (complete setup)
+# Usage:
+#   make help          Show all available commands
+#   make setup         Full setup: venv + install + init_db
+#   make pipeline      Run the complete ML pipeline
+#   make test          Run all tests with coverage
+#
+# Self-documenting: each target with ## comment appears in `make help`.
 # =============================================================================
 
 PYTHON := python
@@ -17,57 +17,50 @@ VENV := venv
 PIP := $(VENV)/bin/pip
 PYTHON_VENV := $(VENV)/bin/python
 STREAMLIT := $(VENV)/bin/streamlit
+UVICORN := $(VENV)/bin/uvicorn
 
 # Detect Windows
 ifeq ($(OS),Windows_NT)
     PIP := $(VENV)/Scripts/pip
     PYTHON_VENV := $(VENV)/Scripts/python
     STREAMLIT := $(VENV)/Scripts/streamlit
+    UVICORN := $(VENV)/Scripts/uvicorn
     ACTIVATE := $(VENV)\Scripts\activate
 else
     ACTIVATE := source $(VENV)/bin/activate
 endif
 
-.PHONY: help install demo pipeline dashboard test clean collect update all setup
+.PHONY: help setup install test lint security collect clean process train evaluate \
+        pipeline serve-api serve-dashboard docker-build docker-up docker-down \
+        demo sync eda update all test-cov clean-data clean-cache dashboard
 
-# --- Help ---
-help:
+# =============================================================================
+# Help (self-documenting pattern)
+# =============================================================================
+
+help: ## Show this help
 	@echo ""
-	@echo "  HVAC Market Analysis — Available commands"
-	@echo "  ============================================="
+	@echo "  ======================================================="
+	@echo "   HVAC Market Analysis — Makefile Commands"
+	@echo "  ======================================================="
 	@echo ""
-	@echo "  Setup :"
-	@echo "    make install       Create venv + install dependencies"
-	@echo "    make setup         install + configure .env"
-	@echo "    make all           Complete setup (install + demo + pipeline)"
-	@echo ""
-	@echo "  Data :"
-	@echo "    make demo          Generate demonstration data"
-	@echo "    make collect       Collect data from APIs"
-	@echo "    make sync          Download data from pCloud"
-	@echo ""
-	@echo "  Pipeline :"
-	@echo "    make pipeline      Run clean + merge + features + outliers + train + evaluate"
-	@echo "    make process       Run clean + merge + features + outliers"
-	@echo "    make train         Train ML models"
-	@echo "    make evaluate      Evaluate and compare models"
-	@echo "    make eda           Exploratory Data Analysis (EDA)"
-	@echo "    make update        Full update (collect + process + train + upload)"
-	@echo ""
-	@echo "  Interface :"
-	@echo "    make dashboard     Launch the Streamlit dashboard"
-	@echo ""
-	@echo "  Tests :"
-	@echo "    make test          Run the 119 unit tests"
-	@echo "    make test-cov      Tests with code coverage"
-	@echo ""
-	@echo "  Maintenance :"
-	@echo "    make clean         Remove temporary Python files"
-	@echo "    make clean-data    Remove all generated data"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
-# --- Installation ---
-install: $(VENV)/bin/activate
+# =============================================================================
+# Setup & Installation
+# =============================================================================
+
+setup: install ## Full setup: venv + install + init_db
+	@test -f .env || cp .env.example .env
+	@echo "[setup] Configuration .env OK"
+	$(PYTHON_VENV) -m src.pipeline init_db
+	@echo ""
+	@echo "  Setup complete. Run 'make demo' or 'make collect' to get data."
+	@echo ""
+
+install: $(VENV)/bin/activate ## Install all dependencies
 
 $(VENV)/bin/activate:
 	$(PYTHON) -m venv $(VENV)
@@ -75,88 +68,154 @@ $(VENV)/bin/activate:
 	$(PIP) install -r requirements.txt
 	@echo ""
 	@echo "  Virtual environment created and dependencies installed."
-	@echo "  Activate with : $(ACTIVATE)"
+	@echo "  Activate with: $(ACTIVATE)"
 	@echo ""
 
-setup: install
-	@test -f .env || cp .env.example .env
-	@echo "  Configuration .env OK"
-	$(PYTHON_VENV) setup_project.py
+# =============================================================================
+# Testing & Quality
+# =============================================================================
 
-# --- Data ---
-demo: install
+test: install ## Run all tests with coverage
+	$(PYTHON_VENV) -m pytest tests/ -v --tb=short
+
+test-cov: install ## Run tests with detailed coverage report
+	$(PYTHON_VENV) -m pytest tests/ -v --cov=src --cov=api --cov-report=term-missing
+
+lint: install ## Run ruff linter
+	$(PYTHON_VENV) -m ruff check src/ api/ --select E,W,F --ignore E501
+	@echo "[lint] Code quality check passed."
+
+security: install ## Run security checks (pip-audit + bandit)
+	@echo "[security] Running pip-audit (dependency vulnerabilities)..."
+	-$(PYTHON_VENV) -m pip_audit 2>/dev/null || echo "  pip-audit not installed. Run: pip install pip-audit"
+	@echo "[security] Running bandit (code security)..."
+	-$(PYTHON_VENV) -m bandit -r src/ api/ -ll -q 2>/dev/null || echo "  bandit not installed. Run: pip install bandit"
+	@echo "[security] Security checks complete."
+
+# =============================================================================
+# Data Collection
+# =============================================================================
+
+collect: install ## Collect data from all sources
+	@test -f .env || cp .env.example .env
+	$(PYTHON_VENV) -m src.pipeline collect
+	@echo "[collect] Data collection complete."
+
+demo: install ## Generate demonstration data
 	@test -f .env || cp .env.example .env
 	$(PYTHON_VENV) scripts/generate_demo_data.py
 	@echo ""
 	@echo "  Demonstration data generated in data/raw/"
+	@echo ""
 
-collect: install
-	@test -f .env || cp .env.example .env
-	$(PYTHON_VENV) -m src.pipeline collect
-
-sync: install
+sync: install ## Download data from pCloud
 	@test -f .env || cp .env.example .env
 	$(PYTHON_VENV) -m src.pipeline sync_pcloud
 
-# --- Pipeline ---
-process: install
+# =============================================================================
+# Processing Pipeline
+# =============================================================================
+
+clean: ## Clean processed data (removes data/processed/)
+	rm -rf data/processed
+	@echo "[clean] Processed data removed."
+
+process: install ## Run full processing pipeline (clean + merge + features + outliers)
 	$(PYTHON_VENV) -m src.pipeline process
+	@echo "[process] Processing pipeline complete."
 
-train: install
+train: install ## Train ML models
 	$(PYTHON_VENV) -m src.pipeline train
+	@echo "[train] Model training complete."
 
-evaluate: install
+evaluate: install ## Evaluate trained models
 	$(PYTHON_VENV) -m src.pipeline evaluate
+	@echo "[evaluate] Model evaluation complete."
 
-eda: install
+eda: install ## Run Exploratory Data Analysis
 	$(PYTHON_VENV) -m src.pipeline eda
 
-pipeline: install
+pipeline: install ## Run complete pipeline (process + train + evaluate)
 	$(PYTHON_VENV) -m src.pipeline process
 	$(PYTHON_VENV) -m src.pipeline train
 	$(PYTHON_VENV) -m src.pipeline evaluate
 	@echo ""
-	@echo "  Full pipeline completed."
-	@echo "  Results in data/models/"
-	@echo "  Launch the dashboard : make dashboard"
+	@echo "  ======================================================="
+	@echo "   Pipeline complete."
+	@echo "   Results in data/models/"
+	@echo "   Launch dashboard: make serve-dashboard"
+	@echo "  ======================================================="
+	@echo ""
 
-update: install
+update: install ## Full update (collect + process + train + upload)
 	$(PYTHON_VENV) -m src.pipeline update_all
 
-# --- Interface ---
-dashboard: install
+# =============================================================================
+# Serving (API & Dashboard)
+# =============================================================================
+
+serve-api: install ## Start FastAPI server
 	@echo ""
-	@echo "  Launching the Streamlit dashboard..."
+	@echo "  Starting FastAPI server..."
+	@echo "  Swagger UI: http://localhost:8000/docs"
+	@echo ""
+	$(UVICORN) api.main:app --reload --host 0.0.0.0 --port 8000
+
+serve-dashboard: install ## Start Streamlit dashboard
+	@echo ""
+	@echo "  Starting Streamlit dashboard..."
 	@echo "  Open http://localhost:8501 in your browser"
 	@echo ""
 	$(STREAMLIT) run app/app.py
 
-# --- Tests ---
-test: install
-	$(PYTHON_VENV) -m pytest tests/ -v
+# Legacy alias
+dashboard: serve-dashboard ## Start Streamlit dashboard (alias for serve-dashboard)
 
-test-cov: install
-	$(PYTHON_VENV) -m pytest tests/ -v --cov=src --cov-report=term-missing
+# =============================================================================
+# Docker
+# =============================================================================
 
-# --- Maintenance ---
-clean:
+docker-build: ## Build Docker image
+	docker build -t hvac-market:latest .
+	@echo "[docker-build] Image built: hvac-market:latest"
+
+docker-up: ## Start all services with Docker Compose
+	docker compose up -d
+	@echo ""
+	@echo "  Services started:"
+	@echo "    API:       http://localhost:8000/docs"
+	@echo "    Dashboard: http://localhost:8501"
+	@echo ""
+
+docker-down: ## Stop Docker Compose services
+	docker compose down
+	@echo "[docker-down] All services stopped."
+
+# =============================================================================
+# Maintenance
+# =============================================================================
+
+clean-cache: ## Remove temporary Python files (__pycache__, .pyc)
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	@echo "  Temporary files removed."
+	@echo "[clean-cache] Temporary files removed."
 
-clean-data:
+clean-data: ## Remove all generated data (requires re-collection)
 	rm -rf data/raw data/processed data/features data/models data/analysis
 	rm -f data/*.db
-	@echo "  Data removed. Re-run : make demo && make pipeline"
+	@echo "[clean-data] Data removed. Re-run: make demo && make pipeline"
 
-# --- Complete setup ---
-all: install demo pipeline
+# =============================================================================
+# Complete Setup
+# =============================================================================
+
+all: install demo pipeline ## Full setup: install + demo + pipeline
 	@echo ""
-	@echo "  ============================================="
-	@echo "  Complete setup finished !"
-	@echo "  ============================================="
+	@echo "  ======================================================="
+	@echo "   Complete setup finished."
+	@echo "  ======================================================="
 	@echo ""
-	@echo "  Launch the dashboard : make dashboard"
-	@echo "  Or : $(STREAMLIT) run app/app.py"
+	@echo "  Launch the dashboard: make serve-dashboard"
+	@echo "  Or the API:           make serve-api"
 	@echo ""

@@ -29,12 +29,11 @@ from __future__ import annotations
 import logging
 from io import StringIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend for file generation
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -418,8 +417,6 @@ class EDAAnalyzer:
             Path to the saved chart.
         """
         df = self.df
-        required = {"month", "nb_installations_pac", "nb_installations_clim"}
-        available = required & set(df.columns)
         if "month" not in df.columns:
             logger.warning("Skipping seasonality boxplots: 'month' column missing")
             return Path()
