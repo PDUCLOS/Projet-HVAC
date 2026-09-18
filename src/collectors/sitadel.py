@@ -35,8 +35,7 @@ Extensibility:
 from __future__ import annotations
 
 import io
-import zipfile
-from typing import ClassVar, List, Optional
+from typing import ClassVar
 
 import pandas as pd
 

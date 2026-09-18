@@ -140,12 +140,12 @@ def run_import_data(interactive: bool = False) -> None:
         if not selected:
             logger.info("No sources selected. Import cancelled.")
             return
-        results = db.import_collected_data(
+        db.import_collected_data(
             raw_data_dir=config.raw_data_dir, sources=selected,
         )
     else:
         logger.info("Importing collected data into the database...")
-        results = db.import_collected_data(raw_data_dir=config.raw_data_dir)
+        db.import_collected_data(raw_data_dir=config.raw_data_dir)
 
     # Display table summary after import
     table_info = db.get_table_info()
@@ -204,7 +204,6 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
 
     # Display each source
     for i, info in enumerate(sources_info, 1):
-        status = "READY" if info["exists"] else "MISSING"
         status_icon = "+" if info["exists"] else "x"
 
         print(f"  [{i}] {status_icon} {info['name'].upper()}")
@@ -218,7 +217,7 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
                 f" | Modified: {info['modified']}"
             )
         else:
-            print(f"      File: NOT FOUND")
+            print("      File: NOT FOUND")
         print()
 
     # Count available sources
@@ -230,13 +229,13 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
         print("  python -m src.pipeline collect")
         return []
 
-    print(f"  ─────────────────────────────────────────────────────")
+    print("  ─────────────────────────────────────────────────────")
     print(f"  {n_available} source(s) available for import.")
     print()
-    print(f"  Options:")
-    print(f"    a     = Import ALL available sources")
-    print(f"    1,3,5 = Import specific sources (comma-separated)")
-    print(f"    q     = Cancel")
+    print("  Options:")
+    print("    a     = Import ALL available sources")
+    print("    1,3,5 = Import specific sources (comma-separated)")
+    print("    q     = Cancel")
     print()
 
     try:
@@ -270,13 +269,13 @@ def _interactive_import_menu(db, raw_data_dir) -> list:
 
     # Confirmation
     print()
-    print(f"  ┌───────────────────────────────────────────────────┐")
+    print("  ┌───────────────────────────────────────────────────┐")
     print(f"  │  Will import {len(selected)} source(s):".ljust(54) + "│")
     for name in selected:
         info = next(s for s in sources_info if s["name"] == name)
         line = f"  │    {name.upper()} ({info['rows']:,} rows)"
         print(line.ljust(54) + "│")
-    print(f"  └───────────────────────────────────────────────────┘")
+    print("  └───────────────────────────────────────────────────┘")
     print()
 
     try:
@@ -304,7 +303,7 @@ def run_clean(interactive: bool = False) -> None:
         interactive: If True, show a preview of what will be cleaned
             and let the user choose which rules to skip.
     """
-    from src.processing.clean_data import CLEANING_RULES, DataCleaner
+    from src.processing.clean_data import DataCleaner
 
     logger = logging.getLogger("pipeline")
 
@@ -378,7 +377,6 @@ def _interactive_cleaning_menu(cfg) -> dict:
             note_str = f" ({note})" if note else ""
 
             status = "DELETE" if not note else "MODIFY"
-            color_prefix = "***" if affected > 0 and "clip" not in rule else "   "
 
             print(
                 f"  [{i + 1}] {desc}"
@@ -387,8 +385,8 @@ def _interactive_cleaning_menu(cfg) -> dict:
             )
 
         # Ask user which rules to skip
-        print(f"\n  Enter rule numbers to SKIP (comma-separated), or press Enter to keep all:")
-        print(f"  Example: 2,3 to skip rules 2 and 3")
+        print("\n  Enter rule numbers to SKIP (comma-separated), or press Enter to keep all:")
+        print("  Example: 2,3 to skip rules 2 and 3")
 
         try:
             user_input = input(f"  Skip [{source}] > ").strip()

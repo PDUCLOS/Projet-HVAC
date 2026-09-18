@@ -137,13 +137,6 @@ class LSTMModel:
         y_test_np = y_test.fillna(0).values.astype(np.float32)
 
         # Create sequences
-        # For val and test, concatenate with the end of the previous set
-        X_all = np.vstack([X_train_np, X_val_np, X_test_np])
-        y_all = np.concatenate([y_train_np, y_val_np, y_test_np])
-
-        n_train = len(X_train_np)
-        n_val = len(X_val_np)
-
         X_seq_train, y_seq_train = self._create_sequences(
             X_train_np, y_train_np,
         )
@@ -291,7 +284,6 @@ class _LSTMNet:
         This avoids importing torch at the module level,
         allowing the rest of the code to work without PyTorch.
         """
-        import torch
         import torch.nn as nn
 
         class LSTMNet(nn.Module):

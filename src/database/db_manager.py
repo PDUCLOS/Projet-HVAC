@@ -146,8 +146,8 @@ class DatabaseManager:
                 # Remove comment lines and empty lines at the beginning of the block
                 lines = statement.split("\n")
                 sql_lines = [
-                    l for l in lines
-                    if l.strip() and not l.strip().startswith("--")
+                    line for line in lines
+                    if line.strip() and not line.strip().startswith("--")
                 ]
                 clean = "\n".join(sql_lines).strip()
 

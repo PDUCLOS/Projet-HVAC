@@ -33,7 +33,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from sklearn.metrics import (
     mean_absolute_error,
     mean_absolute_percentage_error,

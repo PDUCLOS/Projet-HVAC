@@ -36,7 +36,6 @@ from __future__ import annotations
 from typing import ClassVar, Dict, List, Any
 
 import pandas as pd
-from lxml import etree
 
 from src.collectors.base import BaseCollector
 

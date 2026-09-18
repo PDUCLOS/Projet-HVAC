@@ -44,7 +44,7 @@ Extensibility:
 
 from __future__ import annotations
 
-from typing import ClassVar, List, Optional
+from typing import ClassVar, List
 
 import pandas as pd
 from tqdm import tqdm

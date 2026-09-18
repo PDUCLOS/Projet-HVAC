@@ -15,18 +15,15 @@ import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import AsyncGenerator
 
 import numpy as np
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.dependencies import (
     API_VERSION,
     DEPARTEMENTS,
-    FEATURES_CSV,
     RAW_DIR,
     TARGET_COL,
     state,
