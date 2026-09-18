@@ -1,13 +1,13 @@
 # =============================================================================
 # HVAC Market Analysis — Docker Compose
 # =============================================================================
-# Quick start :
-#   docker compose up                   # Launch everything
+# Quick start:
+#   docker compose up                   # Launch API + Dashboard
 #   docker compose up api               # API only
 #   docker compose up dashboard         # Dashboard only
 #   docker compose --profile db up      # With PostgreSQL
 #
-# First use with demo data :
+# First use with demo data:
 #   docker compose run --rm pipeline demo
 # =============================================================================
 
@@ -22,8 +22,10 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/app/data
+      - hvac_data:/app/data
       - ./.env:/app/.env:ro
+    env_file:
+      - .env
     environment:
       - DB_TYPE=sqlite
       - DB_PATH=data/hvac_market.db
@@ -35,6 +37,12 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - hvac-network
 
   # --- Streamlit Dashboard (visualization) ---
   dashboard:
@@ -46,15 +54,29 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./data:/app/data
+      - hvac_data:/app/data
       - ./.env:/app/.env:ro
+    env_file:
+      - .env
     environment:
       - DB_TYPE=sqlite
       - DB_PATH=data/hvac_market.db
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - hvac-network
 
   # --- Pipeline (one-time execution) ---
   pipeline:
@@ -64,14 +86,22 @@ services:
     container_name: hvac-pipeline
     command: pipeline
     volumes:
-      - ./data:/app/data
+      - hvac_data:/app/data
       - ./.env:/app/.env:ro
+    env_file:
+      - .env
     environment:
       - DB_TYPE=sqlite
       - DB_PATH=data/hvac_market.db
       - LOG_LEVEL=INFO
+    deploy:
+      resources:
+        limits:
+          memory: 1G
     profiles:
       - tools
+    networks:
+      - hvac-network
 
   # --- PostgreSQL (optional, enable with --profile db) ---
   postgres:
@@ -90,10 +120,28 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
     profiles:
       - db
     restart: unless-stopped
+    networks:
+      - hvac-network
 
+# =============================================================================
+# Named Volumes
+# =============================================================================
 volumes:
+  hvac_data:
+    driver: local
   postgres_data:
     driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  hvac-network:
+    driver: bridge

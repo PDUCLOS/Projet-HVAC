@@ -1,15 +1,15 @@
-# Pipeline de Donnees — HVAC Market Analysis
+# Data Pipeline — HVAC Market Analysis
 
-> Documentation technique du pipeline ELT complet, de la collecte des sources
-> externes jusqu'a la production de modeles ML.
+> Technical documentation of the complete ELT pipeline, from external source
+> collection to ML model production, API serving, and dashboard visualization.
 
 ---
 
-## 1. Architecture du pipeline ELT
+## 1. ELT Pipeline Architecture
 
-### 1.1 Diagramme du flux complet
+### 1.1 Complete Flow Diagram
 
-L'orchestrateur central `src/pipeline.py` pilote 10 etapes sequentielles via CLI.
+The central orchestrator `src/pipeline.py` drives 10 sequential steps via CLI.
 
 ```mermaid
 flowchart TD
@@ -55,10 +55,18 @@ flowchart TD
     S4 --> C4 --> R4
     S5 --> C5 --> R5
 
-    R1 & R2 & R3 & R5 --> P1 --> P2 --> P3 --> P4
+    R1 & R2 & R3 & R4 & R5 --> P1 --> P2 --> P3 --> P4
     P4 --> M1 --> M2
 
-    M2 --> O2["data/models/\nfigures + rapports"]
+    M2 --> O2["data/models/\nfigures + reports"]
+
+    subgraph Serve["7. Serving"]
+        SRV1["FastAPI\n:8000"]
+        SRV2["Streamlit\n:8501"]
+    end
+
+    O2 --> SRV1
+    O2 --> SRV2
 
     style Sources fill:#e1f5fe,stroke:#0288d1
     style Collect fill:#fff3e0,stroke:#f57c00
@@ -548,4 +556,95 @@ flowchart TD
 
 ---
 
-*Pipeline orchestre par `src/pipeline.py` — CLI : `python -m src.pipeline <etape>`*
+---
+
+## 7. Serving — API & Dashboard
+
+After training, the models are served through two complementary interfaces:
+
+### 7.1 FastAPI REST API
+
+| | |
+|---|---|
+| **Input** | Trained models (`data/models/*.pkl`) + dataset |
+| **Output** | JSON predictions, metrics, department data |
+| **Start** | `uvicorn api.main:app --reload` or `make serve-api` |
+| **Port** | 8000 (Swagger UI at `/docs`) |
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | API status, version, loaded model info |
+| `/predictions` | GET | Predictions by department and horizon |
+| `/predict` | POST | Custom prediction with JSON parameters |
+| `/data/summary` | GET | Summary of available data |
+| `/model/metrics` | GET | ML metrics (RMSE, MAE, R², MAPE) |
+| `/departments` | GET | List of 96 metropolitan departments |
+
+### 7.2 Streamlit Dashboard
+
+| | |
+|---|---|
+| **Input** | Feature datasets + trained models + API |
+| **Output** | 6 interactive pages (maps, charts, predictions) |
+| **Start** | `streamlit run app/app.py` or `make serve-dashboard` |
+| **Port** | 8501 |
+
+---
+
+## 8. Deployment Options
+
+### 8.1 Deployment Diagram
+
+```mermaid
+flowchart TD
+    subgraph Local["Local Development"]
+        L1["make setup"] --> L2["make pipeline"]
+        L2 --> L3["make serve-api\n+ make serve-dashboard"]
+    end
+    subgraph Docker["Docker Compose"]
+        D1["docker compose up"] --> D2["hvac-api :8000"]
+        D1 --> D3["hvac-dashboard :8501"]
+        D4["docker compose --profile db up"] --> D5["PostgreSQL :5432"]
+    end
+    subgraph Cloud["Render.com"]
+        R1["git push main"] --> R2["Auto-deploy\nhvac-api + hvac-dashboard"]
+    end
+    style Local fill:#e8f5e9,stroke:#2e7d32
+    style Docker fill:#e3f2fd,stroke:#1565c0
+    style Cloud fill:#fff3e0,stroke:#ef6c00
+```
+
+### 8.2 Docker Services
+
+| Service | Container | Port | Profile | Resources |
+|---------|-----------|------|---------|-----------|
+| API | hvac-api | 8000 | default | 512 MB |
+| Dashboard | hvac-dashboard | 8501 | default | 512 MB |
+| Pipeline | hvac-pipeline | - | tools | 1 GB |
+| PostgreSQL | hvac-postgres | 5432 | db | 256 MB |
+
+---
+
+## 9. Future Pipeline Stages (Planned)
+
+### 9.1 Feature Selection
+
+Automated feature selection to reduce the 92 model features to the most impactful subset.
+Planned approach: SHAP-based importance ranking + recursive feature elimination (RFE)
+with cross-validation. This will run between the `features` and `train` stages.
+
+### 9.2 Data Drift Monitoring
+
+Statistical monitoring of feature distributions to detect data drift between training
+and production data. Planned approach: Population Stability Index (PSI) + Kolmogorov-Smirnov
+tests on key features. Alerts when drift exceeds configurable thresholds.
+
+### 9.3 Hyperparameter Tuning
+
+Systematic hyperparameter optimization for Ridge (alpha) and LightGBM (learning_rate,
+n_estimators, max_depth, num_leaves, reg_alpha, reg_lambda). Planned approach: Optuna
+with TimeSeriesSplit cross-validation.
+
+---
+
+*Pipeline orchestrated by `src/pipeline.py` — CLI: `python -m src.pipeline <step>`*

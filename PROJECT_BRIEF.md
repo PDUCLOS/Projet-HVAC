@@ -554,3 +554,151 @@ Add a class in `src/models/` following the common interface.
 
 ### Change database engine
 Modify only the `.env` file (DB_TYPE, DB_HOST, etc.). No code changes required.
+
+---
+
+## 12. Feature Selection Methodology (Planned)
+
+### 12.1 Current State
+
+The model currently uses **92 features** selected from 109 total columns. Feature exclusions
+are rule-based: identifiers (date_id, code_departement), direct targets (nb_installations_pac,
+pct_pac), and leakage-risk columns (outlier detection flags) are removed before training.
+
+### 12.2 Planned Approach (with full data)
+
+When sufficient data is available (~5-8M DPE from 96 departments), implement a data-driven
+feature selection pipeline:
+
+1. **SHAP-based importance ranking**: Compute SHAP values on the best model to identify
+   features with near-zero contribution to predictions.
+2. **Recursive Feature Elimination (RFE)**: Use RFE with `TimeSeriesSplit` cross-validation
+   to find the optimal subset size. Target: reduce from 92 to 40-60 features without
+   degrading R² by more than 0.001.
+3. **Multicollinearity removal**: Identify feature pairs with Pearson r > 0.95 and keep
+   only the one with higher SHAP importance.
+4. **Stability selection**: Run feature selection on multiple train/val splits to confirm
+   that selected features are robust, not artifacts of a single split.
+
+### 12.3 Expected Benefits
+
+- Faster training and inference
+- Reduced risk of overfitting
+- More interpretable model for portfolio presentation
+- Clearer SHAP explanations with fewer redundant features
+
+---
+
+## 13. Hyperparameter Tuning Approach (Planned)
+
+### 13.1 Ridge Regression
+
+| Parameter | Search Range | Current Value |
+|-----------|-------------|---------------|
+| `alpha` | [0.001, 0.01, 0.1, 1, 10, 100, 1000] | 1.0 (default) |
+
+Strategy: Grid search with `TimeSeriesSplit(n_splits=5)`. Ridge is fast enough for
+exhaustive grid search.
+
+### 13.2 LightGBM
+
+| Parameter | Search Range | Current Value |
+|-----------|-------------|---------------|
+| `learning_rate` | [0.01, 0.05, 0.1] | 0.1 |
+| `n_estimators` | [100, 200, 500, 1000] | 100 |
+| `max_depth` | [3, 5, 7, -1] | -1 |
+| `num_leaves` | [15, 31, 63, 127] | 31 |
+| `reg_alpha` | [0, 0.1, 1.0] | 0 |
+| `reg_lambda` | [0, 0.1, 1.0] | 0 |
+| `min_child_samples` | [5, 10, 20] | 20 |
+
+Strategy: Optuna Bayesian optimization with `TimeSeriesSplit(n_splits=5)`. Budget:
+200 trials, early stopping on validation RMSE.
+
+### 13.3 Evaluation Protocol
+
+- **Metric**: RMSE on validation set (2024-07 to 2024-12)
+- **Cross-validation**: `TimeSeriesSplit` to respect temporal ordering
+- **Final evaluation**: Best hyperparameters retrained on train+val, tested on holdout test set
+- **Documentation**: Before/after metrics comparison in notebook + README
+
+---
+
+## 14. Data Drift Monitoring (Planned)
+
+### 14.1 Purpose
+
+Detect when the distribution of incoming data diverges significantly from the training
+data, signaling that the model may need retraining.
+
+### 14.2 Planned Metrics
+
+| Metric | Application | Threshold |
+|--------|-------------|-----------|
+| **PSI** (Population Stability Index) | Feature distributions | > 0.25 = significant drift |
+| **KS Test** (Kolmogorov-Smirnov) | Continuous features | p-value < 0.01 |
+| **Chi-squared** | Categorical features | p-value < 0.01 |
+| **Prediction drift** | Model output distribution | PSI > 0.10 |
+
+### 14.3 Monitored Features (Priority)
+
+- `nb_installations_pac` (target) — volume shift
+- `temp_mean`, `hdd_sum`, `cdd_sum` — climate pattern changes
+- `confiance_menages` — economic regime changes
+- `nb_logements_autorises` — construction market shifts
+
+### 14.4 Implementation Plan
+
+- Run drift checks after each `collect` + `process` cycle
+- Log drift statistics in `data/analysis/drift_report.csv`
+- Raise WARNING if any priority feature exceeds PSI threshold
+- Raise CRITICAL if target distribution drifts significantly
+
+---
+
+## 15. API Endpoints Reference
+
+| Endpoint | Method | Parameters | Response |
+|----------|--------|------------|----------|
+| `/health` | GET | None | `{status, version, model_info, uptime}` |
+| `/predictions` | GET | `departement` (str), `horizon` (int) | `{predictions: [{date, value}]}` |
+| `/predict` | POST | JSON body: `{departement, horizon, features}` | `{prediction, confidence}` |
+| `/data/summary` | GET | None | `{rows, columns, date_range, departments}` |
+| `/model/metrics` | GET | None | `{rmse, mae, r2, mape}` per model |
+| `/departments` | GET | None | `{departments: [{code, name, lat, lon}]}` |
+
+### Authentication
+
+No authentication required (portfolio project). In production, add API key or OAuth2
+via FastAPI's built-in security utilities.
+
+---
+
+## 16. Deployment Architecture
+
+### 16.1 Local (Default)
+
+- Python venv + SQLite — zero infrastructure
+- `make setup && make pipeline && make serve-dashboard`
+- Full pipeline: `python -m src.pipeline all`
+
+### 16.2 Docker
+
+- Multi-stage Dockerfile (base + dependencies + application)
+- docker-compose with 4 services: API, Dashboard, Pipeline, PostgreSQL
+- Named volumes for data persistence
+- Health checks on all services
+- Resource limits (512 MB API/Dashboard, 1 GB Pipeline)
+
+### 16.3 Cloud (Render.com)
+
+- `render.yaml` with 2 web services (API + Dashboard)
+- Auto-deploy on push to `main`
+- Health check endpoint monitoring
+- Free tier compatible
+
+### 16.4 Kubernetes (Optional)
+
+- Deployment + Service + Ingress manifests in `kubernetes/`
+- Horizontal Pod Autoscaler ready
+- ConfigMap for environment variables

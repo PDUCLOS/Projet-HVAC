@@ -11,10 +11,12 @@ Orchestrates the different stages of the HVAC Market Analysis project:
     5. merge       — Multi-source merge → ML-ready dataset
     6. features    — Feature engineering (lags, rolling, interactions)
     7. process     — Execute clean + merge + features in sequence
-    8. eda         — Exploratory analysis + correlations (Phase 3)
-    9. train       — Model training (Phase 4)
-   10. evaluate    — Evaluation and comparison (Phase 4)
-   11. menu        — Interactive menu (recommended for beginners)
+    8. eda            — Exploratory analysis + correlations (Phase 3)
+    9. feature_select — Automated feature selection (SHAP, RFE, variance, corr)
+   10. drift          — Data drift detection (KS test, PSI)
+   11. train          — Model training (Phase 4)
+   12. evaluate       — Evaluation and comparison (Phase 4)
+   13. menu           — Interactive menu (recommended for beginners)
 
 CLI usage:
     # Interactive menu (recommended)
@@ -577,6 +579,130 @@ def run_eda() -> None:
     logger.info("  Reports: data/analysis/")
 
 
+def run_feature_select(target: str = "nb_installations_pac") -> None:
+    """Run automated feature selection on the features dataset.
+
+    Applies multiple selection methods (SHAP, RFE, variance, correlation)
+    and saves the consensus feature list to data/analysis/selected_features.json.
+
+    Prerequisite: having run 'features' and 'train' (needs a trained model
+    for SHAP analysis).
+
+    Args:
+        target: Target variable for feature importance analysis.
+    """
+    import pickle
+
+    import pandas as pd
+    from sklearn.impute import SimpleImputer
+
+    from src.models.feature_selection import FeatureSelector
+    from src.models.train import ModelTrainer
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Feature Selection")
+    logger.info("  Target: %s", target)
+    logger.info("=" * 60)
+
+    # Load dataset and prepare features
+    trainer = ModelTrainer(config, target=target)
+    df = trainer.load_dataset()
+    df_train, df_val, _ = trainer.temporal_split(df)
+    X_train, y_train = trainer.prepare_features(df_train)
+
+    # Handle NaN
+    mask_train = y_train.notna()
+    X_train, y_train = X_train[mask_train], y_train[mask_train]
+
+    all_nan_cols = X_train.columns[X_train.isna().all()].tolist()
+    if all_nan_cols:
+        X_train = X_train.drop(columns=all_nan_cols)
+
+    imputer = SimpleImputer(strategy="median", keep_empty_features=True)
+    X_train_imp = pd.DataFrame(
+        imputer.fit_transform(X_train),
+        columns=X_train.columns, index=X_train.index,
+    )
+
+    # Load trained LightGBM model if available, else use Ridge
+    model_path = config.models_dir / "lightgbm_model.pkl"
+    if model_path.exists():
+        with open(model_path, "rb") as f:
+            model = pickle.load(f)
+        logger.info("  Using trained LightGBM for SHAP analysis")
+    else:
+        from sklearn.linear_model import Ridge
+        model = Ridge(alpha=1.0)
+        model.fit(X_train_imp, y_train)
+        logger.info("  No trained model found, using Ridge for selection")
+
+    # Run feature selection
+    selector = FeatureSelector(analysis_dir="data/analysis")
+    result = selector.run_full_selection(
+        X_train_imp, y_train, model, top_k=20, min_votes=2,
+    )
+
+    logger.info(
+        "Feature selection complete: %d consensus features selected.",
+        len(result["selected_features"]),
+    )
+    logger.info("  Results: data/analysis/selected_features.json")
+
+
+def run_drift(target: str = "nb_installations_pac") -> None:
+    """Run data drift detection comparing training vs validation data.
+
+    Compares the feature distributions of the training set against
+    the validation/test set to detect distribution shifts that may
+    degrade model performance.
+
+    Generates a drift report to data/analysis/drift_report.json.
+
+    Prerequisite: having run 'features' (dataset in data/features/).
+
+    Args:
+        target: Target variable (used for feature preparation).
+    """
+    from src.models.data_drift import DriftDetector
+    from src.models.train import ModelTrainer
+
+    logger = logging.getLogger("pipeline")
+    logger.info("=" * 60)
+    logger.info("  Data Drift Detection")
+    logger.info("=" * 60)
+
+    # Load and split data
+    trainer = ModelTrainer(config, target=target)
+    df = trainer.load_dataset()
+    df_train, df_val, df_test = trainer.temporal_split(df)
+
+    # Prepare features
+    X_train, _ = trainer.prepare_features(df_train)
+    X_val, _ = trainer.prepare_features(df_val)
+
+    # Use numeric feature columns only
+    features = list(X_train.select_dtypes(include=["number"]).columns)
+
+    # Run drift detection
+    detector = DriftDetector(analysis_dir="data/analysis")
+    report = detector.generate_drift_report(
+        X_train, X_val, features, save=True,
+    )
+
+    logger.info(
+        "Drift detection complete: overall status = %s",
+        report["overall_status"],
+    )
+    logger.info(
+        "  OK=%d, WARNING=%d, ALERT=%d",
+        report["summary"]["OK"],
+        report["summary"]["WARNING"],
+        report["summary"]["ALERT"],
+    )
+    logger.info("  Report: data/analysis/drift_report.json")
+
+
 def run_train(target: str = "nb_installations_pac") -> None:
     """Train all ML models on the features dataset (Phase 4).
 
@@ -853,7 +979,8 @@ Examples:
         choices=[
             "collect", "init_db", "import_data",
             "clean", "merge", "features", "outliers", "process",
-            "eda", "train", "evaluate",
+            "eda", "feature_select", "drift",
+            "train", "evaluate",
             "sync_pcloud", "upload_pcloud", "update_all",
             "list", "all", "menu",
         ],
@@ -934,6 +1061,12 @@ Examples:
 
     elif args.stage == "eda":
         run_eda()
+
+    elif args.stage == "feature_select":
+        run_feature_select(target=args.target)
+
+    elif args.stage == "drift":
+        run_drift(target=args.target)
 
     elif args.stage == "train":
         run_train(target=args.target)
